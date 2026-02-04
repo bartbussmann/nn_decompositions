@@ -1,97 +1,128 @@
+from dataclasses import dataclass, field
+
 import torch
 import transformer_lens.utils as utils
 
 
-def get_default_cfg():
-    default_cfg = {
-        "seed": 49,
-        "batch_size": 4096,
-        "lr": 3e-4,
-        "num_tokens": int(1e9),
-        "l1_coeff": 0,
-        "beta1": 0.9,
-        "beta2": 0.99,
-        "max_grad_norm": 100000,
-        "seq_len": 128,
-        "dtype": torch.float32,
-        "model_name": "gpt2-small",
-        "site": "resid_pre",
-        "layer": 8,
-        "act_size": 768,
-        "dict_size": 12288,
-        "device": "cuda:0",
-        "model_batch_size": 512,
-        "num_batches_in_buffer": 10,
-        "dataset_path": "Skylion007/openwebtext",
-        "wandb_project": "sparse_autoencoders",
-        "input_unit_norm": False,
-        "perf_log_freq": 1000,
-        "sae_type": "topk",
-        "checkpoint_freq": 10000,
-        "n_batches_to_dead": 5,
+@dataclass
+class EncoderConfig:
+    """Base config for encoder architectures (SAE and Transcoder)."""
 
-        # (Batch)TopKSAE specific
-        "top_k": 32,
-        "top_k_aux": 512,
-        "aux_penalty": (1/32),
-        # for jumprelu
-        "bandwidth": 0.001,
-    }
-    default_cfg = post_init_cfg(default_cfg)
-    return default_cfg
+    # Architecture (required)
+    input_size: int
+    output_size: int
+    dict_size: int
 
+    # Training
+    seed: int = 49
+    batch_size: int = 4096
+    lr: float = 3e-4
+    num_tokens: int = int(1e9)
+    l1_coeff: float = 0.0
+    beta1: float = 0.9
+    beta2: float = 0.99
+    max_grad_norm: float = 100000.0
 
-def post_init_cfg(cfg):
-    cfg["hook_point"] = utils.get_act_name(cfg["site"], cfg["layer"])
-    cfg["name"] = f"{cfg['model_name']}_{cfg['hook_point']}_{cfg['dict_size']}_{cfg['sae_type']}_{cfg['top_k']}_{cfg['lr']}"
-    return cfg
+    # Device
+    device: str = "cuda:0"
+    dtype: torch.dtype = field(default=torch.float32)
+
+    # Dead feature tracking
+    n_batches_to_dead: int = 5
+
+    # Optional features
+    input_unit_norm: bool = False
+    pre_enc_bias: bool = False
+
+    # TopK specific
+    top_k: int = 32
+    top_k_aux: int = 512
+    aux_penalty: float = 1 / 32
+
+    # JumpReLU specific
+    bandwidth: float = 0.001
 
 
-def get_default_transcoder_cfg():
-    default_cfg = {
-        "seed": 49,
-        "batch_size": 4096,
-        "lr": 3e-4,
-        "num_tokens": int(1e9),
-        "l1_coeff": 0,
-        "beta1": 0.9,
-        "beta2": 0.99,
-        "max_grad_norm": 100000,
-        "seq_len": 128,
-        "dtype": torch.float32,
-        "model_name": "gpt2-small",
-        "device": "cuda:0",
-        "model_batch_size": 512,
-        "num_batches_in_buffer": 10,
-        "dataset_path": "Skylion007/openwebtext",
-        "wandb_project": "transcoders",
-        "perf_log_freq": 1000,
-        "transcoder_type": "topk",
-        "checkpoint_freq": 10000,
-        "n_batches_to_dead": 5,
+@dataclass
+class SAEConfig(EncoderConfig):
+    """Config for Sparse Autoencoders.
 
-        # (Batch)TopK specific
-        "top_k": 32,
-        "top_k_aux": 512,
-        "aux_penalty": (1/32),
-        # for jumprelu
-        "bandwidth": 0.001,
+    SAE reconstructs input, so input_size = output_size = act_size.
+    """
 
-        # Transcoder-specific: input/output sites and layers
-        "input_site": "resid_pre",
-        "output_site": "resid_post",
-        "input_layer": 8,
-        "output_layer": 8,
-        "input_size": 768,
-        "output_size": 768,
-        "dict_size": 12288,
-    }
-    default_cfg = post_init_transcoder_cfg(default_cfg)
-    return default_cfg
+    # SAE uses same size for input/output (set in __post_init__)
+    input_size: int = field(init=False)
+    output_size: int = field(init=False)
+
+    # Activation size (the main size parameter for SAE)
+    act_size: int = 768
+    dict_size: int = 12288
+
+    # Hook point specification
+    model_name: str = "gpt2-small"
+    site: str = "resid_pre"
+    layer: int = 8
+
+    # Data
+    seq_len: int = 128
+    model_batch_size: int = 512
+    num_batches_in_buffer: int = 10
+    dataset_path: str = "Skylion007/openwebtext"
+
+    # Logging
+    wandb_project: str = "sparse_autoencoders"
+    perf_log_freq: int = 1000
+    checkpoint_freq: int = 10000
+
+    def __post_init__(self):
+        # SAE: input_size = output_size = act_size
+        self.input_size = self.act_size
+        self.output_size = self.act_size
+
+    @property
+    def hook_point(self) -> str:
+        return utils.get_act_name(self.site, self.layer)
+
+    @property
+    def name(self) -> str:
+        return f"{self.model_name}_{self.hook_point}_{self.dict_size}_k{self.top_k}_{self.lr}"
 
 
-def post_init_transcoder_cfg(cfg):
-    cfg["input_hook_point"] = utils.get_act_name(cfg["input_site"], cfg["input_layer"])
-    cfg["output_hook_point"] = utils.get_act_name(cfg["output_site"], cfg["output_layer"])
-    cfg["name"] = f"transcoder_{cfg['model_name']}_{cfg['input_hook_point']}_to_{cfg['output_hook_point']}_{cfg['dict_size']}_{cfg['transcoder_type']}_{cfg['top_k']}_{cfg['lr']}"
-    return cfg
+@dataclass
+class TranscoderConfig(EncoderConfig):
+    """Config for Transcoders (input != output)."""
+
+    # Architecture (required, no defaults)
+    input_size: int
+    output_size: int
+    dict_size: int
+
+    # Hook points
+    model_name: str = "gpt2-small"
+    input_site: str = "resid_pre"
+    output_site: str = "resid_post"
+    input_layer: int = 8
+    output_layer: int = 8
+
+    # Data
+    seq_len: int = 128
+    model_batch_size: int = 512
+    num_batches_in_buffer: int = 10
+    dataset_path: str = "Skylion007/openwebtext"
+
+    # Logging
+    wandb_project: str = "transcoders"
+    perf_log_freq: int = 1000
+    checkpoint_freq: int = 10000
+
+    @property
+    def input_hook_point(self) -> str:
+        return utils.get_act_name(self.input_site, self.input_layer)
+
+    @property
+    def output_hook_point(self) -> str:
+        return utils.get_act_name(self.output_site, self.output_layer)
+
+    @property
+    def name(self) -> str:
+        return f"transcoder_{self.model_name}_{self.input_hook_point}_to_{self.output_hook_point}_{self.dict_size}"

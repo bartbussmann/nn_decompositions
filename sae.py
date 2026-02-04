@@ -1,24 +1,19 @@
 """SAE (Sparse Autoencoder) wrappers.
 
 SAE is a special case of transcoder where input = target.
-These thin wrappers set input_size = output_size = act_size and call forward(x, x).
+These thin wrappers call forward(x, x).
 """
 
 from base import BatchTopK, JumpReLUEncoder, TopK, Vanilla
+from config import SAEConfig
 
 
 def _make_sae_class(base_class):
     """Factory to create SAE wrapper classes from transcoder base classes."""
 
     class SAE(base_class):
-        def __init__(self, cfg: dict):
-            # SAE: input_size = output_size = act_size
-            sae_cfg = {
-                **cfg,
-                "input_size": cfg["act_size"],
-                "output_size": cfg["act_size"],
-            }
-            super().__init__(sae_cfg)
+        def __init__(self, cfg: SAEConfig):
+            super().__init__(cfg)
 
         def forward(self, x):
             return super().forward(x, x)

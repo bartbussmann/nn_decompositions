@@ -3,20 +3,22 @@ from datasets import load_dataset
 from torch.utils.data import DataLoader, TensorDataset
 from transformer_lens.hook_points import HookedRootModule
 
+from config import SAEConfig, TranscoderConfig
+
 
 class ActivationsStore:
     def __init__(
         self,
         model: HookedRootModule,
-        cfg: dict,
+        cfg: SAEConfig,
     ):
         self.model = model
-        self.dataset = iter(load_dataset(cfg["dataset_path"], split="train", streaming=True))
-        self.hook_point = cfg["hook_point"]
-        self.context_size = min(cfg["seq_len"], model.cfg.n_ctx)
-        self.model_batch_size = cfg["model_batch_size"]
-        self.device = cfg["device"]
-        self.num_batches_in_buffer = cfg["num_batches_in_buffer"]
+        self.dataset = iter(load_dataset(cfg.dataset_path, split="train", streaming=True))
+        self.hook_point = cfg.hook_point
+        self.context_size = min(cfg.seq_len, model.cfg.n_ctx)
+        self.model_batch_size = cfg.model_batch_size
+        self.device = cfg.device
+        self.num_batches_in_buffer = cfg.num_batches_in_buffer
         self.tokens_column = self._get_tokens_column()
         self.cfg = cfg
         self.tokenizer = model.tokenizer
@@ -37,14 +39,18 @@ class ActivationsStore:
         while len(all_tokens) < self.model_batch_size * self.context_size:
             batch = next(self.dataset)
             if self.tokens_column == "text":
-                tokens = self.model.to_tokens(batch["text"], truncate=True, move_to_device=True, prepend_bos=True).squeeze(0)
+                tokens = self.model.to_tokens(
+                    batch["text"], truncate=True, move_to_device=True, prepend_bos=True
+                ).squeeze(0)
             else:
                 tokens = batch[self.tokens_column]
             if isinstance(tokens, torch.Tensor):
                 all_tokens.extend(tokens.tolist())
             else:
                 all_tokens.extend(tokens)
-        token_tensor = torch.tensor(all_tokens, dtype=torch.long, device=self.device)[:self.model_batch_size * self.context_size]
+        token_tensor = torch.tensor(
+            all_tokens, dtype=torch.long, device=self.device
+        )[:self.model_batch_size * self.context_size]
         return token_tensor.view(self.model_batch_size, self.context_size)
 
     def get_activations(self, batch_tokens: torch.Tensor):
@@ -52,7 +58,7 @@ class ActivationsStore:
             _, cache = self.model.run_with_cache(
                 batch_tokens,
                 names_filter=[self.hook_point],
-                stop_at_layer=self.cfg["layer"] +1,
+                stop_at_layer=self.cfg.layer + 1,
             )
         return cache[self.hook_point]
 
@@ -60,12 +66,16 @@ class ActivationsStore:
         all_activations = []
         for _ in range(self.num_batches_in_buffer):
             batch_tokens = self.get_batch_tokens()
-            activations = self.get_activations(batch_tokens).reshape(-1, self.cfg["act_size"])
+            activations = self.get_activations(batch_tokens).reshape(-1, self.cfg.act_size)
             all_activations.append(activations)
         return torch.cat(all_activations, dim=0)
 
     def _get_dataloader(self):
-        return DataLoader(TensorDataset(self.activation_buffer), batch_size=self.cfg["batch_size"], shuffle=True)
+        return DataLoader(
+            TensorDataset(self.activation_buffer),
+            batch_size=self.cfg.batch_size,
+            shuffle=True,
+        )
 
     def next_batch(self):
         try:
@@ -83,16 +93,16 @@ class TranscoderActivationsStore:
     def __init__(
         self,
         model: HookedRootModule,
-        cfg: dict,
+        cfg: TranscoderConfig,
     ):
         self.model = model
-        self.dataset = iter(load_dataset(cfg["dataset_path"], split="train", streaming=True))
-        self.input_hook_point = cfg["input_hook_point"]
-        self.output_hook_point = cfg["output_hook_point"]
-        self.context_size = min(cfg["seq_len"], model.cfg.n_ctx)
-        self.model_batch_size = cfg["model_batch_size"]
-        self.device = cfg["device"]
-        self.num_batches_in_buffer = cfg["num_batches_in_buffer"]
+        self.dataset = iter(load_dataset(cfg.dataset_path, split="train", streaming=True))
+        self.input_hook_point = cfg.input_hook_point
+        self.output_hook_point = cfg.output_hook_point
+        self.context_size = min(cfg.seq_len, model.cfg.n_ctx)
+        self.model_batch_size = cfg.model_batch_size
+        self.device = cfg.device
+        self.num_batches_in_buffer = cfg.num_batches_in_buffer
         self.tokens_column = self._get_tokens_column()
         self.cfg = cfg
         self.tokenizer = model.tokenizer
@@ -113,14 +123,18 @@ class TranscoderActivationsStore:
         while len(all_tokens) < self.model_batch_size * self.context_size:
             batch = next(self.dataset)
             if self.tokens_column == "text":
-                tokens = self.model.to_tokens(batch["text"], truncate=True, move_to_device=True, prepend_bos=True).squeeze(0)
+                tokens = self.model.to_tokens(
+                    batch["text"], truncate=True, move_to_device=True, prepend_bos=True
+                ).squeeze(0)
             else:
                 tokens = batch[self.tokens_column]
             if isinstance(tokens, torch.Tensor):
                 all_tokens.extend(tokens.tolist())
             else:
                 all_tokens.extend(tokens)
-        token_tensor = torch.tensor(all_tokens, dtype=torch.long, device=self.device)[:self.model_batch_size * self.context_size]
+        token_tensor = torch.tensor(
+            all_tokens, dtype=torch.long, device=self.device
+        )[:self.model_batch_size * self.context_size]
         return token_tensor.view(self.model_batch_size, self.context_size)
 
     def get_activations(self, batch_tokens: torch.Tensor):
@@ -129,7 +143,7 @@ class TranscoderActivationsStore:
             _, cache = self.model.run_with_cache(
                 batch_tokens,
                 names_filter=[self.input_hook_point, self.output_hook_point],
-                stop_at_layer=self.cfg["output_layer"] + 1,
+                stop_at_layer=self.cfg.output_layer + 1,
             )
         return cache[self.input_hook_point], cache[self.output_hook_point]
 
@@ -139,14 +153,17 @@ class TranscoderActivationsStore:
         for _ in range(self.num_batches_in_buffer):
             batch_tokens = self.get_batch_tokens()
             input_acts, output_acts = self.get_activations(batch_tokens)
-            all_input_activations.append(input_acts.reshape(-1, self.cfg["input_size"]))
-            all_output_activations.append(output_acts.reshape(-1, self.cfg["output_size"]))
-        return torch.cat(all_input_activations, dim=0), torch.cat(all_output_activations, dim=0)
+            all_input_activations.append(input_acts.reshape(-1, self.cfg.input_size))
+            all_output_activations.append(output_acts.reshape(-1, self.cfg.output_size))
+        return (
+            torch.cat(all_input_activations, dim=0),
+            torch.cat(all_output_activations, dim=0),
+        )
 
     def _get_dataloader(self):
         return DataLoader(
             TensorDataset(self.input_buffer, self.output_buffer),
-            batch_size=self.cfg["batch_size"],
+            batch_size=self.cfg.batch_size,
             shuffle=True,
         )
 
