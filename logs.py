@@ -32,11 +32,11 @@ def get_encoder_metrics(output: dict) -> dict:
     return log_dict
 
 
-def log_wandb(output: dict, step: int, wandb_run, index: int | None = None):
+def log_wandb(output: dict, step: int, wandb_run, suffix: str | None = None):
     """Log encoder metrics to wandb run."""
     log_dict = get_encoder_metrics(output)
-    if index is not None:
-        log_dict = {f"{k}_{index}": v for k, v in log_dict.items()}
+    if suffix is not None:
+        log_dict = {f"{k}/{suffix}": v for k, v in log_dict.items()}
     wandb_run.log(log_dict, step=step)
 
 
@@ -105,12 +105,13 @@ def get_performance_metrics(
 @torch.no_grad()
 def log_encoder_performance(
     wandb_run, step: int, model, activations_store, encoder,
-    index: int | None = None, batch_tokens: torch.Tensor | None = None
+    suffix: str | None = None, batch_tokens: torch.Tensor | None = None
 ):
     """Log model performance metrics to wandb run."""
     log_dict = get_performance_metrics(model, activations_store, encoder, batch_tokens)
-    if index is not None:
-        log_dict = {f"{k}_{index}": v for k, v in log_dict.items()}
+    if suffix is not None:
+        # performance/ce_degradation -> performance/ce_degradation/topk
+        log_dict = {f"{k}/{suffix}": v for k, v in log_dict.items()}
     wandb_run.log(log_dict, step=step)
 
 
