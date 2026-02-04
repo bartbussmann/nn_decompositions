@@ -52,31 +52,34 @@ class WandbLogger:
     def __init__(self, cfg: EncoderConfig):
         self.cfg = cfg
         self.queue: queue.Queue = queue.Queue()
+
+        # Initialize wandb run in main thread to avoid race conditions
+        cfg_dict = {
+            k: str(v) if isinstance(v, torch.dtype) else v
+            for k, v in asdict(cfg).items()
+        }
+        cfg_dict["name"] = cfg.name
+        self.run = wandb.init(
+            project=cfg.wandb_project,
+            name=cfg.name,
+            config=cfg_dict,
+            reinit=True,  # Allow multiple runs
+        )
+
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
     def _run(self):
         """Background thread that processes log queue."""
-        cfg_dict = {
-            k: str(v) if isinstance(v, torch.dtype) else v
-            for k, v in asdict(self.cfg).items()
-        }
-        cfg_dict["name"] = self.cfg.name
-
-        wandb.init(
-            project=self.cfg.wandb_project,
-            name=self.cfg.name,
-            config=cfg_dict,
-        )
         while True:
             try:
                 item = self.queue.get(timeout=1)
                 if item == "DONE":
                     break
-                wandb.log(item)
+                self.run.log(item)  # Use run object, not global wandb.log
             except queue.Empty:
                 continue
-        wandb.finish()
+        self.run.finish()
 
     def log(self, metrics: dict, step: int):
         """Queue metrics for logging."""
