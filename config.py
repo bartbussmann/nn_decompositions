@@ -88,6 +88,11 @@ class SAEConfig(EncoderConfig):
         return utils.get_act_name(self.site, self.layer)
 
     @property
+    def eval_hook_point(self) -> str:
+        """Hook point used for performance evaluation (same as hook_point for SAE)."""
+        return self.hook_point
+
+    @property
     def name(self) -> str:
         base = f"{self.model_name}_{self.hook_point}_{self.dict_size}_{self.encoder_type}"
         # Only include k for topk variants
@@ -133,6 +138,11 @@ class TranscoderConfig(EncoderConfig):
     @property
     def output_hook_point(self) -> str:
         return utils.get_act_name(self.output_site, self.output_layer)
+
+    @property
+    def eval_hook_point(self) -> str:
+        """Hook point used for performance evaluation (output hook for transcoder)."""
+        return self.output_hook_point
 
     @property
     def name(self) -> str:

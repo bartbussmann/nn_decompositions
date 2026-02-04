@@ -32,101 +32,55 @@ def log_wandb(output, step, wandb_run, index=None):
 
 
 # Hooks for model performance evaluation
-def reconstr_hook(activation, hook, sae_out):
-    return sae_out
+def _reconstr_hook(activation, hook, encoder_out):
+    return encoder_out
 
 
-def zero_abl_hook(activation, hook):
+def _zero_abl_hook(activation, hook):
     return torch.zeros_like(activation)
 
 
-def mean_abl_hook(activation, hook):
+def _mean_abl_hook(activation, hook):
     return activation.mean([0, 1]).expand_as(activation)
 
 
 @torch.no_grad()
-def log_model_performance(
-    wandb_run, step, model, activations_store, sae, index=None, batch_tokens=None
+def log_encoder_performance(
+    wandb_run, step, model, activations_store, encoder, index=None, batch_tokens=None
 ):
-    if batch_tokens is None:
-        batch_tokens = activations_store.get_batch_tokens()[
-            : sae.cfg.batch_size // sae.cfg.seq_len
-        ]
-    batch = activations_store.get_activations(batch_tokens).reshape(
-        -1, sae.cfg.act_size
-    )
-
-    sae_output = sae(batch)["output"].reshape(
-        batch_tokens.shape[0], batch_tokens.shape[1], -1
-    )
-
-    original_loss = model(batch_tokens, return_type="loss").item()
-    reconstr_loss = model.run_with_hooks(
-        batch_tokens,
-        fwd_hooks=[(sae.cfg.hook_point, partial(reconstr_hook, sae_out=sae_output))],
-        return_type="loss",
-    ).item()
-    zero_loss = model.run_with_hooks(
-        batch_tokens,
-        fwd_hooks=[(sae.cfg.hook_point, zero_abl_hook)],
-        return_type="loss",
-    ).item()
-    mean_loss = model.run_with_hooks(
-        batch_tokens,
-        fwd_hooks=[(sae.cfg.hook_point, mean_abl_hook)],
-        return_type="loss",
-    ).item()
-
-    ce_degradation = original_loss - reconstr_loss
-    zero_degradation = original_loss - zero_loss
-    mean_degradation = original_loss - mean_loss
-
-    log_dict = {
-        "performance/ce_degradation": ce_degradation,
-        "performance/recovery_from_zero": (reconstr_loss - zero_loss) / zero_degradation,
-        "performance/recovery_from_mean": (reconstr_loss - mean_loss) / mean_degradation,
-    }
-
-    if index is not None:
-        log_dict = {f"{k}_{index}": v for k, v in log_dict.items()}
-
-    wandb_run.log(log_dict, step=step)
-
-
-@torch.no_grad()
-def log_transcoder_performance(
-    wandb_run, step, model, activations_store, transcoder, index=None, batch_tokens=None
-):
-    """Log model performance metrics for transcoders (input != output hook point)."""
-    cfg = transcoder.cfg
+    """Log model performance metrics for any encoder (SAE or transcoder)."""
+    cfg = encoder.cfg
     if batch_tokens is None:
         batch_tokens = activations_store.get_batch_tokens()[
             : cfg.batch_size // cfg.seq_len
         ]
 
-    # Get input activations and run transcoder
+    # Get input activations (works for both SAE and transcoder stores)
     input_acts, _ = activations_store.get_activations(batch_tokens)
     input_acts_flat = input_acts.reshape(-1, cfg.input_size)
 
-    # Get transcoder output reshaped for hooks
-    transcoder_out = transcoder(input_acts_flat, input_acts_flat)["output"].reshape(
+    # Get encoder output reshaped for hooks
+    encoder_out = encoder(input_acts_flat, input_acts_flat)["output"].reshape(
         batch_tokens.shape[0], batch_tokens.shape[1], -1
     )
+
+    # Use eval_hook_point (hook_point for SAE, output_hook_point for transcoder)
+    hook_point = cfg.eval_hook_point
 
     original_loss = model(batch_tokens, return_type="loss").item()
     reconstr_loss = model.run_with_hooks(
         batch_tokens,
-        fwd_hooks=[(cfg.output_hook_point, partial(reconstr_hook, sae_out=transcoder_out))],
+        fwd_hooks=[(hook_point, partial(_reconstr_hook, encoder_out=encoder_out))],
         return_type="loss",
     ).item()
     zero_loss = model.run_with_hooks(
         batch_tokens,
-        fwd_hooks=[(cfg.output_hook_point, zero_abl_hook)],
+        fwd_hooks=[(hook_point, _zero_abl_hook)],
         return_type="loss",
     ).item()
     mean_loss = model.run_with_hooks(
         batch_tokens,
-        fwd_hooks=[(cfg.output_hook_point, mean_abl_hook)],
+        fwd_hooks=[(hook_point, _mean_abl_hook)],
         return_type="loss",
     ).item()
 
@@ -146,13 +100,13 @@ def log_transcoder_performance(
     wandb_run.log(log_dict, step=step)
 
 
-def save_checkpoint(wandb_run, sae, cfg: EncoderConfig, step):
+def save_checkpoint(wandb_run, encoder, cfg: EncoderConfig, step):
     save_dir = f"checkpoints/{cfg.name}_{step}"
     os.makedirs(save_dir, exist_ok=True)
 
     # Save model state
-    sae_path = os.path.join(save_dir, "sae.pt")
-    torch.save(sae.state_dict(), sae_path)
+    encoder_path = os.path.join(save_dir, "encoder.pt")
+    torch.save(encoder.state_dict(), encoder_path)
 
     # Convert dataclass to JSON-safe dict
     json_safe_cfg = {}
@@ -175,7 +129,7 @@ def save_checkpoint(wandb_run, sae, cfg: EncoderConfig, step):
         type="model",
         description=f"Model checkpoint at step {step}",
     )
-    artifact.add_file(sae_path)
+    artifact.add_file(encoder_path)
     artifact.add_file(config_path)
     wandb_run.log_artifact(artifact)
 

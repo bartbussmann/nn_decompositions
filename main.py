@@ -4,7 +4,7 @@
 from activation_store import TranscoderActivationsStore
 from base import TopK
 from config import TranscoderConfig
-from training import train_transcoder
+from training import train_encoder
 from transformer_lens import HookedTransformer
 
 # Configure transcoder for MLP layer 8
@@ -41,4 +41,4 @@ print(f"Training transcoder: {cfg.name}")
 print(f"  Input: {cfg.input_hook_point}")
 print(f"  Output: {cfg.output_hook_point}")
 print(f"  Dict size: {cfg.dict_size}, Top-k: {cfg.top_k}")
-train_transcoder(transcoder, activation_store, model, cfg)
+train_encoder(transcoder, activation_store, model, cfg)
