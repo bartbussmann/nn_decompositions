@@ -1,30 +1,14 @@
-import queue
-import threading
-
 import torch
 import tqdm
-import wandb
 
 from config import EncoderConfig
-from logs import get_encoder_metrics, get_performance_metrics, save_checkpoint
-
-
-def _wandb_thread(cfg_dict: dict, log_queue: queue.Queue):
-    """Separate thread for wandb logging (avoids CUDA/multiprocessing issues)."""
-    wandb.init(
-        project=cfg_dict["wandb_project"],
-        name=cfg_dict["name"],
-        config=cfg_dict,
-    )
-    while True:
-        try:
-            log = log_queue.get(timeout=1)
-            if log == "DONE":
-                break
-            wandb.log(log)
-        except queue.Empty:
-            continue
-    wandb.finish()
+from logs import (
+    WandbLogger,
+    init_wandb,
+    log_encoder_performance,
+    log_wandb,
+    save_checkpoint,
+)
 
 
 def train_encoder(encoder, activation_store, model, cfg: EncoderConfig):
@@ -33,8 +17,6 @@ def train_encoder(encoder, activation_store, model, cfg: EncoderConfig):
     Works with both ActivationsStore and TranscoderActivationsStore since
     both return (x_in, y_target) tuples from next_batch().
     """
-    from logs import init_wandb, log_wandb, log_encoder_performance
-
     num_batches = cfg.num_tokens // cfg.batch_size
     optimizer = torch.optim.Adam(encoder.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2))
     pbar = tqdm.trange(num_batches)
@@ -71,8 +53,6 @@ def train_encoder(encoder, activation_store, model, cfg: EncoderConfig):
 
 def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderConfig]):
     """Train multiple encoders on the same activation stream with separate wandb runs."""
-    from dataclasses import asdict
-
     num_batches = cfgs[0].num_tokens // cfgs[0].batch_size
     optimizers = [
         torch.optim.Adam(enc.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2))
@@ -80,46 +60,21 @@ def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderCon
     ]
     pbar = tqdm.trange(num_batches)
 
-    # Spawn separate wandb thread for each encoder (threading avoids CUDA/fork issues)
-    log_queues = []
-    wandb_threads = []
-    for cfg in cfgs:
-        log_queue = queue.Queue()
-        log_queues.append(log_queue)
-
-        # Convert config to dict, handling non-serializable types
-        cfg_dict = {
-            k: str(v) if isinstance(v, torch.dtype) else v
-            for k, v in asdict(cfg).items()
-        }
-        cfg_dict["name"] = cfg.name  # Ensure computed property is included
-
-        thread = threading.Thread(target=_wandb_thread, args=(cfg_dict, log_queue))
-        thread.start()
-        wandb_threads.append(thread)
-
+    # Create threaded logger for each encoder
+    loggers = [WandbLogger(cfg) for cfg in cfgs]
     batch_tokens = activation_store.get_batch_tokens()
 
     for i in pbar:
         x_in, y_target = activation_store.next_batch()
 
-        for idx, (encoder, cfg, optimizer, log_queue) in enumerate(
-            zip(encoders, cfgs, optimizers, log_queues)
-        ):
+        for encoder, cfg, optimizer, logger in zip(encoders, cfgs, optimizers, loggers):
             output = encoder(x_in, y_target)
             loss = output["loss"]
 
-            # Send metrics to wandb process via queue
-            log_dict = get_encoder_metrics(output)
-            log_dict["step"] = i
-            log_queue.put(log_dict)
+            logger.log_encoder(output, i)
 
             if i % cfg.perf_log_freq == 0:
-                perf_dict = get_performance_metrics(
-                    model, activation_store, encoder, batch_tokens
-                )
-                perf_dict["step"] = i
-                log_queue.put(perf_dict)
+                logger.log_performance(model, activation_store, encoder, i, batch_tokens)
 
             if i % cfg.checkpoint_freq == 0:
                 save_checkpoint(encoder, cfg, i)
@@ -136,14 +91,10 @@ def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderCon
             optimizer.step()
             optimizer.zero_grad()
 
-    # Save final checkpoints and clean up wandb threads
-    for encoder, cfg in zip(encoders, cfgs):
+    # Save final checkpoints and finish loggers
+    for encoder, cfg, logger in zip(encoders, cfgs, loggers):
         save_checkpoint(encoder, cfg, i)
-
-    for log_queue in log_queues:
-        log_queue.put("DONE")
-    for thread in wandb_threads:
-        thread.join()
+        logger.finish()
 
 
 # Backwards compatibility aliases

@@ -1,5 +1,7 @@
 import json
 import os
+import queue
+import threading
 from dataclasses import asdict
 from functools import partial
 
@@ -8,6 +10,10 @@ import wandb
 
 from config import EncoderConfig
 
+
+# =============================================================================
+# Wandb Logging
+# =============================================================================
 
 def init_wandb(cfg: EncoderConfig):
     """Initialize wandb for single encoder training."""
@@ -36,7 +42,66 @@ def log_wandb(output: dict, step: int, wandb_run, index: int | None = None):
     wandb_run.log(log_dict, step=step)
 
 
-# Hooks for model performance evaluation
+class WandbLogger:
+    """Threaded wandb logger for non-blocking logging.
+
+    Uses a separate thread to avoid blocking training while logging.
+    Each logger instance manages its own wandb run.
+    """
+
+    def __init__(self, cfg: EncoderConfig):
+        self.cfg = cfg
+        self.queue: queue.Queue = queue.Queue()
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+
+    def _run(self):
+        """Background thread that processes log queue."""
+        cfg_dict = {
+            k: str(v) if isinstance(v, torch.dtype) else v
+            for k, v in asdict(self.cfg).items()
+        }
+        cfg_dict["name"] = self.cfg.name
+
+        wandb.init(
+            project=self.cfg.wandb_project,
+            name=self.cfg.name,
+            config=cfg_dict,
+        )
+        while True:
+            try:
+                item = self.queue.get(timeout=1)
+                if item == "DONE":
+                    break
+                wandb.log(item)
+            except queue.Empty:
+                continue
+        wandb.finish()
+
+    def log(self, metrics: dict, step: int):
+        """Queue metrics for logging."""
+        metrics["step"] = step
+        self.queue.put(metrics)
+
+    def log_encoder(self, output: dict, step: int):
+        """Log encoder output metrics."""
+        self.log(get_encoder_metrics(output), step)
+
+    def log_performance(self, model, activations_store, encoder, step: int, batch_tokens=None):
+        """Log model performance metrics."""
+        metrics = get_performance_metrics(model, activations_store, encoder, batch_tokens)
+        self.log(metrics, step)
+
+    def finish(self):
+        """Signal thread to finish and wait for it."""
+        self.queue.put("DONE")
+        self.thread.join()
+
+
+# =============================================================================
+# Model Performance Evaluation
+# =============================================================================
+
 def _reconstr_hook(activation, hook, encoder_out):
     return encoder_out
 
@@ -109,16 +174,18 @@ def log_encoder_performance(
     wandb_run.log(log_dict, step=step)
 
 
+# =============================================================================
+# Checkpointing
+# =============================================================================
+
 def save_checkpoint(encoder, cfg: EncoderConfig, step: int):
     """Save encoder checkpoint locally."""
     save_dir = f"checkpoints/{cfg.name}_{step}"
     os.makedirs(save_dir, exist_ok=True)
 
-    # Save model state
     encoder_path = os.path.join(save_dir, "encoder.pt")
     torch.save(encoder.state_dict(), encoder_path)
 
-    # Convert dataclass to JSON-safe dict
     json_safe_cfg = {}
     for key, value in asdict(cfg).items():
         if isinstance(value, (int, float, str, bool, type(None))):
@@ -126,7 +193,6 @@ def save_checkpoint(encoder, cfg: EncoderConfig, step: int):
         else:
             json_safe_cfg[key] = str(value)
 
-    # Save config
     config_path = os.path.join(save_dir, "config.json")
     with open(config_path, "w") as f:
         json.dump(json_safe_cfg, f, indent=4)
