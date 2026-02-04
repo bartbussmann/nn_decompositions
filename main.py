@@ -1,82 +1,52 @@
 # %%
-from activation_store import ActivationsStore
-from config import SAEConfig
-from sae import BatchTopKSAE, JumpReLUSAE, TopKSAE, VanillaSAE
-from training import train_sae
+"""Train TopK and BatchTopK transcoders in parallel on MLP layer 8 of GPT-2 small."""
+
+from activation_store import TranscoderActivationsStore
+from base import BatchTopK, TopK
+from config import TranscoderConfig
+from training import train_encoder_group
 from transformer_lens import HookedTransformer
 
-# Example: Train JumpReLU with different l1_coeff values
-for l1_coeff in [0.004, 0.0018, 0.0008]:
-    cfg = SAEConfig(
-        encoder_type="jumprelu",
-        act_size=768,
-        dict_size=768 * 16,
-        model_name="gpt2-small",
-        layer=8,
-        site="resid_pre",
-        dataset_path="Skylion007/openwebtext",
-        input_unit_norm=True,
-        l1_coeff=l1_coeff,
-        wandb_project="batchtopk_comparison",
-        device="cuda",
-    )
+# Shared config values (input_size/output_size auto-detected from model)
+shared = dict(
+    dict_size=768,
+    model_name="gpt2-small",
+    input_site="resid_mid",  # Input to MLP
+    output_site="mlp_out",   # Output of MLP
+    input_layer=8,
+    output_layer=8,
+    top_k=32,
+    l1_coeff=0.0,
+    batch_size=64,
+    num_tokens=int(1e8),  # 100M tokens
+    lr=3e-4,
+    wandb_project="gpt2_transcoder",
+    device="cuda",
+)
 
-    sae = JumpReLUSAE(cfg)
+# Create configs for each encoder type
+topk_cfg = TranscoderConfig(encoder_type="topk", **shared)
+batchtopk_cfg = TranscoderConfig(encoder_type="batchtopk", **shared)
 
-    model = HookedTransformer.from_pretrained(cfg.model_name).to(cfg.dtype).to(cfg.device)
-    activations_store = ActivationsStore(model, cfg)
-    train_sae(sae, activations_store, model, cfg)
+# Load model
+model = HookedTransformer.from_pretrained(topk_cfg.model_name).to(topk_cfg.dtype).to(topk_cfg.device)
 
-# Example: Compare TopK vs BatchTopK with different k values
-for encoder_type in ["topk", "batchtopk"]:
-    for top_k in [16, 32, 64]:
-        cfg = SAEConfig(
-            encoder_type=encoder_type,
-            act_size=768,
-            dict_size=768 * 16,
-            model_name="gpt2-small",
-            layer=8,
-            site="resid_pre",
-            dataset_path="Skylion007/openwebtext",
-            input_unit_norm=True,
-            top_k=top_k,
-            l1_coeff=0.0,
-            wandb_project="batchtopk_comparison",
-            device="cuda",
-        )
+# Create transcoders and activation store
+topk_transcoder = TopK(topk_cfg)
+batchtopk_transcoder = BatchTopK(batchtopk_cfg)
+activation_store = TranscoderActivationsStore(model, topk_cfg)
 
-        if encoder_type == "topk":
-            sae = TopKSAE(cfg)
-        else:
-            sae = BatchTopKSAE(cfg)
+# Train both in parallel
+print("Training transcoders:")
+print(f"  [0] TopK: {topk_cfg.name}")
+print(f"  [1] BatchTopK: {batchtopk_cfg.name}")
+print(f"  Input: {topk_cfg.input_hook_point}")
+print(f"  Output: {topk_cfg.output_hook_point}")
+print(f"  Dict size: {topk_cfg.dict_size}, Top-k: {topk_cfg.top_k}")
 
-        model = HookedTransformer.from_pretrained(cfg.model_name).to(cfg.dtype).to(cfg.device)
-        activations_store = ActivationsStore(model, cfg)
-        train_sae(sae, activations_store, model, cfg)
-
-# Example: Compare different dictionary sizes
-for encoder_type in ["topk", "batchtopk"]:
-    for dict_size in [768 * 4, 768 * 8, 768 * 32]:
-        cfg = SAEConfig(
-            encoder_type=encoder_type,
-            act_size=768,
-            dict_size=dict_size,
-            model_name="gpt2-small",
-            layer=8,
-            site="resid_pre",
-            dataset_path="Skylion007/openwebtext",
-            input_unit_norm=True,
-            top_k=32,
-            l1_coeff=0.0,
-            wandb_project="batchtopk_comparison",
-            device="cuda",
-        )
-
-        if encoder_type == "topk":
-            sae = TopKSAE(cfg)
-        else:
-            sae = BatchTopKSAE(cfg)
-
-        model = HookedTransformer.from_pretrained(cfg.model_name).to(cfg.dtype).to(cfg.device)
-        activations_store = ActivationsStore(model, cfg)
-        train_sae(sae, activations_store, model, cfg)
+train_encoder_group(
+    [topk_transcoder, batchtopk_transcoder],
+    activation_store,
+    model,
+    [topk_cfg, batchtopk_cfg],
+)

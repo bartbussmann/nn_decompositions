@@ -1,7 +1,0 @@
-torch>=2.0
-transformer_lens>=1.8
-wandb>=0.16
-datasets>=2.14
-tqdm
-pandas
-matplotlib

@@ -81,21 +81,25 @@ class ActivationsStore(BaseActivationsStore):
         self.cfg: SAEConfig = cfg
         self.hook_point = cfg.hook_point
 
-    def get_activations(self, batch_tokens: torch.Tensor) -> torch.Tensor:
+    def get_activations(
+        self, batch_tokens: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Get activations. Returns (acts, acts) tuple for API consistency with transcoder."""
         with torch.no_grad():
             _, cache = self.model.run_with_cache(
                 batch_tokens,
                 names_filter=[self.hook_point],
                 stop_at_layer=self.cfg.layer + 1,
             )
-        return cache[self.hook_point]
+        acts = cache[self.hook_point]
+        return acts, acts
 
     def _fill_buffer(self) -> torch.Tensor:
         all_activations = []
         for _ in range(self.num_batches_in_buffer):
             batch_tokens = self.get_batch_tokens()
-            activations = self.get_activations(batch_tokens).reshape(-1, self.cfg.act_size)
-            all_activations.append(activations)
+            acts, _ = self.get_activations(batch_tokens)
+            all_activations.append(acts.reshape(-1, self.cfg.act_size))
         return torch.cat(all_activations, dim=0)
 
     def _get_dataloader(self) -> DataLoader:
@@ -105,14 +109,16 @@ class ActivationsStore(BaseActivationsStore):
             shuffle=True,
         )
 
-    def next_batch(self) -> torch.Tensor:
+    def next_batch(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Returns (batch, batch) tuple for API consistency with transcoder."""
         try:
-            return next(self.dataloader_iter)[0]
+            batch = next(self.dataloader_iter)[0]
         except (StopIteration, AttributeError):
             self.activation_buffer = self._fill_buffer()
             self.dataloader = self._get_dataloader()
             self.dataloader_iter = iter(self.dataloader)
-            return next(self.dataloader_iter)[0]
+            batch = next(self.dataloader_iter)[0]
+        return batch, batch
 
 
 class TranscoderActivationsStore(BaseActivationsStore):

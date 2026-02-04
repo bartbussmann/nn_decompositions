@@ -2,124 +2,106 @@ import torch
 import tqdm
 
 from config import EncoderConfig
-from logs import init_wandb, log_model_performance, log_wandb, save_checkpoint
+from logs import (
+    init_wandb,
+    log_encoder_performance,
+    log_wandb,
+    save_checkpoint,
+)
 
 
-def train_sae(sae, activation_store, model, cfg: EncoderConfig):
+def train_encoder(encoder, activation_store, model, cfg: EncoderConfig):
+    """Train any encoder (SAE or transcoder).
+
+    Works with both ActivationsStore and TranscoderActivationsStore since
+    both return (x_in, y_target) tuples from next_batch().
+    """
     num_batches = cfg.num_tokens // cfg.batch_size
-    optimizer = torch.optim.Adam(sae.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2))
-    pbar = tqdm.trange(num_batches)
-
-    wandb_run = init_wandb(cfg)
-
-    for i in pbar:
-        batch = activation_store.next_batch()
-        sae_output = sae(batch)
-        log_wandb(sae_output, i, wandb_run)
-        if i % cfg.perf_log_freq == 0:
-            log_model_performance(wandb_run, i, model, activation_store, sae)
-
-        if i % cfg.checkpoint_freq == 0:
-            save_checkpoint(wandb_run, sae, cfg, i)
-
-        loss = sae_output["loss"]
-        pbar.set_postfix({
-            "Loss": f"{loss.item():.4f}",
-            "L0": f"{sae_output['l0_norm']:.4f}",
-            "L2": f"{sae_output['l2_loss']:.4f}",
-            "L1": f"{sae_output['l1_loss']:.4f}",
-            "L1_norm": f"{sae_output['l1_norm']:.4f}",
-        })
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(sae.parameters(), cfg.max_grad_norm)
-        sae.make_decoder_weights_and_grad_unit_norm()
-        optimizer.step()
-        optimizer.zero_grad()
-
-    save_checkpoint(wandb_run, sae, cfg, i)
-
-
-def train_sae_group(saes, activation_store, model, cfgs: list[EncoderConfig]):
-    num_batches = cfgs[0].num_tokens // cfgs[0].batch_size
-    optimizers = [
-        torch.optim.Adam(sae.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2))
-        for sae, cfg in zip(saes, cfgs)
-    ]
-    pbar = tqdm.trange(num_batches)
-
-    wandb_run = init_wandb(cfgs[0])
-
-    batch_tokens = activation_store.get_batch_tokens()
-
-    for i in pbar:
-        batch = activation_store.next_batch()
-        counter = 0
-        for sae, cfg, optimizer in zip(saes, cfgs, optimizers):
-            sae_output = sae(batch)
-            loss = sae_output["loss"]
-            log_wandb(sae_output, i, wandb_run, index=counter)
-            if i % cfg.perf_log_freq == 0:
-                log_model_performance(
-                    wandb_run, i, model, activation_store, sae,
-                    index=counter, batch_tokens=batch_tokens
-                )
-
-            if i % cfg.checkpoint_freq == 0:
-                save_checkpoint(wandb_run, sae, cfg, i)
-
-            pbar.set_postfix({
-                "Loss": f"{loss.item():.4f}",
-                "L0": f"{sae_output['l0_norm']:.4f}",
-                "L2": f"{sae_output['l2_loss']:.4f}",
-                "L1": f"{sae_output['l1_loss']:.4f}",
-                "L1_norm": f"{sae_output['l1_norm']:.4f}",
-            })
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(sae.parameters(), cfg.max_grad_norm)
-            sae.make_decoder_weights_and_grad_unit_norm()
-            optimizer.step()
-            optimizer.zero_grad()
-            counter += 1
-
-    for sae, cfg, optimizer in zip(saes, cfgs, optimizers):
-        save_checkpoint(wandb_run, sae, cfg, i)
-
-
-def train_transcoder(transcoder, activation_store, model, cfg: EncoderConfig):
-    num_batches = cfg.num_tokens // cfg.batch_size
-    optimizer = torch.optim.Adam(
-        transcoder.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2)
-    )
+    optimizer = torch.optim.Adam(encoder.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2))
     pbar = tqdm.trange(num_batches)
 
     wandb_run = init_wandb(cfg)
 
     for i in pbar:
         x_in, y_target = activation_store.next_batch()
-        output = transcoder(x_in, y_target)
+        output = encoder(x_in, y_target)
 
         log_wandb(output, i, wandb_run)
 
-        if i % cfg.checkpoint_freq == 0:
-            save_checkpoint(wandb_run, transcoder, cfg, i)
+        if i % cfg.perf_log_freq == 0:
+            log_encoder_performance(wandb_run, i, model, activation_store, encoder)
+
+        if cfg.checkpoint_freq != "final" and i % cfg.checkpoint_freq == 0:
+            save_checkpoint(encoder, cfg, i)
 
         loss = output["loss"]
-        l0_norm = output["l0_norm"]
-        l2_loss = output["l2_loss"]
-        l1_loss = output.get("l1_loss", torch.tensor(0.0))
-        l1_norm = output.get("l1_norm", torch.tensor(0.0))
-
         pbar.set_postfix({
             "Loss": f"{loss.item():.4f}",
-            "L0": f"{l0_norm:.4f}",
-            "L2": f"{l2_loss:.4f}",
-            "L1": f"{l1_loss:.4f}" if isinstance(l1_loss, float) else f"{l1_loss.item():.4f}",
-            "L1_norm": f"{l1_norm:.4f}" if isinstance(l1_norm, float) else f"{l1_norm.item():.4f}",
+            "L0": f"{output['l0_norm']:.4f}",
+            "L2": f"{output['l2_loss']:.4f}",
+            "L1": f"{output.get('l1_loss', 0):.4f}",
         })
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(transcoder.parameters(), cfg.max_grad_norm)
-        transcoder.make_decoder_weights_and_grad_unit_norm()
+        torch.nn.utils.clip_grad_norm_(encoder.parameters(), cfg.max_grad_norm)
+        encoder.make_decoder_weights_and_grad_unit_norm()
         optimizer.step()
         optimizer.zero_grad()
 
-    save_checkpoint(wandb_run, transcoder, cfg, i)
+    save_checkpoint(encoder, cfg, "final")
+
+
+def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderConfig]):
+    """Train multiple encoders on the same activation stream.
+
+    All encoders share a single wandb run with indexed metrics (loss_0, loss_1, etc).
+    """
+    num_batches = cfgs[0].num_tokens // cfgs[0].batch_size
+    optimizers = [
+        torch.optim.Adam(enc.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2))
+        for enc, cfg in zip(encoders, cfgs)
+    ]
+    pbar = tqdm.trange(num_batches)
+
+    # Single wandb run for all encoders
+    wandb_run = init_wandb(cfgs[0])
+
+    for i in pbar:
+        x_in, y_target = activation_store.next_batch()
+
+        for encoder, cfg, optimizer in zip(encoders, cfgs, optimizers):
+            output = encoder(x_in, y_target)
+
+            # Log with encoder type suffix (loss_topk, loss_batchtopk, etc)
+            log_wandb(output, i, wandb_run, suffix=cfg.encoder_type)
+
+            if cfg.checkpoint_freq != "final" and i % cfg.checkpoint_freq == 0:
+                save_checkpoint(encoder, cfg, i)
+
+            loss = output["loss"]
+            pbar.set_postfix({"Loss": f"{loss.item():.4f}", "L0": f"{output['l0_norm']:.4f}"})
+
+            loss.backward()
+            del output  # Free memory before next encoder
+
+            torch.nn.utils.clip_grad_norm_(encoder.parameters(), cfg.max_grad_norm)
+            encoder.make_decoder_weights_and_grad_unit_norm()
+            optimizer.step()
+            optimizer.zero_grad()
+
+        del x_in, y_target  # Free batch memory
+
+        # Performance logging
+        if i % cfgs[0].perf_log_freq == 0:
+            torch.cuda.empty_cache()
+            batch_tokens = activation_store.get_batch_tokens()[: cfgs[0].n_eval_seqs]
+            for encoder, cfg in zip(encoders, cfgs):
+                log_encoder_performance(
+                    wandb_run, i, model, activation_store, encoder,
+                    suffix=cfg.encoder_type, batch_tokens=batch_tokens
+                )
+            del batch_tokens
+            torch.cuda.empty_cache()
+
+    # Save final checkpoints
+    for encoder, cfg in zip(encoders, cfgs):
+        save_checkpoint(encoder, cfg, "final")
