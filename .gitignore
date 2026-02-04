@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# PyTorch checkpoints
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+
+# WandB
+.wandb/
+wandb/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
