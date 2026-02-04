@@ -105,8 +105,3 @@ def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderCon
     # Save final checkpoints
     for encoder, cfg in zip(encoders, cfgs):
         save_checkpoint(encoder, cfg, i)
-
-
-# Backwards compatibility aliases
-train_sae = train_encoder
-train_transcoder = train_encoder
