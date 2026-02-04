@@ -31,7 +31,7 @@ def train_encoder(encoder, activation_store, model, cfg: EncoderConfig):
         if i % cfg.perf_log_freq == 0:
             log_encoder_performance(wandb_run, i, model, activation_store, encoder)
 
-        if i % cfg.checkpoint_freq == 0:
+        if cfg.checkpoint_freq != "final" and i % cfg.checkpoint_freq == 0:
             save_checkpoint(encoder, cfg, i)
 
         loss = output["loss"]
@@ -47,7 +47,7 @@ def train_encoder(encoder, activation_store, model, cfg: EncoderConfig):
         optimizer.step()
         optimizer.zero_grad()
 
-    save_checkpoint(encoder, cfg, i)
+    save_checkpoint(encoder, cfg, "final")
 
 
 def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderConfig]):
@@ -74,7 +74,7 @@ def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderCon
             # Log with encoder type suffix (loss_topk, loss_batchtopk, etc)
             log_wandb(output, i, wandb_run, suffix=cfg.encoder_type)
 
-            if i % cfg.checkpoint_freq == 0:
+            if cfg.checkpoint_freq != "final" and i % cfg.checkpoint_freq == 0:
                 save_checkpoint(encoder, cfg, i)
 
             loss = output["loss"]
@@ -104,4 +104,4 @@ def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderCon
 
     # Save final checkpoints
     for encoder, cfg in zip(encoders, cfgs):
-        save_checkpoint(encoder, cfg, i)
+        save_checkpoint(encoder, cfg, "final")

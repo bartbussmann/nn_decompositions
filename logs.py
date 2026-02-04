@@ -119,7 +119,7 @@ def log_encoder_performance(
 # Checkpointing
 # =============================================================================
 
-def save_checkpoint(encoder, cfg: EncoderConfig, step: int):
+def save_checkpoint(encoder, cfg: EncoderConfig, step: int | str):
     """Save encoder checkpoint locally."""
     save_dir = f"checkpoints/{cfg.name}_{step}"
     os.makedirs(save_dir, exist_ok=True)

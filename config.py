@@ -77,7 +77,7 @@ class EncoderConfig:
     # Logging
     wandb_project: str = "encoders"
     perf_log_freq: int = 1000
-    checkpoint_freq: int = 10000
+    checkpoint_freq: int | Literal["final"] = "final"  # "final" = only save after training
     n_eval_seqs: int = 8
 
 
