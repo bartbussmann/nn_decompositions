@@ -2,7 +2,13 @@ import torch
 import tqdm
 
 from config import EncoderConfig
-from logs import init_wandb, log_model_performance, log_wandb, save_checkpoint
+from logs import (
+    init_wandb,
+    log_model_performance,
+    log_transcoder_performance,
+    log_wandb,
+    save_checkpoint,
+)
 
 
 def train_sae(sae, activation_store, model, cfg: EncoderConfig):
@@ -99,6 +105,9 @@ def train_transcoder(transcoder, activation_store, model, cfg: EncoderConfig):
         output = transcoder(x_in, y_target)
 
         log_wandb(output, i, wandb_run)
+
+        if i % cfg.perf_log_freq == 0:
+            log_transcoder_performance(wandb_run, i, model, activation_store, transcoder)
 
         if i % cfg.checkpoint_freq == 0:
             save_checkpoint(wandb_run, transcoder, cfg, i)

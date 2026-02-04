@@ -93,6 +93,59 @@ def log_model_performance(
     wandb_run.log(log_dict, step=step)
 
 
+@torch.no_grad()
+def log_transcoder_performance(
+    wandb_run, step, model, activations_store, transcoder, index=None, batch_tokens=None
+):
+    """Log model performance metrics for transcoders (input != output hook point)."""
+    cfg = transcoder.cfg
+    if batch_tokens is None:
+        batch_tokens = activations_store.get_batch_tokens()[
+            : cfg.batch_size // cfg.seq_len
+        ]
+
+    # Get input activations and run transcoder
+    input_acts, _ = activations_store.get_activations(batch_tokens)
+    input_acts_flat = input_acts.reshape(-1, cfg.input_size)
+
+    # Get transcoder output reshaped for hooks
+    transcoder_out = transcoder(input_acts_flat, input_acts_flat)["output"].reshape(
+        batch_tokens.shape[0], batch_tokens.shape[1], -1
+    )
+
+    original_loss = model(batch_tokens, return_type="loss").item()
+    reconstr_loss = model.run_with_hooks(
+        batch_tokens,
+        fwd_hooks=[(cfg.output_hook_point, partial(reconstr_hook, sae_out=transcoder_out))],
+        return_type="loss",
+    ).item()
+    zero_loss = model.run_with_hooks(
+        batch_tokens,
+        fwd_hooks=[(cfg.output_hook_point, zero_abl_hook)],
+        return_type="loss",
+    ).item()
+    mean_loss = model.run_with_hooks(
+        batch_tokens,
+        fwd_hooks=[(cfg.output_hook_point, mean_abl_hook)],
+        return_type="loss",
+    ).item()
+
+    ce_degradation = original_loss - reconstr_loss
+    zero_degradation = original_loss - zero_loss
+    mean_degradation = original_loss - mean_loss
+
+    log_dict = {
+        "performance/ce_degradation": ce_degradation,
+        "performance/recovery_from_zero": (reconstr_loss - zero_loss) / zero_degradation,
+        "performance/recovery_from_mean": (reconstr_loss - mean_loss) / mean_degradation,
+    }
+
+    if index is not None:
+        log_dict = {f"{k}_{index}": v for k, v in log_dict.items()}
+
+    wandb_run.log(log_dict, step=step)
+
+
 def save_checkpoint(wandb_run, sae, cfg: EncoderConfig, step):
     save_dir = f"checkpoints/{cfg.name}_{step}"
     os.makedirs(save_dir, exist_ok=True)
