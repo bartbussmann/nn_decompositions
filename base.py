@@ -72,6 +72,57 @@ class SharedEncoder(nn.Module):
         self.num_batches_not_active += (acts.sum(0) == 0).float()
         self.num_batches_not_active[acts.sum(0) > 0] = 0
 
+    def _get_auxiliary_loss(
+        self, y_target: torch.Tensor, y_pred: torch.Tensor, acts: torch.Tensor
+    ) -> torch.Tensor:
+        """Auxiliary loss to revive dead features (used by TopK variants)."""
+        dead_features = self.num_batches_not_active >= self.cfg.n_batches_to_dead
+        if dead_features.sum() > 0:
+            residual = y_target.float() - y_pred.float()
+            acts_topk_aux = torch.topk(
+                acts[:, dead_features],
+                min(self.cfg.top_k_aux, dead_features.sum()),
+                dim=-1,
+            )
+            acts_aux = torch.zeros_like(acts[:, dead_features]).scatter(
+                -1, acts_topk_aux.indices, acts_topk_aux.values
+            )
+            y_pred_aux = acts_aux @ self.W_dec[dead_features]
+            return self.cfg.aux_penalty * (y_pred_aux.float() - residual.float()).pow(2).mean()
+        return torch.tensor(0, dtype=y_target.dtype, device=y_target.device)
+
+    def _build_loss_dict(
+        self,
+        y_target: torch.Tensor,
+        y_pred: torch.Tensor,
+        acts: torch.Tensor,
+        y_pred_out: torch.Tensor,
+        sparsity_loss: torch.Tensor,
+        l0_norm: torch.Tensor,
+        extra: dict[str, torch.Tensor] | None = None,
+    ) -> dict:
+        """Build standardized loss dict. Each encoder computes its sparsity terms."""
+        l2_loss = (y_pred.float() - y_target.float()).pow(2).mean()
+        l1_norm = acts.float().abs().sum(-1).mean()
+        num_dead = (self.num_batches_not_active > self.cfg.n_batches_to_dead).sum()
+
+        loss = l2_loss + sparsity_loss
+        if extra:
+            loss = loss + sum(extra.values())
+
+        result = {
+            "output": y_pred_out,
+            "feature_acts": acts,
+            "num_dead_features": num_dead,
+            "loss": loss,
+            "l2_loss": l2_loss,
+            "l0_norm": l0_norm,
+            "l1_norm": l1_norm,
+        }
+        if extra:
+            result.update(extra)
+        return result
+
 
 class Vanilla(SharedEncoder):
     """Vanilla L1-regularized encoder-decoder."""
@@ -80,45 +131,22 @@ class Vanilla(SharedEncoder):
         super().__init__(cfg)
 
     def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
-        # Preprocess both input and target
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
         x_enc = x_in - self.b_dec if self.cfg.pre_enc_bias else x_in
         acts = F.relu(x_enc @ self.W_enc + self.b_enc)
         y_pred = acts @ self.W_dec + self.b_dec
-
-        # Postprocess output (denormalize with target's stats for user)
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
         self.update_inactive_features(acts)
-        return self._get_loss_dict(y_target, y_pred, acts, y_pred_out)
 
-    def _get_loss_dict(
-        self,
-        y_target: torch.Tensor,
-        y_pred: torch.Tensor,
-        acts: torch.Tensor,
-        y_pred_out: torch.Tensor,
-    ) -> dict:
-        l2_loss = (y_pred.float() - y_target.float()).pow(2).mean()
+        l0_norm = (acts > 0).float().sum(-1).mean()
         l1_norm = acts.float().abs().sum(-1).mean()
         l1_loss = self.cfg.l1_coeff * l1_norm
-        l0_norm = (acts > 0).float().sum(-1).mean()
-        loss = l2_loss + l1_loss
-        num_dead_features = (
-            self.num_batches_not_active > self.cfg.n_batches_to_dead
-        ).sum()
-        return {
-            "output": y_pred_out,
-            "feature_acts": acts,
-            "num_dead_features": num_dead_features,
-            "loss": loss,
-            "l1_loss": l1_loss,
-            "l2_loss": l2_loss,
-            "l0_norm": l0_norm,
-            "l1_norm": l1_norm,
-        }
+        return self._build_loss_dict(
+            y_target, y_pred, acts, y_pred_out, l1_loss, l0_norm, {"l1_loss": l1_loss}
+        )
 
 
 class TopK(SharedEncoder):
@@ -131,72 +159,24 @@ class TopK(SharedEncoder):
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        # pre_enc_bias only works when input_size == output_size
         use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
         x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
         acts = F.relu(x_enc @ self.W_enc)
         acts_topk = torch.topk(acts, self.cfg.top_k, dim=-1)
-        acts_sparse = torch.zeros_like(acts).scatter(
-            -1, acts_topk.indices, acts_topk.values
-        )
+        acts_sparse = torch.zeros_like(acts).scatter(-1, acts_topk.indices, acts_topk.values)
         y_pred = acts_sparse @ self.W_dec + self.b_dec
-
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
         self.update_inactive_features(acts_sparse)
-        return self._get_loss_dict(y_target, y_pred, acts, y_pred_out, acts_sparse)
 
-    def _get_loss_dict(
-        self,
-        y_target: torch.Tensor,
-        y_pred: torch.Tensor,
-        acts: torch.Tensor,
-        y_pred_out: torch.Tensor,
-        acts_sparse: torch.Tensor,
-    ) -> dict:
-        l2_loss = (y_pred.float() - y_target.float()).pow(2).mean()
+        l0_norm = (acts_sparse > 0).float().sum(-1).mean()
         l1_norm = acts_sparse.float().abs().sum(-1).mean()
         l1_loss = self.cfg.l1_coeff * l1_norm
-        l0_norm = (acts_sparse > 0).float().sum(-1).mean()
         aux_loss = self._get_auxiliary_loss(y_target, y_pred, acts)
-        loss = l2_loss + l1_loss + aux_loss
-        num_dead_features = (
-            self.num_batches_not_active > self.cfg.n_batches_to_dead
-        ).sum()
-        return {
-            "output": y_pred_out,
-            "feature_acts": acts_sparse,
-            "num_dead_features": num_dead_features,
-            "loss": loss,
-            "l1_loss": l1_loss,
-            "l2_loss": l2_loss,
-            "l0_norm": l0_norm,
-            "l1_norm": l1_norm,
-            "aux_loss": aux_loss,
-        }
-
-    def _get_auxiliary_loss(
-        self, y_target: torch.Tensor, y_pred: torch.Tensor, acts: torch.Tensor
-    ) -> torch.Tensor:
-        dead_features = self.num_batches_not_active >= self.cfg.n_batches_to_dead
-        if dead_features.sum() > 0:
-            residual = y_target.float() - y_pred.float()
-            acts_topk_aux = torch.topk(
-                acts[:, dead_features],
-                min(self.cfg.top_k_aux, dead_features.sum()),
-                dim=-1,
-            )
-            acts_aux = torch.zeros_like(acts[:, dead_features]).scatter(
-                -1, acts_topk_aux.indices, acts_topk_aux.values
-            )
-            y_pred_aux = acts_aux @ self.W_dec[dead_features]
-            l2_loss_aux = (
-                self.cfg.aux_penalty
-                * (y_pred_aux.float() - residual.float()).pow(2).mean()
-            )
-            return l2_loss_aux
-        else:
-            return torch.tensor(0, dtype=y_target.dtype, device=y_target.device)
+        return self._build_loss_dict(
+            y_target, y_pred, acts_sparse, y_pred_out, l1_loss, l0_norm,
+            {"l1_loss": l1_loss, "aux_loss": aux_loss},
+        )
 
 
 class BatchTopK(SharedEncoder):
@@ -209,76 +189,28 @@ class BatchTopK(SharedEncoder):
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        # pre_enc_bias only works when input_size == output_size
         use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
         x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
         acts = F.relu(x_enc @ self.W_enc)
-        acts_topk = torch.topk(
-            acts.flatten(), self.cfg.top_k * x_in.shape[0], dim=-1
-        )
+        acts_topk = torch.topk(acts.flatten(), self.cfg.top_k * x_in.shape[0], dim=-1)
         acts_sparse = (
             torch.zeros_like(acts.flatten())
             .scatter(-1, acts_topk.indices, acts_topk.values)
             .reshape(acts.shape)
         )
         y_pred = acts_sparse @ self.W_dec + self.b_dec
-
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
         self.update_inactive_features(acts_sparse)
-        return self._get_loss_dict(y_target, y_pred, acts, y_pred_out, acts_sparse)
 
-    def _get_loss_dict(
-        self,
-        y_target: torch.Tensor,
-        y_pred: torch.Tensor,
-        acts: torch.Tensor,
-        y_pred_out: torch.Tensor,
-        acts_sparse: torch.Tensor,
-    ) -> dict:
-        l2_loss = (y_pred.float() - y_target.float()).pow(2).mean()
+        l0_norm = (acts_sparse > 0).float().sum(-1).mean()
         l1_norm = acts_sparse.float().abs().sum(-1).mean()
         l1_loss = self.cfg.l1_coeff * l1_norm
-        l0_norm = (acts_sparse > 0).float().sum(-1).mean()
         aux_loss = self._get_auxiliary_loss(y_target, y_pred, acts)
-        loss = l2_loss + l1_loss + aux_loss
-        num_dead_features = (
-            self.num_batches_not_active > self.cfg.n_batches_to_dead
-        ).sum()
-        return {
-            "output": y_pred_out,
-            "feature_acts": acts_sparse,
-            "num_dead_features": num_dead_features,
-            "loss": loss,
-            "l1_loss": l1_loss,
-            "l2_loss": l2_loss,
-            "l0_norm": l0_norm,
-            "l1_norm": l1_norm,
-            "aux_loss": aux_loss,
-        }
-
-    def _get_auxiliary_loss(
-        self, y_target: torch.Tensor, y_pred: torch.Tensor, acts: torch.Tensor
-    ) -> torch.Tensor:
-        dead_features = self.num_batches_not_active >= self.cfg.n_batches_to_dead
-        if dead_features.sum() > 0:
-            residual = y_target.float() - y_pred.float()
-            acts_topk_aux = torch.topk(
-                acts[:, dead_features],
-                min(self.cfg.top_k_aux, dead_features.sum()),
-                dim=-1,
-            )
-            acts_aux = torch.zeros_like(acts[:, dead_features]).scatter(
-                -1, acts_topk_aux.indices, acts_topk_aux.values
-            )
-            y_pred_aux = acts_aux @ self.W_dec[dead_features]
-            l2_loss_aux = (
-                self.cfg.aux_penalty
-                * (y_pred_aux.float() - residual.float()).pow(2).mean()
-            )
-            return l2_loss_aux
-        else:
-            return torch.tensor(0, dtype=y_target.dtype, device=y_target.device)
+        return self._build_loss_dict(
+            y_target, y_pred, acts_sparse, y_pred_out, l1_loss, l0_norm,
+            {"l1_loss": l1_loss, "aux_loss": aux_loss},
+        )
 
 
 # JumpReLU activation components
@@ -365,39 +297,17 @@ class JumpReLUEncoder(SharedEncoder):
         pre_acts = F.relu(x_enc @ self.W_enc + self.b_enc)
         acts = self.jumprelu(pre_acts)
         y_pred = acts @ self.W_dec + self.b_dec
-
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
         self.update_inactive_features(acts)
-        return self._get_loss_dict(y_target, y_pred, acts, y_pred_out)
 
-    def _get_loss_dict(
-        self,
-        y_target: torch.Tensor,
-        y_pred: torch.Tensor,
-        acts: torch.Tensor,
-        y_pred_out: torch.Tensor,
-    ) -> dict:
-        l2_loss = (y_pred.float() - y_target.float()).pow(2).mean()
-
-        l0 = (
+        l0_norm = (
             StepFunction.apply(acts, self.jumprelu.log_threshold, self.cfg.bandwidth)
             .sum(dim=-1)
             .mean()
         )
-        sparsity_loss = self.cfg.l1_coeff * l0
-
-        loss = l2_loss + sparsity_loss
-        num_dead_features = (
-            self.num_batches_not_active > self.cfg.n_batches_to_dead
-        ).sum()
-
-        return {
-            "output": y_pred_out,
-            "feature_acts": acts,
-            "num_dead_features": num_dead_features,
-            "loss": loss,
-            "sparsity_loss": sparsity_loss,
-            "l2_loss": l2_loss,
-            "l0_norm": l0,
-        }
+        sparsity_loss = self.cfg.l1_coeff * l0_norm
+        return self._build_loss_dict(
+            y_target, y_pred, acts, y_pred_out, sparsity_loss, l0_norm,
+            {"sparsity_loss": sparsity_loss},
+        )
