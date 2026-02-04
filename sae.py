@@ -231,10 +231,6 @@ class VanillaSAE(BaseAutoencoder):
         return output
 
 
-import torch
-import torch.nn as nn
-
-
 class RectangleFunction(autograd.Function):
     @staticmethod
     def forward(ctx, x):
@@ -319,10 +315,9 @@ class JumpReLUSAE(BaseAutoencoder):
         l2_loss = (x_reconstruct.float() - x.float()).pow(2).mean()
 
         l0 = StepFunction.apply(acts, self.jumprelu.log_threshold, self.cfg["bandwidth"]).sum(dim=-1).mean()
-        l0_loss = self.cfg["l1_coeff"] * l0
-        l1_loss = l0_loss
+        sparsity_loss = self.cfg["l1_coeff"] * l0
 
-        loss = l2_loss + l1_loss
+        loss = l2_loss + sparsity_loss
         num_dead_features = (
             self.num_batches_not_active > self.cfg["n_batches_to_dead"]
         ).sum()
@@ -333,9 +328,8 @@ class JumpReLUSAE(BaseAutoencoder):
             "feature_acts": acts,
             "num_dead_features": num_dead_features,
             "loss": loss,
-            "l1_loss": l1_loss,
+            "sparsity_loss": sparsity_loss,
             "l2_loss": l2_loss,
             "l0_norm": l0,
-            "l1_norm": l0,
         }
         return output

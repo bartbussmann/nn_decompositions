@@ -40,7 +40,10 @@ class ActivationsStore:
                 tokens = self.model.to_tokens(batch["text"], truncate=True, move_to_device=True, prepend_bos=True).squeeze(0)
             else:
                 tokens = batch[self.tokens_column]
-            all_tokens.extend(tokens)
+            if isinstance(tokens, torch.Tensor):
+                all_tokens.extend(tokens.tolist())
+            else:
+                all_tokens.extend(tokens)
         token_tensor = torch.tensor(all_tokens, dtype=torch.long, device=self.device)[:self.model_batch_size * self.context_size]
         return token_tensor.view(self.model_batch_size, self.context_size)
 
