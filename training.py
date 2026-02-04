@@ -1,7 +1,7 @@
-from queue import Empty
+import queue
+import threading
 
 import torch
-import torch.multiprocessing as mp
 import tqdm
 import wandb
 
@@ -9,8 +9,8 @@ from config import EncoderConfig
 from logs import get_encoder_metrics, get_performance_metrics, save_checkpoint
 
 
-def _wandb_process(cfg_dict: dict, log_queue: mp.Queue):
-    """Separate process for wandb logging."""
+def _wandb_thread(cfg_dict: dict, log_queue: queue.Queue):
+    """Separate thread for wandb logging (avoids CUDA/multiprocessing issues)."""
     wandb.init(
         project=cfg_dict["wandb_project"],
         name=cfg_dict["name"],
@@ -22,7 +22,7 @@ def _wandb_process(cfg_dict: dict, log_queue: mp.Queue):
             if log == "DONE":
                 break
             wandb.log(log)
-        except Empty:
+        except queue.Empty:
             continue
     wandb.finish()
 
@@ -80,11 +80,11 @@ def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderCon
     ]
     pbar = tqdm.trange(num_batches)
 
-    # Spawn separate wandb process for each encoder
+    # Spawn separate wandb thread for each encoder (threading avoids CUDA/fork issues)
     log_queues = []
-    wandb_processes = []
+    wandb_threads = []
     for cfg in cfgs:
-        log_queue = mp.Queue()
+        log_queue = queue.Queue()
         log_queues.append(log_queue)
 
         # Convert config to dict, handling non-serializable types
@@ -94,9 +94,9 @@ def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderCon
         }
         cfg_dict["name"] = cfg.name  # Ensure computed property is included
 
-        process = mp.Process(target=_wandb_process, args=(cfg_dict, log_queue))
-        process.start()
-        wandb_processes.append(process)
+        thread = threading.Thread(target=_wandb_thread, args=(cfg_dict, log_queue))
+        thread.start()
+        wandb_threads.append(thread)
 
     batch_tokens = activation_store.get_batch_tokens()
 
@@ -136,14 +136,14 @@ def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderCon
             optimizer.step()
             optimizer.zero_grad()
 
-    # Save final checkpoints and clean up wandb processes
+    # Save final checkpoints and clean up wandb threads
     for encoder, cfg in zip(encoders, cfgs):
         save_checkpoint(encoder, cfg, i)
 
     for log_queue in log_queues:
         log_queue.put("DONE")
-    for process in wandb_processes:
-        process.join()
+    for thread in wandb_threads:
+        thread.join()
 
 
 # Backwards compatibility aliases
