@@ -16,7 +16,6 @@ def get_model_config(model_name: str):
 def get_site_dim(model_name: str, site: str) -> int:
     """Get the dimension of a hook site for a given model."""
     cfg = get_model_config(model_name)
-    # Most sites use d_model
     if site in ("resid_pre", "resid_post", "resid_mid", "mlp_out", "attn_out"):
         return cfg.d_model
     elif site == "mlp_in":
@@ -29,10 +28,16 @@ def get_site_dim(model_name: str, site: str) -> int:
 class EncoderConfig:
     """Base config for encoder architectures (SAE and Transcoder)."""
 
-    # Architecture - set automatically from model if not provided
+    # Architecture - set automatically from model in subclasses
     input_size: int = field(init=False)
     output_size: int = field(init=False)
     dict_size: int = 12288
+
+    # Encoder type
+    encoder_type: Literal["vanilla", "topk", "batchtopk", "jumprelu"] = "topk"
+
+    # Model
+    model_name: str = "gpt2-small"
 
     # Training
     seed: int = 49
@@ -47,6 +52,12 @@ class EncoderConfig:
     # Device
     device: str = "cuda:0"
     dtype: torch.dtype = field(default=torch.float32)
+
+    # Data
+    seq_len: int = 128
+    model_batch_size: int = 512
+    num_batches_in_buffer: int = 10
+    dataset_path: str = "Skylion007/openwebtext"
 
     # Dead feature tracking
     n_batches_to_dead: int = 50
@@ -63,45 +74,31 @@ class EncoderConfig:
     # JumpReLU specific
     bandwidth: float = 0.001
 
-    # Evaluation
+    # Logging
+    wandb_project: str = "encoders"
+    perf_log_freq: int = 1000
+    checkpoint_freq: int = 10000
     n_eval_seqs: int = 8
 
 
 @dataclass
 class SAEConfig(EncoderConfig):
-    """Config for Sparse Autoencoders.
+    """Config for Sparse Autoencoders."""
 
-    Dimensions are automatically inferred from model_name and site.
-    """
-
-    # Encoder type
-    encoder_type: Literal["vanilla", "topk", "batchtopk", "jumprelu"] = "topk"
-
-    # Hook point specification
-    model_name: str = "gpt2-small"
+    # Hook point (SAE-specific: single site/layer)
     site: str = "resid_pre"
     layer: int = 8
 
-    # Data
-    seq_len: int = 128
-    model_batch_size: int = 512
-    num_batches_in_buffer: int = 5
-    dataset_path: str = "Skylion007/openwebtext"
-
-    # Logging
+    # Override default
     wandb_project: str = "sparse_autoencoders"
-    perf_log_freq: int = 1000
-    checkpoint_freq: int = 10000
 
     def __post_init__(self):
-        # Automatically get activation size from model
         act_size = get_site_dim(self.model_name, self.site)
         self.input_size = act_size
         self.output_size = act_size
 
     @property
     def act_size(self) -> int:
-        """Activation size (same as input_size for SAE)."""
         return self.input_size
 
     @property
@@ -122,34 +119,18 @@ class SAEConfig(EncoderConfig):
 
 @dataclass
 class TranscoderConfig(EncoderConfig):
-    """Config for Transcoders (input != output).
+    """Config for Transcoders (input site != output site)."""
 
-    Dimensions are automatically inferred from model_name and sites.
-    """
-
-    # Encoder type
-    encoder_type: Literal["vanilla", "topk", "batchtopk", "jumprelu"] = "topk"
-
-    # Hook points
-    model_name: str = "gpt2-small"
+    # Hook points (Transcoder-specific: separate input/output sites)
     input_site: str = "resid_mid"
     output_site: str = "mlp_out"
     input_layer: int = 8
     output_layer: int = 8
 
-    # Data
-    seq_len: int = 128
-    model_batch_size: int = 512
-    num_batches_in_buffer: int = 10
-    dataset_path: str = "Skylion007/openwebtext"
-
-    # Logging
+    # Override default
     wandb_project: str = "transcoders"
-    perf_log_freq: int = 1000
-    checkpoint_freq: int = 10000
 
     def __post_init__(self):
-        # Automatically get dimensions from model
         self.input_size = get_site_dim(self.model_name, self.input_site)
         self.output_size = get_site_dim(self.model_name, self.output_site)
 
