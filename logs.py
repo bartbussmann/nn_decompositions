@@ -35,7 +35,7 @@ def log_model_performance(wandb_run, step, model, activations_store, sae, index=
         batch_tokens = activations_store.get_batch_tokens()[:sae.cfg["batch_size"] // sae.cfg["seq_len"]]
     batch = activations_store.get_activations(batch_tokens).reshape(-1, sae.cfg["act_size"])
 
-    sae_output = sae(batch)["sae_out"].reshape(batch_tokens.shape[0], batch_tokens.shape[1], -1)
+    sae_output = sae(batch)["output"].reshape(batch_tokens.shape[0], batch_tokens.shape[1], -1)
 
     original_loss = model(batch_tokens, return_type="loss").item()
     reconstr_loss = model.run_with_hooks(
