@@ -1,7 +1,5 @@
 import json
 import os
-import queue
-import threading
 from dataclasses import asdict
 from functools import partial
 
@@ -16,7 +14,7 @@ from config import EncoderConfig
 # =============================================================================
 
 def init_wandb(cfg: EncoderConfig):
-    """Initialize wandb for single encoder training."""
+    """Initialize wandb run."""
     cfg_dict = asdict(cfg)
     cfg_dict["dtype"] = str(cfg.dtype)
     return wandb.init(
@@ -40,65 +38,6 @@ def log_wandb(output: dict, step: int, wandb_run, index: int | None = None):
     if index is not None:
         log_dict = {f"{k}_{index}": v for k, v in log_dict.items()}
     wandb_run.log(log_dict, step=step)
-
-
-class WandbLogger:
-    """Threaded wandb logger for non-blocking logging.
-
-    Uses a separate thread to avoid blocking training while logging.
-    Each logger instance manages its own wandb run.
-    """
-
-    def __init__(self, cfg: EncoderConfig):
-        self.cfg = cfg
-        self.queue: queue.Queue = queue.Queue()
-
-        # Initialize wandb run in main thread to avoid race conditions
-        cfg_dict = {
-            k: str(v) if isinstance(v, torch.dtype) else v
-            for k, v in asdict(cfg).items()
-        }
-        cfg_dict["name"] = cfg.name
-        self.run = wandb.init(
-            project=cfg.wandb_project,
-            name=cfg.name,
-            config=cfg_dict,
-            settings=wandb.Settings(start_method="thread"),
-        )
-
-        self.thread = threading.Thread(target=self._run, daemon=True)
-        self.thread.start()
-
-    def _run(self):
-        """Background thread that processes log queue."""
-        while True:
-            try:
-                item = self.queue.get(timeout=1)
-                if item == "DONE":
-                    break
-                self.run.log(item)  # Use run object, not global wandb.log
-            except queue.Empty:
-                continue
-        self.run.finish()
-
-    def log(self, metrics: dict, step: int):
-        """Queue metrics for logging."""
-        metrics["step"] = step
-        self.queue.put(metrics)
-
-    def log_encoder(self, output: dict, step: int):
-        """Log encoder output metrics."""
-        self.log(get_encoder_metrics(output), step)
-
-    def log_performance(self, model, activations_store, encoder, step: int, batch_tokens=None):
-        """Log model performance metrics."""
-        metrics = get_performance_metrics(model, activations_store, encoder, batch_tokens)
-        self.log(metrics, step)
-
-    def finish(self):
-        """Signal thread to finish and wait for it."""
-        self.queue.put("DONE")
-        self.thread.join()
 
 
 # =============================================================================

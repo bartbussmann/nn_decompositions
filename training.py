@@ -3,7 +3,6 @@ import tqdm
 
 from config import EncoderConfig
 from logs import (
-    WandbLogger,
     init_wandb,
     log_encoder_performance,
     log_wandb,
@@ -52,7 +51,10 @@ def train_encoder(encoder, activation_store, model, cfg: EncoderConfig):
 
 
 def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderConfig]):
-    """Train multiple encoders on the same activation stream with separate wandb runs."""
+    """Train multiple encoders on the same activation stream.
+
+    All encoders share a single wandb run with indexed metrics (loss_0, loss_1, etc).
+    """
     num_batches = cfgs[0].num_tokens // cfgs[0].batch_size
     optimizers = [
         torch.optim.Adam(enc.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2))
@@ -60,26 +62,23 @@ def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderCon
     ]
     pbar = tqdm.trange(num_batches)
 
-    # Create threaded logger for each encoder
-    loggers = [WandbLogger(cfg) for cfg in cfgs]
+    # Single wandb run for all encoders
+    wandb_run = init_wandb(cfgs[0])
 
     for i in pbar:
         x_in, y_target = activation_store.next_batch()
 
-        for encoder, cfg, optimizer, logger in zip(encoders, cfgs, optimizers, loggers):
+        for idx, (encoder, cfg, optimizer) in enumerate(zip(encoders, cfgs, optimizers)):
             output = encoder(x_in, y_target)
 
-            logger.log_encoder(output, i)
+            # Log with index suffix (loss_0, loss_1, etc)
+            log_wandb(output, i, wandb_run, index=idx)
 
             if i % cfg.checkpoint_freq == 0:
                 save_checkpoint(encoder, cfg, i)
 
             loss = output["loss"]
-            l0 = output["l0_norm"]
-            l2 = output["l2_loss"]
-            l1 = output.get("l1_loss", 0)
-
-            pbar.set_postfix({"Loss": f"{loss.item():.4f}", "L0": f"{l0:.4f}"})
+            pbar.set_postfix({"Loss": f"{loss.item():.4f}", "L0": f"{output['l0_norm']:.4f}"})
 
             loss.backward()
             del output  # Free memory before next encoder
@@ -91,19 +90,21 @@ def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderCon
 
         del x_in, y_target  # Free batch memory
 
-        # Performance logging outside inner loop (once per step, not per encoder)
+        # Performance logging
         if i % cfgs[0].perf_log_freq == 0:
             torch.cuda.empty_cache()
             batch_tokens = activation_store.get_batch_tokens()[: cfgs[0].n_eval_seqs]
-            for encoder, logger in zip(encoders, loggers):
-                logger.log_performance(model, activation_store, encoder, i, batch_tokens)
+            for idx, encoder in enumerate(encoders):
+                log_encoder_performance(
+                    wandb_run, i, model, activation_store, encoder,
+                    index=idx, batch_tokens=batch_tokens
+                )
             del batch_tokens
             torch.cuda.empty_cache()
 
-    # Save final checkpoints and finish loggers
-    for encoder, cfg, logger in zip(encoders, cfgs, loggers):
+    # Save final checkpoints
+    for encoder, cfg in zip(encoders, cfgs):
         save_checkpoint(encoder, cfg, i)
-        logger.finish()
 
 
 # Backwards compatibility aliases
