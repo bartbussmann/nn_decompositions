@@ -1,18 +1,38 @@
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Literal
 
 import torch
 import transformer_lens.utils as utils
+from transformer_lens import HookedTransformer
+
+
+@lru_cache(maxsize=16)
+def get_model_config(model_name: str):
+    """Get model config without loading weights."""
+    return HookedTransformer.from_pretrained(model_name, device="meta").cfg
+
+
+def get_site_dim(model_name: str, site: str) -> int:
+    """Get the dimension of a hook site for a given model."""
+    cfg = get_model_config(model_name)
+    # Most sites use d_model
+    if site in ("resid_pre", "resid_post", "resid_mid", "mlp_out", "attn_out"):
+        return cfg.d_model
+    elif site == "mlp_in":
+        return cfg.d_mlp
+    else:
+        raise ValueError(f"Unknown site: {site}. Add it to get_site_dim().")
 
 
 @dataclass
 class EncoderConfig:
     """Base config for encoder architectures (SAE and Transcoder)."""
 
-    # Architecture (required)
-    input_size: int
-    output_size: int
-    dict_size: int
+    # Architecture - set automatically from model if not provided
+    input_size: int = field(init=False)
+    output_size: int = field(init=False)
+    dict_size: int = 12288
 
     # Training
     seed: int = 49
@@ -44,26 +64,18 @@ class EncoderConfig:
     bandwidth: float = 0.001
 
     # Evaluation
-    n_eval_seqs: int = 8  # Number of sequences for performance evaluation
+    n_eval_seqs: int = 8
 
 
 @dataclass
 class SAEConfig(EncoderConfig):
     """Config for Sparse Autoencoders.
 
-    SAE reconstructs input, so input_size = output_size = act_size.
+    Dimensions are automatically inferred from model_name and site.
     """
-
-    # SAE uses same size for input/output (set in __post_init__)
-    input_size: int = field(init=False)
-    output_size: int = field(init=False)
 
     # Encoder type
     encoder_type: Literal["vanilla", "topk", "batchtopk", "jumprelu"] = "topk"
-
-    # Activation size (the main size parameter for SAE)
-    act_size: int = 768
-    dict_size: int = 12288
 
     # Hook point specification
     model_name: str = "gpt2-small"
@@ -82,9 +94,15 @@ class SAEConfig(EncoderConfig):
     checkpoint_freq: int = 10000
 
     def __post_init__(self):
-        # SAE: input_size = output_size = act_size
-        self.input_size = self.act_size
-        self.output_size = self.act_size
+        # Automatically get activation size from model
+        act_size = get_site_dim(self.model_name, self.site)
+        self.input_size = act_size
+        self.output_size = act_size
+
+    @property
+    def act_size(self) -> int:
+        """Activation size (same as input_size for SAE)."""
+        return self.input_size
 
     @property
     def hook_point(self) -> str:
@@ -92,13 +110,11 @@ class SAEConfig(EncoderConfig):
 
     @property
     def eval_hook_point(self) -> str:
-        """Hook point used for performance evaluation (same as hook_point for SAE)."""
         return self.hook_point
 
     @property
     def name(self) -> str:
         base = f"{self.model_name}_{self.hook_point}_{self.dict_size}_{self.encoder_type}"
-        # Only include k for topk variants
         if self.encoder_type in ("topk", "batchtopk"):
             base += f"_k{self.top_k}"
         return f"{base}_{self.lr}"
@@ -106,20 +122,18 @@ class SAEConfig(EncoderConfig):
 
 @dataclass
 class TranscoderConfig(EncoderConfig):
-    """Config for Transcoders (input != output)."""
+    """Config for Transcoders (input != output).
 
-    # Architecture (required, no defaults)
-    input_size: int
-    output_size: int
-    dict_size: int
+    Dimensions are automatically inferred from model_name and sites.
+    """
 
     # Encoder type
     encoder_type: Literal["vanilla", "topk", "batchtopk", "jumprelu"] = "topk"
 
     # Hook points
     model_name: str = "gpt2-small"
-    input_site: str = "resid_pre"
-    output_site: str = "resid_post"
+    input_site: str = "resid_mid"
+    output_site: str = "mlp_out"
     input_layer: int = 8
     output_layer: int = 8
 
@@ -134,6 +148,11 @@ class TranscoderConfig(EncoderConfig):
     perf_log_freq: int = 1000
     checkpoint_freq: int = 10000
 
+    def __post_init__(self):
+        # Automatically get dimensions from model
+        self.input_size = get_site_dim(self.model_name, self.input_site)
+        self.output_size = get_site_dim(self.model_name, self.output_site)
+
     @property
     def input_hook_point(self) -> str:
         return utils.get_act_name(self.input_site, self.input_layer)
@@ -144,7 +163,6 @@ class TranscoderConfig(EncoderConfig):
 
     @property
     def eval_hook_point(self) -> str:
-        """Hook point used for performance evaluation (output hook for transcoder)."""
         return self.output_hook_point
 
     @property

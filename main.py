@@ -7,11 +7,9 @@ from config import TranscoderConfig
 from training import train_encoder_group
 from transformer_lens import HookedTransformer
 
-# Shared config values
+# Shared config values (input_size/output_size auto-detected from model)
 shared = dict(
-    input_size=768,
-    output_size=768,
-    dict_size=768 * 8,  # 6144 features
+    dict_size=768,
     model_name="gpt2-small",
     input_site="resid_mid",  # Input to MLP
     output_site="mlp_out",   # Output of MLP
@@ -19,7 +17,7 @@ shared = dict(
     output_layer=8,
     top_k=32,
     l1_coeff=0.0,
-    batch_size=4096,
+    batch_size=64,
     num_tokens=int(1e8),  # 100M tokens
     lr=3e-4,
     wandb_project="gpt2_transcoder",
