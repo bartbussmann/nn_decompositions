@@ -62,34 +62,42 @@ def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderCon
 
     # Create threaded logger for each encoder
     loggers = [WandbLogger(cfg) for cfg in cfgs]
-    batch_tokens = activation_store.get_batch_tokens()
 
     for i in pbar:
         x_in, y_target = activation_store.next_batch()
 
         for encoder, cfg, optimizer, logger in zip(encoders, cfgs, optimizers, loggers):
             output = encoder(x_in, y_target)
-            loss = output["loss"]
 
             logger.log_encoder(output, i)
-
-            if i % cfg.perf_log_freq == 0:
-                logger.log_performance(model, activation_store, encoder, i, batch_tokens)
 
             if i % cfg.checkpoint_freq == 0:
                 save_checkpoint(encoder, cfg, i)
 
-            pbar.set_postfix({
-                "Loss": f"{loss.item():.4f}",
-                "L0": f"{output['l0_norm']:.4f}",
-                "L2": f"{output['l2_loss']:.4f}",
-                "L1": f"{output.get('l1_loss', 0):.4f}",
-            })
+            loss = output["loss"]
+            l0 = output["l0_norm"]
+            l2 = output["l2_loss"]
+            l1 = output.get("l1_loss", 0)
+
+            pbar.set_postfix({"Loss": f"{loss.item():.4f}", "L0": f"{l0:.4f}"})
+
             loss.backward()
+            del output  # Free memory before next encoder
+
             torch.nn.utils.clip_grad_norm_(encoder.parameters(), cfg.max_grad_norm)
             encoder.make_decoder_weights_and_grad_unit_norm()
             optimizer.step()
             optimizer.zero_grad()
+
+        del x_in, y_target  # Free batch memory
+
+        # Performance logging outside inner loop (once per step, not per encoder)
+        if i % cfgs[0].perf_log_freq == 0:
+            batch_tokens = activation_store.get_batch_tokens()
+            for encoder, logger in zip(encoders, loggers):
+                logger.log_performance(model, activation_store, encoder, i, batch_tokens)
+            del batch_tokens
+            torch.cuda.empty_cache()
 
     # Save final checkpoints and finish loggers
     for encoder, cfg, logger in zip(encoders, cfgs, loggers):
