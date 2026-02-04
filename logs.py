@@ -121,9 +121,7 @@ def get_performance_metrics(
     """Compute model performance metrics and return as dict."""
     cfg = encoder.cfg
     if batch_tokens is None:
-        batch_tokens = activations_store.get_batch_tokens()[
-            : cfg.batch_size // cfg.seq_len
-        ]
+        batch_tokens = activations_store.get_batch_tokens()[: cfg.n_eval_seqs]
 
     input_acts, _ = activations_store.get_activations(batch_tokens)
     input_acts_flat = input_acts.reshape(-1, cfg.input_size)

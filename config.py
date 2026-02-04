@@ -22,14 +22,14 @@ class EncoderConfig:
     l1_coeff: float = 0.0
     beta1: float = 0.9
     beta2: float = 0.99
-    max_grad_norm: float = 100000.0
+    max_grad_norm: float = 1.0
 
     # Device
     device: str = "cuda:0"
     dtype: torch.dtype = field(default=torch.float32)
 
     # Dead feature tracking
-    n_batches_to_dead: int = 5
+    n_batches_to_dead: int = 50
 
     # Optional features
     input_unit_norm: bool = False
@@ -42,6 +42,9 @@ class EncoderConfig:
 
     # JumpReLU specific
     bandwidth: float = 0.001
+
+    # Evaluation
+    n_eval_seqs: int = 8  # Number of sequences for performance evaluation
 
 
 @dataclass
@@ -70,7 +73,7 @@ class SAEConfig(EncoderConfig):
     # Data
     seq_len: int = 128
     model_batch_size: int = 512
-    num_batches_in_buffer: int = 10
+    num_batches_in_buffer: int = 5
     dataset_path: str = "Skylion007/openwebtext"
 
     # Logging
