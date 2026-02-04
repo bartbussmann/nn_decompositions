@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Literal
 
 import torch
 import transformer_lens.utils as utils
@@ -54,6 +55,9 @@ class SAEConfig(EncoderConfig):
     input_size: int = field(init=False)
     output_size: int = field(init=False)
 
+    # Encoder type
+    encoder_type: Literal["vanilla", "topk", "batchtopk", "jumprelu"] = "topk"
+
     # Activation size (the main size parameter for SAE)
     act_size: int = 768
     dict_size: int = 12288
@@ -85,7 +89,11 @@ class SAEConfig(EncoderConfig):
 
     @property
     def name(self) -> str:
-        return f"{self.model_name}_{self.hook_point}_{self.dict_size}_k{self.top_k}_{self.lr}"
+        base = f"{self.model_name}_{self.hook_point}_{self.dict_size}_{self.encoder_type}"
+        # Only include k for topk variants
+        if self.encoder_type in ("topk", "batchtopk"):
+            base += f"_k{self.top_k}"
+        return f"{base}_{self.lr}"
 
 
 @dataclass
@@ -96,6 +104,9 @@ class TranscoderConfig(EncoderConfig):
     input_size: int
     output_size: int
     dict_size: int
+
+    # Encoder type
+    encoder_type: Literal["vanilla", "topk", "batchtopk", "jumprelu"] = "topk"
 
     # Hook points
     model_name: str = "gpt2-small"
@@ -125,4 +136,7 @@ class TranscoderConfig(EncoderConfig):
 
     @property
     def name(self) -> str:
-        return f"transcoder_{self.model_name}_{self.input_hook_point}_to_{self.output_hook_point}_{self.dict_size}"
+        base = f"transcoder_{self.model_name}_{self.input_hook_point}_to_{self.output_hook_point}_{self.dict_size}_{self.encoder_type}"
+        if self.encoder_type in ("topk", "batchtopk"):
+            base += f"_k{self.top_k}"
+        return base

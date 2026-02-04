@@ -5,9 +5,10 @@ from sae import BatchTopKSAE, JumpReLUSAE, TopKSAE, VanillaSAE
 from training import train_sae
 from transformer_lens import HookedTransformer
 
-# Example: Train different SAE types with different l1_coeff values
+# Example: Train JumpReLU with different l1_coeff values
 for l1_coeff in [0.004, 0.0018, 0.0008]:
     cfg = SAEConfig(
+        encoder_type="jumprelu",
         act_size=768,
         dict_size=768 * 16,
         model_name="gpt2-small",
@@ -15,7 +16,6 @@ for l1_coeff in [0.004, 0.0018, 0.0008]:
         site="resid_pre",
         dataset_path="Skylion007/openwebtext",
         input_unit_norm=True,
-        top_k=32,
         l1_coeff=l1_coeff,
         wandb_project="batchtopk_comparison",
         device="cuda",
@@ -28,9 +28,10 @@ for l1_coeff in [0.004, 0.0018, 0.0008]:
     train_sae(sae, activations_store, model, cfg)
 
 # Example: Compare TopK vs BatchTopK with different k values
-for sae_type in ["topk", "batchtopk"]:
+for encoder_type in ["topk", "batchtopk"]:
     for top_k in [16, 32, 64]:
         cfg = SAEConfig(
+            encoder_type=encoder_type,
             act_size=768,
             dict_size=768 * 16,
             model_name="gpt2-small",
@@ -44,7 +45,7 @@ for sae_type in ["topk", "batchtopk"]:
             device="cuda",
         )
 
-        if sae_type == "topk":
+        if encoder_type == "topk":
             sae = TopKSAE(cfg)
         else:
             sae = BatchTopKSAE(cfg)
@@ -54,9 +55,10 @@ for sae_type in ["topk", "batchtopk"]:
         train_sae(sae, activations_store, model, cfg)
 
 # Example: Compare different dictionary sizes
-for sae_type in ["topk", "batchtopk"]:
+for encoder_type in ["topk", "batchtopk"]:
     for dict_size in [768 * 4, 768 * 8, 768 * 32]:
         cfg = SAEConfig(
+            encoder_type=encoder_type,
             act_size=768,
             dict_size=dict_size,
             model_name="gpt2-small",
@@ -70,7 +72,7 @@ for sae_type in ["topk", "batchtopk"]:
             device="cuda",
         )
 
-        if sae_type == "topk":
+        if encoder_type == "topk":
             sae = TopKSAE(cfg)
         else:
             sae = BatchTopKSAE(cfg)
