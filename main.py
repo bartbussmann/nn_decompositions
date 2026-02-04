@@ -1,17 +1,14 @@
 # %%
-"""Train a TopK transcoder on MLP layer 8 of GPT-2 small."""
+"""Train TopK and BatchTopK transcoders in parallel on MLP layer 8 of GPT-2 small."""
 
 from activation_store import TranscoderActivationsStore
-from base import TopK
+from base import BatchTopK, TopK
 from config import TranscoderConfig
-from training import train_encoder
+from training import train_encoder_group
 from transformer_lens import HookedTransformer
 
-# Configure transcoder for MLP layer 8
-# Input: residual stream before MLP (resid_mid)
-# Output: MLP output (mlp_out)
-cfg = TranscoderConfig(
-    encoder_type="topk",
+# Shared config values
+shared = dict(
     input_size=768,
     output_size=768,
     dict_size=768 * 8,  # 6144 features
@@ -23,22 +20,35 @@ cfg = TranscoderConfig(
     top_k=32,
     l1_coeff=0.0,
     batch_size=4096,
-    num_tokens=int(1e8),  # 100M tokens (smaller for testing)
+    num_tokens=int(1e8),  # 100M tokens
     lr=3e-4,
     wandb_project="gpt2_transcoder",
     device="cuda",
 )
 
+# Create configs for each encoder type
+topk_cfg = TranscoderConfig(encoder_type="topk", **shared)
+batchtopk_cfg = TranscoderConfig(encoder_type="batchtopk", **shared)
+
 # Load model
-model = HookedTransformer.from_pretrained(cfg.model_name).to(cfg.dtype).to(cfg.device)
+model = HookedTransformer.from_pretrained(topk_cfg.model_name).to(topk_cfg.dtype).to(topk_cfg.device)
 
-# Create transcoder and activation store
-transcoder = TopK(cfg)
-activation_store = TranscoderActivationsStore(model, cfg)
+# Create transcoders and activation store
+topk_transcoder = TopK(topk_cfg)
+batchtopk_transcoder = BatchTopK(batchtopk_cfg)
+activation_store = TranscoderActivationsStore(model, topk_cfg)
 
-# Train
-print(f"Training transcoder: {cfg.name}")
-print(f"  Input: {cfg.input_hook_point}")
-print(f"  Output: {cfg.output_hook_point}")
-print(f"  Dict size: {cfg.dict_size}, Top-k: {cfg.top_k}")
-train_encoder(transcoder, activation_store, model, cfg)
+# Train both in parallel
+print("Training transcoders:")
+print(f"  [0] TopK: {topk_cfg.name}")
+print(f"  [1] BatchTopK: {batchtopk_cfg.name}")
+print(f"  Input: {topk_cfg.input_hook_point}")
+print(f"  Output: {topk_cfg.output_hook_point}")
+print(f"  Dict size: {topk_cfg.dict_size}, Top-k: {topk_cfg.top_k}")
+
+train_encoder_group(
+    [topk_transcoder, batchtopk_transcoder],
+    activation_store,
+    model,
+    [topk_cfg, batchtopk_cfg],
+)
