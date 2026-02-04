@@ -94,12 +94,11 @@ def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderCon
         # Performance logging outside inner loop (once per step, not per encoder)
         if i % cfgs[0].perf_log_freq == 0:
             torch.cuda.empty_cache()
-            for encoder, cfg, logger in zip(encoders, cfgs, loggers):
-                # Slice to n_eval_seqs to reduce memory during eval
-                batch_tokens = activation_store.get_batch_tokens()[: cfg.n_eval_seqs]
+            batch_tokens = activation_store.get_batch_tokens()[: cfgs[0].n_eval_seqs]
+            for encoder, logger in zip(encoders, loggers):
                 logger.log_performance(model, activation_store, encoder, i, batch_tokens)
-                del batch_tokens
-                torch.cuda.empty_cache()
+            del batch_tokens
+            torch.cuda.empty_cache()
 
     # Save final checkpoints and finish loggers
     for encoder, cfg, logger in zip(encoders, cfgs, loggers):
