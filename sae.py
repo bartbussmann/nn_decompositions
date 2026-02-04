@@ -1,37 +1,15 @@
 import torch
-import torch.autograd as autograd
-import torch.nn as nn
 import torch.nn.functional as F
 
+from base import JumpReLU, SharedEncoder, StepFunction
 
-class BaseAutoencoder(nn.Module):
-    """Base class for autoencoder models."""
+
+class BaseAutoencoder(SharedEncoder):
+    """SAE base: reconstructs input (input_size == output_size)."""
 
     def __init__(self, cfg):
-        super().__init__()
-
-        self.cfg = cfg
-        torch.manual_seed(self.cfg["seed"])
-
-        self.b_dec = nn.Parameter(torch.zeros(self.cfg["act_size"]))
-        self.b_enc = nn.Parameter(torch.zeros(self.cfg["dict_size"]))
-        self.W_enc = nn.Parameter(
-            torch.nn.init.kaiming_uniform_(
-                torch.empty(self.cfg["act_size"], self.cfg["dict_size"])
-            )
-        )
-        self.W_dec = nn.Parameter(
-            torch.nn.init.kaiming_uniform_(
-                torch.empty(self.cfg["dict_size"], self.cfg["act_size"])
-            )
-        )
-        self.W_dec.data[:] = self.W_enc.t().data
-        self.W_dec.data[:] = self.W_dec / self.W_dec.norm(dim=-1, keepdim=True)
-        self.num_batches_not_active = torch.zeros((self.cfg["dict_size"],)).to(
-            cfg["device"]
-        )
-
-        self.to(cfg["dtype"]).to(cfg["device"])
+        act_size = cfg["act_size"]
+        super().__init__(act_size, act_size, cfg["dict_size"], cfg)
 
     def preprocess_input(self, x):
         if self.cfg.get("input_unit_norm", False):
@@ -47,19 +25,6 @@ class BaseAutoencoder(nn.Module):
         if self.cfg.get("input_unit_norm", False):
             x_reconstruct = x_reconstruct * x_std + x_mean
         return x_reconstruct
-
-    @torch.no_grad()
-    def make_decoder_weights_and_grad_unit_norm(self):
-        W_dec_normed = self.W_dec / self.W_dec.norm(dim=-1, keepdim=True)
-        W_dec_grad_proj = (self.W_dec.grad * W_dec_normed).sum(
-            -1, keepdim=True
-        ) * W_dec_normed
-        self.W_dec.grad -= W_dec_grad_proj
-        self.W_dec.data = W_dec_normed
-
-    def update_inactive_features(self, acts):
-        self.num_batches_not_active += (acts.sum(0) == 0).float()
-        self.num_batches_not_active[acts.sum(0) > 0] = 0
 
 
 class BatchTopKSAE(BaseAutoencoder):
@@ -231,72 +196,12 @@ class VanillaSAE(BaseAutoencoder):
         return output
 
 
-class RectangleFunction(autograd.Function):
-    @staticmethod
-    def forward(ctx, x):
-        ctx.save_for_backward(x)
-        return ((x > -0.5) & (x < 0.5)).float()
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        (x,) = ctx.saved_tensors
-        grad_input = grad_output.clone()
-        grad_input[(x <= -0.5) | (x >= 0.5)] = 0
-        return grad_input
-
-class JumpReLUFunction(autograd.Function):
-    @staticmethod
-    def forward(ctx, x, log_threshold, bandwidth):
-        ctx.save_for_backward(x, log_threshold, torch.tensor(bandwidth))
-        threshold = torch.exp(log_threshold)
-        return x * (x > threshold).float()
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        x, log_threshold, bandwidth_tensor = ctx.saved_tensors
-        bandwidth = bandwidth_tensor.item()
-        threshold = torch.exp(log_threshold)
-        x_grad = (x > threshold).float() * grad_output
-        threshold_grad = (
-            -(threshold / bandwidth)
-            * RectangleFunction.apply((x - threshold) / bandwidth)
-            * grad_output
-        )
-        return x_grad, threshold_grad, None  # None for bandwidth
-
-class JumpReLU(nn.Module):
-    def __init__(self, feature_size, bandwidth, device='cpu'):
-        super(JumpReLU, self).__init__()
-        self.log_threshold = nn.Parameter(torch.zeros(feature_size, device=device))
-        self.bandwidth = bandwidth
-
-    def forward(self, x):
-        return JumpReLUFunction.apply(x, self.log_threshold, self.bandwidth)
-
-class StepFunction(autograd.Function):
-    @staticmethod
-    def forward(ctx, x, log_threshold, bandwidth):
-        ctx.save_for_backward(x, log_threshold, torch.tensor(bandwidth))
-        threshold = torch.exp(log_threshold)
-        return (x > threshold).float()
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        x, log_threshold, bandwidth_tensor = ctx.saved_tensors
-        bandwidth = bandwidth_tensor.item()
-        threshold = torch.exp(log_threshold)
-        x_grad = torch.zeros_like(x)
-        threshold_grad = (
-            -(1.0 / bandwidth)
-            * RectangleFunction.apply((x - threshold) / bandwidth)
-            * grad_output
-        )
-        return x_grad, threshold_grad, None  # None for bandwidth
-
 class JumpReLUSAE(BaseAutoencoder):
     def __init__(self, cfg):
         super().__init__(cfg)
-        self.jumprelu = JumpReLU(feature_size=cfg["dict_size"], bandwidth=cfg["bandwidth"], device=cfg["device"])
+        self.jumprelu = JumpReLU(
+            feature_size=cfg["dict_size"], bandwidth=cfg["bandwidth"], device=cfg["device"]
+        )
 
     def forward(self, x, use_pre_enc_bias=False):
         x, x_mean, x_std = self.preprocess_input(x)
@@ -314,7 +219,11 @@ class JumpReLUSAE(BaseAutoencoder):
     def get_loss_dict(self, x, x_reconstruct, acts, x_mean, x_std):
         l2_loss = (x_reconstruct.float() - x.float()).pow(2).mean()
 
-        l0 = StepFunction.apply(acts, self.jumprelu.log_threshold, self.cfg["bandwidth"]).sum(dim=-1).mean()
+        l0 = (
+            StepFunction.apply(acts, self.jumprelu.log_threshold, self.cfg["bandwidth"])
+            .sum(dim=-1)
+            .mean()
+        )
         sparsity_loss = self.cfg["l1_coeff"] * l0
 
         loss = l2_loss + sparsity_loss
