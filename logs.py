@@ -63,7 +63,7 @@ class WandbLogger:
             project=cfg.wandb_project,
             name=cfg.name,
             config=cfg_dict,
-            reinit=True,  # Allow multiple runs
+            settings=wandb.Settings(start_method="thread"),
         )
 
         self.thread = threading.Thread(target=self._run, daemon=True)
