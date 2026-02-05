@@ -214,8 +214,6 @@ class BatchTopK(SharedEncoder):
 
 
 # JumpReLU activation components
-
-
 class RectangleFunction(autograd.Function):
     @staticmethod
     def forward(ctx, x):
