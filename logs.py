@@ -86,11 +86,12 @@ def get_performance_metrics(
     tokenizer = activation_store.tokenizer
     loss = lambda ids, mask: _compute_loss(model, tokenizer, ids, mask)
 
-    input_acts, _ = activation_store.get_activations(input_ids, attention_mask)
+    input_acts, output_acts = activation_store.get_activations(input_ids, attention_mask)
     input_acts_flat = input_acts.reshape(-1, cfg.input_size)
+    output_acts_flat = output_acts.reshape(-1, cfg.output_size)
 
-    encoder_out = encoder(input_acts_flat, input_acts_flat)["output"].reshape(
-        input_acts.shape
+    encoder_out = encoder(input_acts_flat, output_acts_flat)["output"].reshape(
+        output_acts.shape
     )
 
     output_module = activation_store.output_module

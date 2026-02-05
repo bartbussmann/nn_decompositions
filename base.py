@@ -134,7 +134,8 @@ class Vanilla(SharedEncoder):
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        x_enc = x_in - self.b_dec if self.cfg.pre_enc_bias else x_in
+        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
+        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
         acts = F.relu(x_enc @ self.W_enc + self.b_enc)
         y_pred = acts @ self.W_dec + self.b_dec
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
@@ -292,7 +293,8 @@ class JumpReLUEncoder(SharedEncoder):
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        x_enc = x_in - self.b_dec if self.cfg.pre_enc_bias else x_in
+        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
+        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
         pre_acts = F.relu(x_enc @ self.W_enc + self.b_enc)
         acts = self.jumprelu(pre_acts)
         y_pred = acts @ self.W_dec + self.b_dec
@@ -301,7 +303,7 @@ class JumpReLUEncoder(SharedEncoder):
         self.update_inactive_features(acts)
 
         l0_norm = (
-            StepFunction.apply(acts, self.jumprelu.log_threshold, self.cfg.bandwidth)
+            StepFunction.apply(pre_acts, self.jumprelu.log_threshold, self.cfg.bandwidth)
             .sum(dim=-1)
             .mean()
         )
