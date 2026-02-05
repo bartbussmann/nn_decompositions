@@ -186,7 +186,9 @@ class GenericDataConfig:
     tokenizer: PreTrainedTokenizerBase
     text_column: str = "text"
     seq_len: int = 512
-    batch_size: int = 64
+    model_batch_size: int = 64  # Batch size for model forward passes
+    train_batch_size: int = 4096  # Batch size for training (sampled from buffer)
+    num_batches_in_buffer: int = 10  # Number of model batches to buffer
     device: str = "cuda"
     seed: int = 42
     streaming: bool = True
@@ -198,6 +200,9 @@ class GenericActivationsStore:
 
     Unlike TranscoderActivationsStore which requires TransformerLens's HookedRootModule,
     this class uses standard PyTorch forward hooks to capture activations from any model.
+
+    Uses buffering for efficiency: fills a buffer with activations from multiple forward
+    passes, then samples from the buffer for training.
 
     Args:
         model: Any PyTorch model
@@ -222,7 +227,7 @@ class GenericActivationsStore:
         self.input_size = input_size
         self.output_size = output_size
 
-        # Activation storage
+        # Activation storage (temporary, for hooks)
         self._input_acts: torch.Tensor | None = None
         self._output_acts: torch.Tensor | None = None
 
@@ -232,6 +237,12 @@ class GenericActivationsStore:
 
         # Setup dataset
         self._setup_dataset()
+
+        # Buffer state (initialized on first next_batch call)
+        self.input_buffer: torch.Tensor | None = None
+        self.output_buffer: torch.Tensor | None = None
+        self.dataloader: DataLoader | None = None
+        self.dataloader_iter: iter | None = None
 
     def _input_hook(self, module, input, output):
         self._input_acts = output.detach()
@@ -253,7 +264,7 @@ class GenericActivationsStore:
         """Get a batch of tokens by tokenizing text on-the-fly."""
         cfg = self.data_config
         texts = []
-        for _ in range(cfg.batch_size):
+        for _ in range(cfg.model_batch_size):
             try:
                 sample = next(self.data_iter)
             except StopIteration:
@@ -280,12 +291,35 @@ class GenericActivationsStore:
         assert self._input_acts is not None and self._output_acts is not None
         return self._input_acts, self._output_acts
 
-    def next_batch(self) -> tuple[torch.Tensor, torch.Tensor]:
-        """Get next batch of (input, target) activations, flattened."""
-        batch_tokens = self.get_batch_tokens()
-        input_acts, output_acts = self.get_activations(batch_tokens)
-        # Flatten: (batch, seq, d) -> (batch * seq, d)
-        return (
-            input_acts.reshape(-1, self.input_size),
-            output_acts.reshape(-1, self.output_size),
+    def _fill_buffer(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Fill buffer with activations from multiple forward passes."""
+        all_inputs = []
+        all_outputs = []
+        for _ in range(self.data_config.num_batches_in_buffer):
+            batch_tokens = self.get_batch_tokens()
+            input_acts, output_acts = self.get_activations(batch_tokens)
+            # Flatten: (batch, seq, d) -> (batch * seq, d)
+            all_inputs.append(input_acts.reshape(-1, self.input_size))
+            all_outputs.append(output_acts.reshape(-1, self.output_size))
+        return torch.cat(all_inputs, dim=0), torch.cat(all_outputs, dim=0)
+
+    def _get_dataloader(self) -> DataLoader:
+        """Create dataloader from buffers."""
+        return DataLoader(
+            TensorDataset(self.input_buffer, self.output_buffer),
+            batch_size=self.data_config.train_batch_size,
+            shuffle=True,
         )
+
+    def next_batch(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Get next batch of (input, target) activations from buffer."""
+        try:
+            batch = next(self.dataloader_iter)
+            return batch[0], batch[1]
+        except (StopIteration, TypeError):
+            # Refill buffer
+            self.input_buffer, self.output_buffer = self._fill_buffer()
+            self.dataloader = self._get_dataloader()
+            self.dataloader_iter = iter(self.dataloader)
+            batch = next(self.dataloader_iter)
+            return batch[0], batch[1]

@@ -59,6 +59,7 @@ Config is a dictionary with keys like:
 - Only commit files with relevant changes, don't commit all files
 - Use branch names `refactor/X` or `feature/Y` or `fix/Z`
 - **Always commit after making code edits** - don't let changes accumulate
+- Often after committing you want to push the changes to the remote branch (not main). You can do this with `git push origin <branch_name>`
 
 ## Coding Guidelines
 

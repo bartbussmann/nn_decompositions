@@ -64,6 +64,8 @@ class SSTranscoderConfig:
     tokenizer_name: str = "SimpleStories/test-SimpleStories-gpt2-1.25M"
     seq_len: int = 512
     text_column: str = "story"
+    model_batch_size: int = 64  # Batch size for model forward passes
+    num_batches_in_buffer: int = 10  # Number of forward passes per buffer fill
 
     # Logging
     wandb_project: str = "ss_transcoder"
@@ -97,7 +99,9 @@ def create_activation_store(model: LlamaSimple, cfg: SSTranscoderConfig) -> Gene
         tokenizer=tokenizer,
         text_column=cfg.text_column,
         seq_len=cfg.seq_len,
-        batch_size=cfg.batch_size,
+        model_batch_size=cfg.model_batch_size,
+        train_batch_size=cfg.batch_size,
+        num_batches_in_buffer=cfg.num_batches_in_buffer,
         device=cfg.device,
         seed=cfg.seed,
         lowercase=True,  # SimpleStories uses lowercase
@@ -124,9 +128,9 @@ def main():
         dict_size=2048,
         top_k=32,
         encoder_type="topk",
-        num_tokens=int(5e7),  # 50M tokens
-        batch_size=64,
-        lr=1e-3,
+        num_tokens=int(1e8),  # 50M tokens
+        batch_size=512,
+        lr=3e-4,
     )
 
     print(f"Loading model from {cfg.model_path}...")
