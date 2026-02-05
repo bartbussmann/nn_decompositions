@@ -97,18 +97,18 @@ class SharedEncoder(nn.Module):
         y_pred: torch.Tensor,
         acts: torch.Tensor,
         y_pred_out: torch.Tensor,
-        sparsity_loss: torch.Tensor,
         l0_norm: torch.Tensor,
-        extra: dict[str, torch.Tensor] | None = None,
+        extra_losses: dict[str, torch.Tensor] | None = None,
     ) -> dict:
-        """Build standardized loss dict. Each encoder computes its sparsity terms."""
+        """Build standardized loss dict. l2_loss is computed here; callers pass
+        additional loss terms (l1, aux, sparsity) via extra_losses."""
         l2_loss = (y_pred.float() - y_target.float()).pow(2).mean()
         l1_norm = acts.float().abs().sum(-1).mean()
         num_dead = (self.num_batches_not_active > self.cfg.n_batches_to_dead).sum()
 
-        loss = l2_loss + sparsity_loss
-        if extra:
-            loss = loss + sum(extra.values())
+        loss = l2_loss
+        if extra_losses:
+            loss = loss + sum(extra_losses.values())
 
         result = {
             "output": y_pred_out,
@@ -119,8 +119,8 @@ class SharedEncoder(nn.Module):
             "l0_norm": l0_norm,
             "l1_norm": l1_norm,
         }
-        if extra:
-            result.update(extra)
+        if extra_losses:
+            result.update(extra_losses)
         return result
 
 
@@ -145,7 +145,8 @@ class Vanilla(SharedEncoder):
         l1_norm = acts.float().abs().sum(-1).mean()
         l1_loss = self.cfg.l1_coeff * l1_norm
         return self._build_loss_dict(
-            y_target, y_pred, acts, y_pred_out, l1_loss, l0_norm, {"l1_loss": l1_loss}
+            y_target, y_pred, acts, y_pred_out, l0_norm,
+            extra_losses={"l1_loss": l1_loss},
         )
 
 
@@ -174,8 +175,8 @@ class TopK(SharedEncoder):
         l1_loss = self.cfg.l1_coeff * l1_norm
         aux_loss = self._get_auxiliary_loss(y_target, y_pred, acts)
         return self._build_loss_dict(
-            y_target, y_pred, acts_sparse, y_pred_out, l1_loss, l0_norm,
-            {"l1_loss": l1_loss, "aux_loss": aux_loss},
+            y_target, y_pred, acts_sparse, y_pred_out, l0_norm,
+            extra_losses={"l1_loss": l1_loss, "aux_loss": aux_loss},
         )
 
 
@@ -208,8 +209,8 @@ class BatchTopK(SharedEncoder):
         l1_loss = self.cfg.l1_coeff * l1_norm
         aux_loss = self._get_auxiliary_loss(y_target, y_pred, acts)
         return self._build_loss_dict(
-            y_target, y_pred, acts_sparse, y_pred_out, l1_loss, l0_norm,
-            {"l1_loss": l1_loss, "aux_loss": aux_loss},
+            y_target, y_pred, acts_sparse, y_pred_out, l0_norm,
+            extra_losses={"l1_loss": l1_loss, "aux_loss": aux_loss},
         )
 
 
@@ -306,6 +307,6 @@ class JumpReLUEncoder(SharedEncoder):
         )
         sparsity_loss = self.cfg.l1_coeff * l0_norm
         return self._build_loss_dict(
-            y_target, y_pred, acts, y_pred_out, sparsity_loss, l0_norm,
-            {"sparsity_loss": sparsity_loss},
+            y_target, y_pred, acts, y_pred_out, l0_norm,
+            extra_losses={"sparsity_loss": sparsity_loss},
         )
