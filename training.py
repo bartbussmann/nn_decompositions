@@ -10,11 +10,18 @@ from logs import (
 )
 
 
-def train_encoder(encoder, activation_store, model, cfg: EncoderConfig):
+def train_encoder(encoder, activation_store, cfg: EncoderConfig, model=None):
     """Train any encoder (SAE or transcoder).
 
     Works with both ActivationsStore and TranscoderActivationsStore since
     both return (x_in, y_target) tuples from next_batch().
+
+    Args:
+        encoder: The encoder to train
+        activation_store: Store providing (x_in, y_target) batches
+        cfg: Encoder configuration
+        model: Optional HookedRootModule for performance logging. If None,
+               performance metrics are skipped (useful for non-TransformerLens models).
     """
     num_batches = cfg.num_tokens // cfg.batch_size
     optimizer = torch.optim.Adam(encoder.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2))
@@ -28,7 +35,7 @@ def train_encoder(encoder, activation_store, model, cfg: EncoderConfig):
 
         log_wandb(output, i, wandb_run)
 
-        if i % cfg.perf_log_freq == 0:
+        if model is not None and i % cfg.perf_log_freq == 0:
             log_encoder_performance(wandb_run, i, model, activation_store, encoder)
 
         if cfg.checkpoint_freq != "final" and i % cfg.checkpoint_freq == 0:

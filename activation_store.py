@@ -1,9 +1,12 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 import torch
+import torch.nn as nn
 from datasets import load_dataset
 from torch.utils.data import DataLoader, TensorDataset
 from transformer_lens.hook_points import HookedRootModule
+from transformers import PreTrainedTokenizerBase
 
 from config import EncoderConfig, SAEConfig, TranscoderConfig
 
@@ -173,3 +176,116 @@ class TranscoderActivationsStore(BaseActivationsStore):
             self.dataloader_iter = iter(self.dataloader)
             batch = next(self.dataloader_iter)
             return batch[0], batch[1]
+
+
+@dataclass
+class GenericDataConfig:
+    """Config for generic activation store data loading."""
+
+    dataset_name: str
+    tokenizer: PreTrainedTokenizerBase
+    text_column: str = "text"
+    seq_len: int = 512
+    batch_size: int = 64
+    device: str = "cuda"
+    seed: int = 42
+    streaming: bool = True
+    lowercase: bool = False
+
+
+class GenericActivationsStore:
+    """Activation store using PyTorch hooks. Works with any nn.Module.
+
+    Unlike TranscoderActivationsStore which requires TransformerLens's HookedRootModule,
+    this class uses standard PyTorch forward hooks to capture activations from any model.
+
+    Args:
+        model: Any PyTorch model
+        input_module: Module whose output is the transcoder input (e.g., model.layers[3].norm2)
+        output_module: Module whose output is the transcoder target (e.g., model.layers[3].mlp)
+        data_config: Configuration for data loading
+        input_size: Dimension of input activations
+        output_size: Dimension of output activations
+    """
+
+    def __init__(
+        self,
+        model: nn.Module,
+        input_module: nn.Module,
+        output_module: nn.Module,
+        data_config: GenericDataConfig,
+        input_size: int,
+        output_size: int,
+    ):
+        self.model = model
+        self.data_config = data_config
+        self.input_size = input_size
+        self.output_size = output_size
+
+        # Activation storage
+        self._input_acts: torch.Tensor | None = None
+        self._output_acts: torch.Tensor | None = None
+
+        # Register hooks
+        input_module.register_forward_hook(self._input_hook)
+        output_module.register_forward_hook(self._output_hook)
+
+        # Setup dataset
+        self._setup_dataset()
+
+    def _input_hook(self, module, input, output):
+        self._input_acts = output.detach()
+
+    def _output_hook(self, module, input, output):
+        self._output_acts = output.detach()
+
+    def _setup_dataset(self):
+        cfg = self.data_config
+        self.tokenizer = cfg.tokenizer
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
+        self.dataset = load_dataset(cfg.dataset_name, split="train", streaming=cfg.streaming)
+        self.dataset = self.dataset.shuffle(seed=cfg.seed, buffer_size=10000)
+        self.data_iter = iter(self.dataset)
+
+    def get_batch_tokens(self) -> torch.Tensor:
+        """Get a batch of tokens by tokenizing text on-the-fly."""
+        cfg = self.data_config
+        texts = []
+        for _ in range(cfg.batch_size):
+            try:
+                sample = next(self.data_iter)
+            except StopIteration:
+                self.data_iter = iter(self.dataset)
+                sample = next(self.data_iter)
+            text = sample[cfg.text_column]
+            if cfg.lowercase:
+                text = text.lower()
+            texts.append(text)
+
+        tokens = self.tokenizer(
+            texts,
+            truncation=True,
+            max_length=cfg.seq_len,
+            padding="max_length",
+            return_tensors="pt",
+        )
+        return tokens["input_ids"].to(cfg.device)
+
+    @torch.no_grad()
+    def get_activations(self, batch_tokens: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Run forward pass and return (input, output) activations."""
+        self.model(batch_tokens)
+        assert self._input_acts is not None and self._output_acts is not None
+        return self._input_acts, self._output_acts
+
+    def next_batch(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Get next batch of (input, target) activations, flattened."""
+        batch_tokens = self.get_batch_tokens()
+        input_acts, output_acts = self.get_activations(batch_tokens)
+        # Flatten: (batch, seq, d) -> (batch * seq, d)
+        return (
+            input_acts.reshape(-1, self.input_size),
+            output_acts.reshape(-1, self.output_size),
+        )
