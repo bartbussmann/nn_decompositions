@@ -24,6 +24,9 @@ analysis = [
 simplestories = [
     "simple_stories_train @ git+https://github.com/goodfire-ai/simple_stories_train.git@16f574d274849c90fe15e5c4df231f3885e44a7d",
 ]
+spd = [
+    "spd @ git+https://github.com/goodfire-ai/spd.git",
+]
 
 [build-system]
 requires = ["hatchling"]
