@@ -9,7 +9,6 @@ Target: Layer 3 MLP (input: resid_mid, output: mlp_out)
 """
 
 import sys
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import torch
@@ -19,145 +18,72 @@ from transformers import AutoTokenizer
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from activation_store import GenericActivationsStore, GenericDataConfig
+from activation_store import ActivationsStore, DataConfig
 from base import BatchTopK, TopK
-from logs import get_encoder_metrics, init_wandb, save_checkpoint
+from config import EncoderConfig
 from training import train_encoder
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
-@dataclass
-class SSTranscoderConfig:
-    """Config for SimpleStories transcoder training."""
+# Load model
+model_path = "wandb:goodfire/spd/runs/erq48r3w"
+print(f"Loading model from {model_path}...")
+model = LlamaSimple.from_pretrained(model_path)
+model.to(torch.float32).to(device)
+model.eval()
 
-    # Model
-    model_path: str = "wandb:goodfire/spd/runs/erq48r3w"
-    layer: int = 3
+layer = 3
+input_size = model.config.n_embd   # 128
+output_size = model.config.n_embd  # 128
 
-    # Architecture (auto-detected from model)
-    input_size: int = field(init=False)
-    output_size: int = field(init=False)
-    dict_size: int = 2048
-    encoder_type: str = "topk"
+print(f"Model config: d_model={model.config.n_embd}, d_mlp={model.config.n_intermediate}")
+print(f"Training transcoder on layer {layer} MLP")
 
-    # Training
-    seed: int = 42
-    batch_size: int = 128
-    lr: float = 3e-4
-    num_tokens: int = int(5e7)  # 50M tokens
-    beta1: float = 0.9
-    beta2: float = 0.99
-    max_grad_norm: float = 1.0
+cfg = EncoderConfig(
+    input_size=input_size,
+    output_size=output_size,
+    dict_size=2048,
+    encoder_type="topk",
+    top_k=32,
+    batch_size=512,
+    num_tokens=int(1e8),
+    lr=3e-4,
+    wandb_project="ss_transcoder",
+    perf_log_freq=500,
+    device=device,
+)
 
-    # TopK specific
-    top_k: int = 32
-    top_k_aux: int = 512
-    aux_penalty: float = 1 / 32
-    l1_coeff: float = 0.0
-    n_batches_to_dead: int = 50
+tokenizer = AutoTokenizer.from_pretrained("SimpleStories/test-SimpleStories-gpt2-1.25M")
 
-    # Device
-    device: str = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype: torch.dtype = field(default=torch.float32)
+data_config = DataConfig(
+    dataset_name="lennart-finke/SimpleStories",
+    tokenizer=tokenizer,
+    text_column="story",
+    seq_len=512,
+    model_batch_size=64,
+    train_batch_size=cfg.batch_size,
+    num_batches_in_buffer=10,
+    device=device,
+    lowercase=True,
+)
 
-    # Data
-    dataset_name: str = "lennart-finke/SimpleStories"
-    tokenizer_name: str = "SimpleStories/test-SimpleStories-gpt2-1.25M"
-    seq_len: int = 512
-    text_column: str = "story"
-    model_batch_size: int = 64  # Batch size for model forward passes
-    num_batches_in_buffer: int = 10  # Number of forward passes per buffer fill
+# Hook after RMSNorm (MLP input) and after MLP (MLP output)
+input_module = model.h[layer].rms_2
+output_module = model.h[layer].mlp
 
-    # Logging
-    wandb_project: str = "ss_transcoder"
-    perf_log_freq: int = 500
-    checkpoint_freq: int | str = "final"
-    n_eval_seqs: int = 8
+activation_store = ActivationsStore(
+    model=model,
+    input_module=input_module,
+    output_module=output_module,
+    data_config=data_config,
+    input_size=input_size,
+    output_size=output_size,
+)
 
-    # Optional features (for compatibility with base classes)
-    input_unit_norm: bool = False
-    pre_enc_bias: bool = False
-    bandwidth: float = 0.001
+print(f"  Input/Output size: {input_size}")
+print(f"  Dict size: {cfg.dict_size}")
+print(f"  Top-k: {cfg.top_k}")
 
-    def __post_init__(self):
-        # Load model config to get dimensions
-        model = LlamaSimple.from_pretrained(self.model_path)
-        self.input_size = model.config.n_embd  # 128
-        self.output_size = model.config.n_embd  # 128
-        del model
+transcoder = TopK(cfg)
 
-    @property
-    def name(self) -> str:
-        return f"ss_transcoder_layer{self.layer}_{self.dict_size}_{self.encoder_type}_k{self.top_k}"
-
-
-def create_activation_store(model: LlamaSimple, cfg: SSTranscoderConfig) -> GenericActivationsStore:
-    """Create activation store for the SimpleStories model."""
-    tokenizer = AutoTokenizer.from_pretrained(cfg.tokenizer_name)
-
-    data_config = GenericDataConfig(
-        dataset_name=cfg.dataset_name,
-        tokenizer=tokenizer,
-        text_column=cfg.text_column,
-        seq_len=cfg.seq_len,
-        model_batch_size=cfg.model_batch_size,
-        train_batch_size=cfg.batch_size,
-        num_batches_in_buffer=cfg.num_batches_in_buffer,
-        device=cfg.device,
-        seed=cfg.seed,
-        lowercase=True,  # SimpleStories uses lowercase
-    )
-
-    # Hook after RMSNorm (MLP input) and after MLP (MLP output)
-    input_module = model.h[cfg.layer].rms_2
-    output_module = model.h[cfg.layer].mlp
-
-    return GenericActivationsStore(
-        model=model,
-        input_module=input_module,
-        output_module=output_module,
-        data_config=data_config,
-        input_size=cfg.input_size,
-        output_size=cfg.output_size,
-    )
-
-
-def main():
-    """Train a transcoder on the SimpleStories model."""
-    cfg = SSTranscoderConfig(
-        layer=3,
-        dict_size=2048,
-        top_k=32,
-        encoder_type="topk",
-        num_tokens=int(1e8),  # 50M tokens
-        batch_size=512,
-        lr=3e-4,
-    )
-
-    print(f"Loading model from {cfg.model_path}...")
-    model = LlamaSimple.from_pretrained(cfg.model_path)
-    model.to(cfg.dtype).to(cfg.device)
-    model.eval()
-
-    print(f"Model config: d_model={model.config.n_embd}, d_mlp={model.config.n_intermediate}")
-    print(f"Training transcoder on layer {cfg.layer} MLP")
-    print(f"  Input/Output size: {cfg.input_size}")
-    print(f"  Dict size: {cfg.dict_size}")
-    print(f"  Top-k: {cfg.top_k}")
-
-    # Create activation store using GenericActivationsStore
-    activation_store = create_activation_store(model, cfg)
-
-    # Create transcoder
-    if cfg.encoder_type == "topk":
-        transcoder = TopK(cfg)
-    elif cfg.encoder_type == "batchtopk":
-        transcoder = BatchTopK(cfg)
-    else:
-        raise ValueError(f"Unknown encoder type: {cfg.encoder_type}")
-
-    # Train using the standard training loop (model=None skips perf logging)
-    train_encoder(transcoder, activation_store, cfg, model=None)
-
-
-if __name__ == "__main__":
-    main()
+train_encoder(transcoder, activation_store, cfg)
