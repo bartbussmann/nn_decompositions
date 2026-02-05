@@ -10,19 +10,12 @@ from logs import (
 )
 
 
-def train_encoder(encoder, activation_store, cfg: EncoderConfig, model=None):
-    """Train any encoder (SAE or transcoder).
-
-    Works with both ActivationsStore and TranscoderActivationsStore since
-    both return (x_in, y_target) tuples from next_batch().
-
-    Args:
-        encoder: The encoder to train
-        activation_store: Store providing (x_in, y_target) batches
-        cfg: Encoder configuration
-        model: Optional HookedRootModule for performance logging. If None,
-               performance metrics are skipped (useful for non-TransformerLens models).
-    """
+def train_encoder(
+    encoder,
+    activation_store,
+    cfg: EncoderConfig,
+):
+    """Train any encoder (SAE or transcoder)."""
     num_batches = cfg.num_tokens // cfg.batch_size
     optimizer = torch.optim.Adam(encoder.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2))
     pbar = tqdm.trange(num_batches)
@@ -35,8 +28,8 @@ def train_encoder(encoder, activation_store, cfg: EncoderConfig, model=None):
 
         log_wandb(output, i, wandb_run)
 
-        if model is not None and i % cfg.perf_log_freq == 0:
-            log_encoder_performance(wandb_run, i, model, activation_store, encoder)
+        if i % cfg.perf_log_freq == 0:
+            log_encoder_performance(wandb_run, i, activation_store, encoder)
 
         if cfg.checkpoint_freq != "final" and i % cfg.checkpoint_freq == 0:
             save_checkpoint(encoder, cfg, i)
@@ -57,11 +50,12 @@ def train_encoder(encoder, activation_store, cfg: EncoderConfig, model=None):
     save_checkpoint(encoder, cfg, "final")
 
 
-def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderConfig]):
-    """Train multiple encoders on the same activation stream.
-
-    All encoders share a single wandb run with indexed metrics (loss_0, loss_1, etc).
-    """
+def train_encoder_group(
+    encoders,
+    activation_store,
+    cfgs: list[EncoderConfig],
+):
+    """Train multiple encoders on the same activation stream."""
     num_batches = cfgs[0].num_tokens // cfgs[0].batch_size
     optimizers = [
         torch.optim.Adam(enc.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2))
@@ -69,7 +63,6 @@ def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderCon
     ]
     pbar = tqdm.trange(num_batches)
 
-    # Single wandb run for all encoders
     wandb_run = init_wandb(cfgs[0])
 
     for i in pbar:
@@ -78,7 +71,6 @@ def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderCon
         for encoder, cfg, optimizer in zip(encoders, cfgs, optimizers):
             output = encoder(x_in, y_target)
 
-            # Log with encoder type suffix (loss_topk, loss_batchtopk, etc)
             log_wandb(output, i, wandb_run, suffix=cfg.encoder_type)
 
             if cfg.checkpoint_freq != "final" and i % cfg.checkpoint_freq == 0:
@@ -88,27 +80,29 @@ def train_encoder_group(encoders, activation_store, model, cfgs: list[EncoderCon
             pbar.set_postfix({"Loss": f"{loss.item():.4f}", "L0": f"{output['l0_norm']:.4f}"})
 
             loss.backward()
-            del output  # Free memory before next encoder
+            del output
 
             torch.nn.utils.clip_grad_norm_(encoder.parameters(), cfg.max_grad_norm)
             encoder.make_decoder_weights_and_grad_unit_norm()
             optimizer.step()
             optimizer.zero_grad()
 
-        del x_in, y_target  # Free batch memory
+        del x_in, y_target
 
-        # Performance logging
         if i % cfgs[0].perf_log_freq == 0:
             torch.cuda.empty_cache()
-            batch_tokens = activation_store.get_batch_tokens()[: cfgs[0].n_eval_seqs]
+            input_ids, attention_mask = activation_store.get_batch_tokens()
+            batch_tokens = (
+                input_ids[:cfgs[0].n_eval_seqs],
+                attention_mask[:cfgs[0].n_eval_seqs],
+            )
             for encoder, cfg in zip(encoders, cfgs):
                 log_encoder_performance(
-                    wandb_run, i, model, activation_store, encoder,
-                    suffix=cfg.encoder_type, batch_tokens=batch_tokens
+                    wandb_run, i, activation_store, encoder,
+                    suffix=cfg.encoder_type, batch_tokens=batch_tokens,
                 )
             del batch_tokens
             torch.cuda.empty_cache()
 
-    # Save final checkpoints
     for encoder, cfg in zip(encoders, cfgs):
         save_checkpoint(encoder, cfg, "final")

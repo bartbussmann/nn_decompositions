@@ -1,6 +1,5 @@
 import json
 import os
-from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import asdict
 
@@ -46,14 +45,11 @@ def log_wandb(output: dict, step: int, wandb_run, suffix: str | None = None):
 # Model Performance Evaluation
 # =============================================================================
 
-def make_loss_fn(model, tokenizer):
-    """Create a loss function for CE evaluation of a HuggingFace causal LM."""
-    pad_token_id = tokenizer.pad_token_id
-    def loss_fn(input_ids, attention_mask):
-        labels = input_ids.clone()
-        labels[input_ids == pad_token_id] = -100
-        return model(input_ids, attention_mask=attention_mask, labels=labels).loss.item()
-    return loss_fn
+def _compute_loss(model, tokenizer, input_ids, attention_mask):
+    """Compute CE loss for a HuggingFace causal LM."""
+    labels = input_ids.clone()
+    labels[input_ids == tokenizer.pad_token_id] = -100
+    return model(input_ids, attention_mask=attention_mask, labels=labels).loss.item()
 
 
 @contextmanager
@@ -75,18 +71,9 @@ def _patched_forward(module: nn.Module, patched_fn):
 def get_performance_metrics(
     activation_store,
     encoder,
-    loss_fn: Callable[[torch.Tensor, torch.Tensor], float],
     batch_tokens: tuple[torch.Tensor, torch.Tensor] | None = None,
 ) -> dict:
-    """Compute CE degradation and recovery metrics.
-
-    Args:
-        activation_store: ActivationsStore with model and output_module
-        encoder: The encoder to evaluate
-        loss_fn: (input_ids, attention_mask) -> scalar loss
-        batch_tokens: (input_ids, attention_mask) to evaluate on.
-                      If None, fetched from activation_store.
-    """
+    """Compute CE degradation and recovery metrics."""
     cfg = encoder.cfg
     if batch_tokens is None:
         input_ids, attention_mask = activation_store.get_batch_tokens()
@@ -94,6 +81,10 @@ def get_performance_metrics(
         attention_mask = attention_mask[:cfg.n_eval_seqs]
     else:
         input_ids, attention_mask = batch_tokens
+
+    model = activation_store.model
+    tokenizer = activation_store.tokenizer
+    loss = lambda ids, mask: _compute_loss(model, tokenizer, ids, mask)
 
     input_acts, _ = activation_store.get_activations(input_ids, attention_mask)
     input_acts_flat = input_acts.reshape(-1, cfg.input_size)
@@ -105,23 +96,23 @@ def get_performance_metrics(
     output_module = activation_store.output_module
     original_forward = output_module.forward
 
-    original_loss = loss_fn(input_ids, attention_mask)
+    original_loss = loss(input_ids, attention_mask)
 
     with _patched_forward(output_module, lambda *a, **kw: encoder_out):
-        reconstr_loss = loss_fn(input_ids, attention_mask)
+        reconstr_loss = loss(input_ids, attention_mask)
 
     def zero_forward(*args, **kwargs):
         return torch.zeros_like(original_forward(*args, **kwargs))
 
     with _patched_forward(output_module, zero_forward):
-        zero_loss = loss_fn(input_ids, attention_mask)
+        zero_loss = loss(input_ids, attention_mask)
 
     def mean_forward(*args, **kwargs):
         out = original_forward(*args, **kwargs)
         return out.mean([0, 1]).expand_as(out)
 
     with _patched_forward(output_module, mean_forward):
-        mean_loss = loss_fn(input_ids, attention_mask)
+        mean_loss = loss(input_ids, attention_mask)
 
     return {
         "performance/original_loss": original_loss,
@@ -140,12 +131,11 @@ def log_encoder_performance(
     step: int,
     activation_store,
     encoder,
-    loss_fn: Callable[[torch.Tensor, torch.Tensor], float],
     suffix: str | None = None,
     batch_tokens: tuple[torch.Tensor, torch.Tensor] | None = None,
 ):
     """Log model performance metrics to wandb."""
-    log_dict = get_performance_metrics(activation_store, encoder, loss_fn, batch_tokens)
+    log_dict = get_performance_metrics(activation_store, encoder, batch_tokens)
     if suffix is not None:
         log_dict = {f"{k}/{suffix}": v for k, v in log_dict.items()}
     wandb_run.log(log_dict, step=step)

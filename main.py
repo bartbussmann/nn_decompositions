@@ -7,7 +7,6 @@ from transformers import GPT2LMHeadModel, AutoTokenizer
 from activation_store import ActivationsStore, DataConfig
 from base import BatchTopK, TopK
 from config import EncoderConfig
-from logs import make_loss_fn
 from training import train_encoder_group
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -75,5 +74,4 @@ train_encoder_group(
     [batchtopk_transcoder],
     activation_store,
     [topk_cfg, batchtopk_cfg],
-    loss_fn=make_loss_fn(model, tokenizer),
 )
