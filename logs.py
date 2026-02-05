@@ -1,9 +1,11 @@
 import json
 import os
+from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import asdict
-from functools import partial
 
 import torch
+import torch.nn as nn
 import wandb
 
 from config import EncoderConfig
@@ -44,73 +46,107 @@ def log_wandb(output: dict, step: int, wandb_run, suffix: str | None = None):
 # Model Performance Evaluation
 # =============================================================================
 
-def _reconstr_hook(activation, hook, encoder_out):
-    return encoder_out
+def make_loss_fn(model, tokenizer):
+    """Create a loss function for CE evaluation of a HuggingFace causal LM."""
+    pad_token_id = tokenizer.pad_token_id
+    def loss_fn(input_ids, attention_mask):
+        labels = input_ids.clone()
+        labels[input_ids == pad_token_id] = -100
+        return model(input_ids, attention_mask=attention_mask, labels=labels).loss.item()
+    return loss_fn
 
 
-def _zero_abl_hook(activation, hook):
-    return torch.zeros_like(activation)
+@contextmanager
+def _patched_forward(module: nn.Module, patched_fn):
+    """Temporarily replace a module's forward method.
 
-
-def _mean_abl_hook(activation, hook):
-    return activation.mean([0, 1]).expand_as(activation)
+    This monkey-patches module.forward rather than adding a hook, avoiding
+    interaction with existing hooks (e.g. from ActivationsStore).
+    """
+    original_forward = module.forward
+    module.forward = patched_fn
+    try:
+        yield
+    finally:
+        module.forward = original_forward
 
 
 @torch.no_grad()
 def get_performance_metrics(
-    model, activations_store, encoder, batch_tokens: torch.Tensor | None = None
+    activation_store,
+    encoder,
+    loss_fn: Callable[[torch.Tensor, torch.Tensor], float],
+    batch_tokens: tuple[torch.Tensor, torch.Tensor] | None = None,
 ) -> dict:
-    """Compute model performance metrics and return as dict."""
+    """Compute CE degradation and recovery metrics.
+
+    Args:
+        activation_store: ActivationsStore with model and output_module
+        encoder: The encoder to evaluate
+        loss_fn: (input_ids, attention_mask) -> scalar loss
+        batch_tokens: (input_ids, attention_mask) to evaluate on.
+                      If None, fetched from activation_store.
+    """
     cfg = encoder.cfg
     if batch_tokens is None:
-        batch_tokens = activations_store.get_batch_tokens()[: cfg.n_eval_seqs]
+        input_ids, attention_mask = activation_store.get_batch_tokens()
+        input_ids = input_ids[:cfg.n_eval_seqs]
+        attention_mask = attention_mask[:cfg.n_eval_seqs]
+    else:
+        input_ids, attention_mask = batch_tokens
 
-    input_acts, _ = activations_store.get_activations(batch_tokens)
+    input_acts, _ = activation_store.get_activations(input_ids, attention_mask)
     input_acts_flat = input_acts.reshape(-1, cfg.input_size)
 
     encoder_out = encoder(input_acts_flat, input_acts_flat)["output"].reshape(
-        batch_tokens.shape[0], batch_tokens.shape[1], -1
+        input_acts.shape
     )
 
-    hook_point = cfg.eval_hook_point
+    output_module = activation_store.output_module
+    original_forward = output_module.forward
 
-    original_loss = model(batch_tokens, return_type="loss").item()
-    reconstr_loss = model.run_with_hooks(
-        batch_tokens,
-        fwd_hooks=[(hook_point, partial(_reconstr_hook, encoder_out=encoder_out))],
-        return_type="loss",
-    ).item()
-    zero_loss = model.run_with_hooks(
-        batch_tokens,
-        fwd_hooks=[(hook_point, _zero_abl_hook)],
-        return_type="loss",
-    ).item()
-    mean_loss = model.run_with_hooks(
-        batch_tokens,
-        fwd_hooks=[(hook_point, _mean_abl_hook)],
-        return_type="loss",
-    ).item()
+    original_loss = loss_fn(input_ids, attention_mask)
 
-    ce_degradation = original_loss - reconstr_loss
-    zero_degradation = original_loss - zero_loss
-    mean_degradation = original_loss - mean_loss
+    with _patched_forward(output_module, lambda *a, **kw: encoder_out):
+        reconstr_loss = loss_fn(input_ids, attention_mask)
+
+    def zero_forward(*args, **kwargs):
+        return torch.zeros_like(original_forward(*args, **kwargs))
+
+    with _patched_forward(output_module, zero_forward):
+        zero_loss = loss_fn(input_ids, attention_mask)
+
+    def mean_forward(*args, **kwargs):
+        out = original_forward(*args, **kwargs)
+        return out.mean([0, 1]).expand_as(out)
+
+    with _patched_forward(output_module, mean_forward):
+        mean_loss = loss_fn(input_ids, attention_mask)
 
     return {
-        "performance/ce_degradation": ce_degradation,
-        "performance/recovery_from_zero": (reconstr_loss - zero_loss) / zero_degradation,
-        "performance/recovery_from_mean": (reconstr_loss - mean_loss) / mean_degradation,
+        "performance/original_loss": original_loss,
+        "performance/reconstr_loss": reconstr_loss,
+        "performance/zero_loss": zero_loss,
+        "performance/mean_loss": mean_loss,
+        "performance/ce_degradation": original_loss - reconstr_loss,
+        "performance/recovery_from_zero": 100 * (reconstr_loss - zero_loss) / (original_loss - zero_loss),
+        "performance/recovery_from_mean": 100 * (reconstr_loss - mean_loss) / (original_loss - mean_loss),
     }
 
 
 @torch.no_grad()
 def log_encoder_performance(
-    wandb_run, step: int, model, activations_store, encoder,
-    suffix: str | None = None, batch_tokens: torch.Tensor | None = None
+    wandb_run,
+    step: int,
+    activation_store,
+    encoder,
+    loss_fn: Callable[[torch.Tensor, torch.Tensor], float],
+    suffix: str | None = None,
+    batch_tokens: tuple[torch.Tensor, torch.Tensor] | None = None,
 ):
-    """Log model performance metrics to wandb run."""
-    log_dict = get_performance_metrics(model, activations_store, encoder, batch_tokens)
+    """Log model performance metrics to wandb."""
+    log_dict = get_performance_metrics(activation_store, encoder, loss_fn, batch_tokens)
     if suffix is not None:
-        # performance/ce_degradation -> performance/ce_degradation/topk
         log_dict = {f"{k}/{suffix}": v for k, v in log_dict.items()}
     wandb_run.log(log_dict, step=step)
 

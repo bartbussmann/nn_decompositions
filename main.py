@@ -1,52 +1,79 @@
 # %%
 """Train TopK and BatchTopK transcoders in parallel on MLP layer 8 of GPT-2 small."""
 
-from activation_store import TranscoderActivationsStore
-from base import BatchTopK, TopK
-from config import TranscoderConfig
-from training import train_encoder_group
-from transformer_lens import HookedTransformer
+import torch
+from transformers import GPT2LMHeadModel, AutoTokenizer
 
-# Shared config values (input_size/output_size auto-detected from model)
+from activation_store import ActivationsStore, DataConfig
+from base import BatchTopK, TopK
+from config import EncoderConfig
+from logs import make_loss_fn
+from training import train_encoder_group
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Load GPT-2 small
+model = GPT2LMHeadModel.from_pretrained("gpt2").to(device)
+model.eval()
+tokenizer = AutoTokenizer.from_pretrained("gpt2")
+
+layer = 8
+input_size = model.config.n_embd  # 768
+output_size = model.config.n_embd  # 768
+
+# Shared config values
 shared = dict(
+    input_size=input_size,
+    output_size=output_size,
     dict_size=768,
-    model_name="gpt2-small",
-    input_site="resid_mid",  # Input to MLP
-    output_site="mlp_out",   # Output of MLP
-    input_layer=8,
-    output_layer=8,
     top_k=32,
     l1_coeff=0.0,
     batch_size=64,
-    num_tokens=int(1e8),  # 100M tokens
+    num_tokens=int(1e9),  # 100M tokens
     lr=3e-4,
     wandb_project="gpt2_transcoder",
-    device="cuda",
+    device=device,
 )
 
-# Create configs for each encoder type
-topk_cfg = TranscoderConfig(encoder_type="topk", **shared)
-batchtopk_cfg = TranscoderConfig(encoder_type="batchtopk", **shared)
+topk_cfg = EncoderConfig(encoder_type="topk", **shared)
+batchtopk_cfg = EncoderConfig(encoder_type="batchtopk", **shared)
 
-# Load model
-model = HookedTransformer.from_pretrained(topk_cfg.model_name).to(topk_cfg.dtype).to(topk_cfg.device)
+# Hook into MLP input (layer norm before MLP) and MLP output
+input_module = model.transformer.h[layer].ln_2
+output_module = model.transformer.h[layer].mlp
 
-# Create transcoders and activation store
+data_config = DataConfig(
+    dataset_name="Skylion007/openwebtext",
+    tokenizer=tokenizer,
+    text_column="text",
+    seq_len=1024,
+    model_batch_size=16,
+    train_batch_size=shared["batch_size"],
+    num_batches_in_buffer=10,
+    device=device,
+)
+
+activation_store = ActivationsStore(
+    model=model,
+    input_module=input_module,
+    output_module=output_module,
+    data_config=data_config,
+    input_size=input_size,
+    output_size=output_size,
+)
+
 topk_transcoder = TopK(topk_cfg)
 batchtopk_transcoder = BatchTopK(batchtopk_cfg)
-activation_store = TranscoderActivationsStore(model, topk_cfg)
 
-# Train both in parallel
 print("Training transcoders:")
 print(f"  [0] TopK: {topk_cfg.name}")
 print(f"  [1] BatchTopK: {batchtopk_cfg.name}")
-print(f"  Input: {topk_cfg.input_hook_point}")
-print(f"  Output: {topk_cfg.output_hook_point}")
+print(f"  Layer: {layer}")
 print(f"  Dict size: {topk_cfg.dict_size}, Top-k: {topk_cfg.top_k}")
 
 train_encoder_group(
-    [topk_transcoder, batchtopk_transcoder],
+    [batchtopk_transcoder],
     activation_store,
-    model,
     [topk_cfg, batchtopk_cfg],
+    loss_fn=make_loss_fn(model, tokenizer),
 )
