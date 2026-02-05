@@ -119,7 +119,7 @@ def get_performance_metrics(
         "performance/reconstr_loss": reconstr_loss,
         "performance/zero_loss": zero_loss,
         "performance/mean_loss": mean_loss,
-        "performance/ce_degradation": original_loss - reconstr_loss,
+        "performance/ce_degradation": reconstr_loss - original_loss,
         "performance/recovery_from_zero": 100 * (reconstr_loss - zero_loss) / (original_loss - zero_loss),
         "performance/recovery_from_mean": 100 * (reconstr_loss - mean_loss) / (original_loss - mean_loss),
     }

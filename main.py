@@ -71,7 +71,7 @@ print(f"  Layer: {layer}")
 print(f"  Dict size: {topk_cfg.dict_size}, Top-k: {topk_cfg.top_k}")
 
 train_encoder_group(
-    [batchtopk_transcoder],
+    [topk_transcoder, batchtopk_transcoder],
     activation_store,
     [topk_cfg, batchtopk_cfg],
 )
