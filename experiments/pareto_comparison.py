@@ -175,8 +175,14 @@ def eval_transcoder_ce(
 
 
 def load_spd(checkpoint_path: str) -> ComponentModel:
-    """Load a trained SPD model."""
-    return ComponentModel.from_pretrained(checkpoint_path)
+    """Load a trained SPD model from a run directory or .pth file."""
+    path = Path(checkpoint_path)
+    if path.is_dir():
+        # Resolve the latest model checkpoint in the directory
+        pth_files = sorted(path.glob("model_*.pth"))
+        assert pth_files, f"No model_*.pth files found in {path}"
+        path = pth_files[-1]
+    return ComponentModel.from_pretrained(str(path))
 
 
 @torch.no_grad()
