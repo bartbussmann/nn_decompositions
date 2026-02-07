@@ -233,6 +233,49 @@ def eval_spd_ce(
     return total_loss / len(batches)
 
 
+@torch.no_grad()
+def eval_spd_ce_thresholded(
+    spd_model: ComponentModel,
+    tokenizer,
+    batches: list[tuple[torch.Tensor, torch.Tensor]],
+    module_name: str,
+    threshold: float = 0.5,
+) -> tuple[float, float]:
+    """Evaluate SPD with binary CI mask (post-sigmoid > threshold).
+
+    Returns (mean_l0, mean_ce_loss).
+    """
+    total_loss = 0.0
+    total_l0 = 0.0
+    for input_ids, attention_mask in batches:
+        out = spd_model(input_ids, attention_mask=attention_mask, cache_type="input")
+        pre_weight_acts = out.cache
+
+        ci = spd_model.calc_causal_importances(pre_weight_acts, sampling="continuous")
+        ci_post_sigmoid = ci.lower_leaky[module_name]  # (batch, seq_len, C)
+
+        # Binary mask: round at threshold
+        mask = (ci_post_sigmoid > threshold).float()
+        total_l0 += mask.sum(-1).mean().item()
+
+        mask_infos = make_mask_infos({module_name: mask})
+        logits = spd_model(input_ids, attention_mask=attention_mask, mask_infos=mask_infos)
+
+        labels = input_ids.clone()
+        labels[input_ids == tokenizer.pad_token_id] = -100
+        shift_logits = logits[:, :-1].contiguous()
+        shift_labels = labels[:, 1:].contiguous()
+        loss = F.cross_entropy(
+            shift_logits.view(-1, shift_logits.size(-1)),
+            shift_labels.view(-1),
+            ignore_index=-100,
+        )
+        total_loss += loss.item()
+
+    n = len(batches)
+    return total_l0 / n, total_loss / n
+
+
 # =============================================================================
 # Baselines
 # =============================================================================
@@ -277,14 +320,29 @@ def plot_pareto(
     spd_cfc_ces: list[float],
     spd_cproj_ces: list[float],
     baselines: dict[str, float],
+    special_points: dict[str, tuple[float, float]],
     save_path: str,
 ):
-    """Plot L0 vs CE-loss Pareto curves."""
+    """Plot L0 vs CE-loss Pareto curves with special marker points.
+
+    special_points maps label -> (l0, ce) for starred markers.
+    """
     fig, ax = plt.subplots(figsize=(10, 6))
 
     ax.plot(l0_values, transcoder_ces, "o-", color="tab:blue", label="Transcoder")
     ax.plot(l0_values, spd_cfc_ces, "s-", color="tab:orange", label="SPD (c_fc)")
     ax.plot(l0_values, spd_cproj_ces, "^-", color="tab:green", label="SPD (c_proj)")
+
+    # Special points
+    sp_colors = {
+        "Transcoder (train k)": "tab:blue",
+        "SPD c_fc (CI>0.5)": "tab:orange",
+        "SPD c_proj (CI>0.5)": "tab:green",
+    }
+    for label, (l0, ce) in special_points.items():
+        color = sp_colors.get(label, "black")
+        ax.plot(l0, ce, "*", color=color, markersize=18, markeredgecolor="black",
+                markeredgewidth=0.8, label=label, zorder=5)
 
     ax.axhline(baselines["original_ce"], color="gray", linestyle="--", alpha=0.7, label="Original CE")
     ax.axhline(
@@ -384,9 +442,29 @@ def main():
 
         print(f"{k:>6} | {tc_ce:>12.4f} | {cfc_ce:>12.4f} | {cproj_ce:>12.4f}")
 
+    # Special points
+    print("\nSpecial points:")
+    special_points = {}
+
+    # Transcoder at training k
+    train_k = transcoder.cfg.top_k
+    tc_train_ce = eval_transcoder_ce(model, tokenizer, transcoder, batches, train_k)
+    special_points["Transcoder (train k)"] = (train_k, tc_train_ce)
+    print(f"  Transcoder (train k={train_k}): CE={tc_train_ce:.4f}")
+
+    # SPD with CI > 0.5 thresholding
+    cfc_l0, cfc_thresh_ce = eval_spd_ce_thresholded(spd_model, tokenizer, batches, cfc_name)
+    special_points["SPD c_fc (CI>0.5)"] = (cfc_l0, cfc_thresh_ce)
+    print(f"  SPD c_fc (CI>0.5): L0={cfc_l0:.1f}, CE={cfc_thresh_ce:.4f}")
+
+    cproj_l0, cproj_thresh_ce = eval_spd_ce_thresholded(spd_model, tokenizer, batches, cproj_name)
+    special_points["SPD c_proj (CI>0.5)"] = (cproj_l0, cproj_thresh_ce)
+    print(f"  SPD c_proj (CI>0.5): L0={cproj_l0:.1f}, CE={cproj_thresh_ce:.4f}")
+
     # Plot
     plot_pareto(
-        args.l0_values, transcoder_ces, spd_cfc_ces, spd_cproj_ces, baselines, args.save_path
+        args.l0_values, transcoder_ces, spd_cfc_ces, spd_cproj_ces,
+        baselines, special_points, args.save_path,
     )
 
 
