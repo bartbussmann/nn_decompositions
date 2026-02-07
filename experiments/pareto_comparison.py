@@ -182,7 +182,9 @@ def load_spd(checkpoint_path: str) -> ComponentModel:
         pth_files = sorted(path.glob("model_*.pth"))
         assert pth_files, f"No model_*.pth files found in {path}"
         path = pth_files[-1]
-    return ComponentModel.from_pretrained(str(path))
+    model = ComponentModel.from_pretrained(str(path))
+    model.to(DEVICE)
+    return model
 
 
 @torch.no_grad()
