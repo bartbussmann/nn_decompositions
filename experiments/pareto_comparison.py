@@ -183,6 +183,30 @@ def transcoder_topk_reconstruction(transcoder, x_in: torch.Tensor, k: int) -> to
     return acts @ transcoder.W_dec + transcoder.b_dec
 
 
+def transcoder_batchtopk_reconstruction(transcoder, x_in: torch.Tensor, k: int) -> torch.Tensor:
+    """Reconstruct using batch top-k: select k*n_tokens activations across the flattened batch."""
+    use_pre_enc_bias = transcoder.cfg.pre_enc_bias and transcoder.input_size == transcoder.output_size
+    x_enc = x_in - transcoder.b_dec if use_pre_enc_bias else x_in
+
+    if isinstance(transcoder, (TopK, BatchTopK)):
+        acts = F.relu(x_enc @ transcoder.W_enc)
+    else:
+        acts = F.relu(x_enc @ transcoder.W_enc + transcoder.b_enc)
+
+    # Select top-k across the flattened batch (k * n_tokens total activations)
+    n_tokens = acts.shape[0]
+    n_keep = k * n_tokens
+    if n_keep < acts.numel():
+        topk = torch.topk(acts.flatten(), n_keep, dim=-1)
+        acts = (
+            torch.zeros_like(acts.flatten())
+            .scatter(-1, topk.indices, topk.values)
+            .reshape(acts.shape)
+        )
+
+    return acts @ transcoder.W_dec + transcoder.b_dec
+
+
 @torch.no_grad()
 def eval_transcoder_ce(
     model: GPT2LMHeadModel,
@@ -221,6 +245,94 @@ def eval_transcoder_mse(
         recon = transcoder_topk_reconstruction(transcoder, mlp_in, k)
         total_mse += F.mse_loss(recon, mlp_out).item()
     return total_mse / len(mlp_activations)
+
+
+@torch.no_grad()
+def eval_transcoder_batchtopk_ce(
+    model: GPT2LMHeadModel,
+    tokenizer,
+    transcoder,
+    batches: list[tuple[torch.Tensor, torch.Tensor]],
+    k: int,
+) -> tuple[float, float]:
+    """Evaluate CE loss with transcoder using batch top-k. Returns (mean_l0, mean_ce)."""
+    mlp = model.transformer.h[LAYER].mlp
+    input_size = transcoder.cfg.input_size
+
+    total_loss = 0.0
+    total_l0 = 0.0
+    for input_ids, attention_mask in batches:
+
+        def _patched(hidden_states):
+            flat = hidden_states.reshape(-1, input_size)
+            recon = transcoder_batchtopk_reconstruction(transcoder, flat, k)
+            return recon.reshape(hidden_states.shape)
+
+        with patched_forward(mlp, _patched):
+            total_loss += compute_ce_loss(model, tokenizer, input_ids, attention_mask)
+
+        # Compute actual L0 for this batch
+        flat = _get_mlp_input(model, input_ids, attention_mask)
+        recon_acts = _get_batchtopk_acts(transcoder, flat, k)
+        total_l0 += (recon_acts > 0).float().sum(-1).mean().item()
+
+    n = len(batches)
+    return total_l0 / n, total_loss / n
+
+
+@torch.no_grad()
+def eval_transcoder_batchtopk_mse(
+    transcoder,
+    mlp_activations: list[tuple[torch.Tensor, torch.Tensor]],
+    k: int,
+) -> tuple[float, float]:
+    """Evaluate MSE with transcoder using batch top-k. Returns (mean_l0, mean_mse)."""
+    total_mse = 0.0
+    total_l0 = 0.0
+    for mlp_in, mlp_out in mlp_activations:
+        recon = transcoder_batchtopk_reconstruction(transcoder, mlp_in, k)
+        total_mse += F.mse_loss(recon, mlp_out).item()
+
+        acts = _get_batchtopk_acts(transcoder, mlp_in, k)
+        total_l0 += (acts > 0).float().sum(-1).mean().item()
+
+    n = len(mlp_activations)
+    return total_l0 / n, total_mse / n
+
+
+def _get_mlp_input(model, input_ids, attention_mask):
+    """Get flattened MLP input for a batch."""
+    ln2 = model.transformer.h[LAYER].ln_2
+    captured = {}
+
+    def _hook(_mod, _inp, out):
+        captured["out"] = out.detach()
+
+    h = ln2.register_forward_hook(_hook)
+    model(input_ids, attention_mask=attention_mask)
+    h.remove()
+    return captured["out"].reshape(-1, captured["out"].shape[-1])
+
+
+def _get_batchtopk_acts(transcoder, x_in, k):
+    """Get sparse activations using batch top-k selection."""
+    use_pre_enc_bias = transcoder.cfg.pre_enc_bias and transcoder.input_size == transcoder.output_size
+    x_enc = x_in - transcoder.b_dec if use_pre_enc_bias else x_in
+
+    if isinstance(transcoder, (TopK, BatchTopK)):
+        acts = F.relu(x_enc @ transcoder.W_enc)
+    else:
+        acts = F.relu(x_enc @ transcoder.W_enc + transcoder.b_enc)
+
+    n_keep = k * acts.shape[0]
+    if n_keep < acts.numel():
+        topk = torch.topk(acts.flatten(), n_keep, dim=-1)
+        acts = (
+            torch.zeros_like(acts.flatten())
+            .scatter(-1, topk.indices, topk.values)
+            .reshape(acts.shape)
+        )
+    return acts
 
 
 # =============================================================================
@@ -484,7 +596,7 @@ def plot_pareto(
 
     # Special points
     sp_colors = {
-        "Transcoder (train k)": "tab:blue",
+        "BatchTopK (train k)": "tab:blue",
         "SPD c_fc (CI>0.5)": "tab:orange",
         "SPD c_proj (CI>0.5)": "tab:green",
     }
@@ -530,7 +642,7 @@ def plot_pareto_mse(
     ax.plot(l0_values, spd_cproj_mses, "^-", color="tab:green", label="SPD (c_proj)")
 
     sp_colors = {
-        "Transcoder (train k)": "tab:blue",
+        "BatchTopK (train k)": "tab:blue",
         "SPD c_fc (CI>0.5)": "tab:orange",
         "SPD c_proj (CI>0.5)": "tab:green",
     }
@@ -647,9 +759,9 @@ def main():
     special_points_ce = {}
 
     train_k = transcoder.cfg.top_k
-    tc_train_ce = eval_transcoder_ce(model, tokenizer, transcoder, batches, train_k)
-    special_points_ce["Transcoder (train k)"] = (train_k, tc_train_ce)
-    print(f"  Transcoder (train k={train_k}): CE={tc_train_ce:.4f}")
+    tc_l0, tc_train_ce = eval_transcoder_batchtopk_ce(model, tokenizer, transcoder, batches, train_k)
+    special_points_ce["BatchTopK (train k)"] = (tc_l0, tc_train_ce)
+    print(f"  BatchTopK (train k={train_k}): L0={tc_l0:.1f}, CE={tc_train_ce:.4f}")
 
     cfc_l0, cfc_thresh_ce = eval_spd_ce_thresholded(spd_model, tokenizer, batches, cfc_name)
     special_points_ce["SPD c_fc (CI>0.5)"] = (cfc_l0, cfc_thresh_ce)
@@ -663,9 +775,9 @@ def main():
     print("\nSpecial points (MSE):")
     special_points_mse = {}
 
-    tc_train_mse = eval_transcoder_mse(transcoder, mlp_activations, train_k)
-    special_points_mse["Transcoder (train k)"] = (train_k, tc_train_mse)
-    print(f"  Transcoder (train k={train_k}): MSE={tc_train_mse:.6f}")
+    tc_l0_mse, tc_train_mse = eval_transcoder_batchtopk_mse(transcoder, mlp_activations, train_k)
+    special_points_mse["BatchTopK (train k)"] = (tc_l0_mse, tc_train_mse)
+    print(f"  BatchTopK (train k={train_k}): L0={tc_l0_mse:.1f}, MSE={tc_train_mse:.6f}")
 
     cfc_l0_mse, cfc_thresh_mse = eval_spd_mse_thresholded(spd_model, batches, cfc_name)
     special_points_mse["SPD c_fc (CI>0.5)"] = (cfc_l0_mse, cfc_thresh_mse)
