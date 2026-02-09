@@ -599,10 +599,18 @@ def plot_pareto(
         "BatchTopK (train k)": "tab:blue",
         "SPD c_fc (CI>0.5)": "tab:orange",
         "SPD c_proj (CI>0.5)": "tab:green",
+        "SPD c_fc (CI>0)": "tab:orange",
+        "SPD c_proj (CI>0)": "tab:green",
+    }
+    sp_markers = {
+        "SPD c_fc (CI>0)": "D",
+        "SPD c_proj (CI>0)": "D",
     }
     for label, (l0, ce) in special_points.items():
         color = sp_colors.get(label, "black")
-        ax.plot(l0, ce, "*", color=color, markersize=18, markeredgecolor="black",
+        marker = sp_markers.get(label, "*")
+        size = 12 if marker == "D" else 18
+        ax.plot(l0, ce, marker, color=color, markersize=size, markeredgecolor="black",
                 markeredgewidth=0.8, label=label, zorder=5)
 
     ax.axhline(baselines["original_ce"], color="gray", linestyle="--", alpha=0.7, label="Original CE")
@@ -645,10 +653,18 @@ def plot_pareto_mse(
         "BatchTopK (train k)": "tab:blue",
         "SPD c_fc (CI>0.5)": "tab:orange",
         "SPD c_proj (CI>0.5)": "tab:green",
+        "SPD c_fc (CI>0)": "tab:orange",
+        "SPD c_proj (CI>0)": "tab:green",
+    }
+    sp_markers = {
+        "SPD c_fc (CI>0)": "D",
+        "SPD c_proj (CI>0)": "D",
     }
     for label, (l0, mse) in special_points.items():
         color = sp_colors.get(label, "black")
-        ax.plot(l0, mse, "*", color=color, markersize=18, markeredgecolor="black",
+        marker = sp_markers.get(label, "*")
+        size = 12 if marker == "D" else 18
+        ax.plot(l0, mse, marker, color=color, markersize=size, markeredgecolor="black",
                 markeredgewidth=0.8, label=label, zorder=5)
 
     ax.set_xlabel("L0 (number of active components)")
@@ -771,6 +787,14 @@ def main():
     special_points_ce["SPD c_proj (CI>0.5)"] = (cproj_l0, cproj_thresh_ce)
     print(f"  SPD c_proj (CI>0.5): L0={cproj_l0:.1f}, CE={cproj_thresh_ce:.4f}")
 
+    cfc_l0_0, cfc_thresh_ce_0 = eval_spd_ce_thresholded(spd_model, tokenizer, batches, cfc_name, threshold=0.0)
+    special_points_ce["SPD c_fc (CI>0)"] = (cfc_l0_0, cfc_thresh_ce_0)
+    print(f"  SPD c_fc (CI>0): L0={cfc_l0_0:.1f}, CE={cfc_thresh_ce_0:.4f}")
+
+    cproj_l0_0, cproj_thresh_ce_0 = eval_spd_ce_thresholded(spd_model, tokenizer, batches, cproj_name, threshold=0.0)
+    special_points_ce["SPD c_proj (CI>0)"] = (cproj_l0_0, cproj_thresh_ce_0)
+    print(f"  SPD c_proj (CI>0): L0={cproj_l0_0:.1f}, CE={cproj_thresh_ce_0:.4f}")
+
     # Special points (MSE)
     print("\nSpecial points (MSE):")
     special_points_mse = {}
@@ -786,6 +810,14 @@ def main():
     cproj_l0_mse, cproj_thresh_mse = eval_spd_mse_thresholded(spd_model, batches, cproj_name)
     special_points_mse["SPD c_proj (CI>0.5)"] = (cproj_l0_mse, cproj_thresh_mse)
     print(f"  SPD c_proj (CI>0.5): L0={cproj_l0_mse:.1f}, MSE={cproj_thresh_mse:.6f}")
+
+    cfc_l0_mse_0, cfc_thresh_mse_0 = eval_spd_mse_thresholded(spd_model, batches, cfc_name, threshold=0.0)
+    special_points_mse["SPD c_fc (CI>0)"] = (cfc_l0_mse_0, cfc_thresh_mse_0)
+    print(f"  SPD c_fc (CI>0): L0={cfc_l0_mse_0:.1f}, MSE={cfc_thresh_mse_0:.6f}")
+
+    cproj_l0_mse_0, cproj_thresh_mse_0 = eval_spd_mse_thresholded(spd_model, batches, cproj_name, threshold=0.0)
+    special_points_mse["SPD c_proj (CI>0)"] = (cproj_l0_mse_0, cproj_thresh_mse_0)
+    print(f"  SPD c_proj (CI>0): L0={cproj_l0_mse_0:.1f}, MSE={cproj_thresh_mse_0:.6f}")
 
     # Plots
     plot_pareto(
