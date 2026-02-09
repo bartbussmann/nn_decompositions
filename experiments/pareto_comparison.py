@@ -96,6 +96,46 @@ def compute_ce_loss(model, tokenizer, input_ids, attention_mask):
 
 
 # =============================================================================
+# MLP activation collection (for MSE)
+# =============================================================================
+
+
+@torch.no_grad()
+def get_mlp_activations(
+    model: GPT2LMHeadModel,
+    batches: list[tuple[torch.Tensor, torch.Tensor]],
+) -> list[tuple[torch.Tensor, torch.Tensor]]:
+    """Collect (mlp_input, mlp_output) pairs from the original model.
+
+    Returns one (input, output) pair per batch, each shaped (batch*seq_len, d).
+    """
+    mlp = model.transformer.h[LAYER].mlp
+    ln2 = model.transformer.h[LAYER].ln_2
+    pairs = []
+
+    for input_ids, attention_mask in batches:
+        captured = {}
+
+        def _capture_ln2_output(_mod, _inp, out):
+            captured["mlp_in"] = out.detach()
+
+        def _capture_mlp_output(_mod, _inp, out):
+            captured["mlp_out"] = out.detach()
+
+        h1 = ln2.register_forward_hook(_capture_ln2_output)
+        h2 = mlp.register_forward_hook(_capture_mlp_output)
+        model(input_ids, attention_mask=attention_mask)
+        h1.remove()
+        h2.remove()
+
+        mlp_in = captured["mlp_in"].reshape(-1, captured["mlp_in"].shape[-1])
+        mlp_out = captured["mlp_out"].reshape(-1, captured["mlp_out"].shape[-1])
+        pairs.append((mlp_in, mlp_out))
+
+    return pairs
+
+
+# =============================================================================
 # Transcoder
 # =============================================================================
 
@@ -169,6 +209,20 @@ def eval_transcoder_ce(
     return total_loss / len(batches)
 
 
+@torch.no_grad()
+def eval_transcoder_mse(
+    transcoder,
+    mlp_activations: list[tuple[torch.Tensor, torch.Tensor]],
+    k: int,
+) -> float:
+    """Evaluate MSE between transcoder top-k reconstruction and original MLP output."""
+    total_mse = 0.0
+    for mlp_in, mlp_out in mlp_activations:
+        recon = transcoder_topk_reconstruction(transcoder, mlp_in, k)
+        total_mse += F.mse_loss(recon, mlp_out).item()
+    return total_mse / len(mlp_activations)
+
+
 # =============================================================================
 # SPD
 # =============================================================================
@@ -214,7 +268,7 @@ def eval_spd_ce(
         mask = torch.zeros_like(ci_scores)
         mask.scatter_(-1, topk_indices, 1.0)
 
-        # Forward with mask on only the target module
+        # Forward with mask on only the target moduleCoo
         mask_infos = make_mask_infos({module_name: mask})
         logits = spd_model(input_ids, attention_mask=attention_mask, mask_infos=mask_infos)
 
@@ -274,6 +328,101 @@ def eval_spd_ce_thresholded(
 
     n = len(batches)
     return total_l0 / n, total_loss / n
+
+
+@torch.no_grad()
+def eval_spd_mse(
+    spd_model: ComponentModel,
+    batches: list[tuple[torch.Tensor, torch.Tensor]],
+    module_name: str,
+    k: int,
+) -> float:
+    """Evaluate MSE at the MLP output level with SPD top-k components for one module."""
+    target_mlp = spd_model.target_model.transformer.h[LAYER].mlp
+    total_mse = 0.0
+
+    for input_ids, attention_mask in batches:
+        # Original MLP output (no masks)
+        captured_orig = {}
+
+        def _capture_orig(_mod, _inp, out):
+            captured_orig["out"] = out.detach()
+
+        hook = target_mlp.register_forward_hook(_capture_orig)
+        spd_model(input_ids, attention_mask=attention_mask)
+        hook.remove()
+
+        # Masked MLP output
+        out = spd_model(input_ids, attention_mask=attention_mask, cache_type="input")
+        pre_weight_acts = out.cache
+        ci = spd_model.calc_causal_importances(pre_weight_acts, sampling="continuous")
+        ci_scores = ci.pre_sigmoid[module_name]
+
+        topk_indices = torch.topk(ci_scores, k, dim=-1).indices
+        mask = torch.zeros_like(ci_scores)
+        mask.scatter_(-1, topk_indices, 1.0)
+
+        captured_masked = {}
+
+        def _capture_masked(_mod, _inp, out):
+            captured_masked["out"] = out.detach()
+
+        hook = target_mlp.register_forward_hook(_capture_masked)
+        mask_infos = make_mask_infos({module_name: mask})
+        spd_model(input_ids, attention_mask=attention_mask, mask_infos=mask_infos)
+        hook.remove()
+
+        total_mse += F.mse_loss(captured_masked["out"], captured_orig["out"]).item()
+
+    return total_mse / len(batches)
+
+
+@torch.no_grad()
+def eval_spd_mse_thresholded(
+    spd_model: ComponentModel,
+    batches: list[tuple[torch.Tensor, torch.Tensor]],
+    module_name: str,
+    threshold: float = 0.5,
+) -> tuple[float, float]:
+    """Evaluate SPD MSE with binary CI mask. Returns (mean_l0, mean_mse)."""
+    target_mlp = spd_model.target_model.transformer.h[LAYER].mlp
+    total_mse = 0.0
+    total_l0 = 0.0
+
+    for input_ids, attention_mask in batches:
+        # Original MLP output
+        captured_orig = {}
+
+        def _capture_orig(_mod, _inp, out):
+            captured_orig["out"] = out.detach()
+
+        hook = target_mlp.register_forward_hook(_capture_orig)
+        spd_model(input_ids, attention_mask=attention_mask)
+        hook.remove()
+
+        # Masked MLP output
+        out = spd_model(input_ids, attention_mask=attention_mask, cache_type="input")
+        pre_weight_acts = out.cache
+        ci = spd_model.calc_causal_importances(pre_weight_acts, sampling="continuous")
+        ci_post_sigmoid = ci.lower_leaky[module_name]
+
+        mask = (ci_post_sigmoid > threshold).float()
+        total_l0 += mask.sum(-1).mean().item()
+
+        captured_masked = {}
+
+        def _capture_masked(_mod, _inp, out):
+            captured_masked["out"] = out.detach()
+
+        hook = target_mlp.register_forward_hook(_capture_masked)
+        mask_infos = make_mask_infos({module_name: mask})
+        spd_model(input_ids, attention_mask=attention_mask, mask_infos=mask_infos)
+        hook.remove()
+
+        total_mse += F.mse_loss(captured_masked["out"], captured_orig["out"]).item()
+
+    n = len(batches)
+    return total_l0 / n, total_mse / n
 
 
 # =============================================================================
@@ -365,6 +514,43 @@ def plot_pareto(
     print(f"Plot saved to {save_path}")
 
 
+def plot_pareto_mse(
+    l0_values: list[int],
+    transcoder_mses: list[float],
+    spd_cfc_mses: list[float],
+    spd_cproj_mses: list[float],
+    special_points: dict[str, tuple[float, float]],
+    save_path: str,
+):
+    """Plot L0 vs MSE Pareto curves."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    ax.plot(l0_values, transcoder_mses, "o-", color="tab:blue", label="Transcoder")
+    ax.plot(l0_values, spd_cfc_mses, "s-", color="tab:orange", label="SPD (c_fc)")
+    ax.plot(l0_values, spd_cproj_mses, "^-", color="tab:green", label="SPD (c_proj)")
+
+    sp_colors = {
+        "Transcoder (train k)": "tab:blue",
+        "SPD c_fc (CI>0.5)": "tab:orange",
+        "SPD c_proj (CI>0.5)": "tab:green",
+    }
+    for label, (l0, mse) in special_points.items():
+        color = sp_colors.get(label, "black")
+        ax.plot(l0, mse, "*", color=color, markersize=18, markeredgecolor="black",
+                markeredgewidth=0.8, label=label, zorder=5)
+
+    ax.set_xlabel("L0 (number of active components)")
+    ax.set_ylabel("MLP Output MSE")
+    ax.set_title("L0 vs MLP Reconstruction MSE: SPD vs Transcoder (GPT-2 Layer 8 MLP)")
+    ax.set_xscale("log")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=150)
+    print(f"Plot saved to {save_path}")
+
+
 # =============================================================================
 # Main
 # =============================================================================
@@ -423,48 +609,82 @@ def main():
     print(f"  Original CE: {baselines['original_ce']:.4f}")
     print(f"  Zero-ablation CE: {baselines['zero_ablation_ce']:.4f}")
 
+    # Collect MLP activations for MSE evaluation
+    print("Collecting MLP activations for MSE...")
+    mlp_activations = get_mlp_activations(model, batches)
+
     # Evaluate at each L0
     transcoder_ces = []
     spd_cfc_ces = []
     spd_cproj_ces = []
+    transcoder_mses = []
+    spd_cfc_mses = []
+    spd_cproj_mses = []
 
-    print(f"\n{'L0':>6} | {'Transcoder':>12} | {'SPD c_fc':>12} | {'SPD c_proj':>12}")
-    print("-" * 55)
+    print(f"\n{'L0':>6} | {'TC CE':>10} | {'cfc CE':>10} | {'cproj CE':>10} | {'TC MSE':>10} | {'cfc MSE':>10} | {'cproj MSE':>10}")
+    print("-" * 85)
 
     for k in args.l0_values:
         tc_ce = eval_transcoder_ce(model, tokenizer, transcoder, batches, k)
         cfc_ce = eval_spd_ce(spd_model, tokenizer, batches, cfc_name, k)
         cproj_ce = eval_spd_ce(spd_model, tokenizer, batches, cproj_name, k)
 
+        tc_mse = eval_transcoder_mse(transcoder, mlp_activations, k)
+        cfc_mse = eval_spd_mse(spd_model, batches, cfc_name, k)
+        cproj_mse = eval_spd_mse(spd_model, batches, cproj_name, k)
+
         transcoder_ces.append(tc_ce)
         spd_cfc_ces.append(cfc_ce)
         spd_cproj_ces.append(cproj_ce)
+        transcoder_mses.append(tc_mse)
+        spd_cfc_mses.append(cfc_mse)
+        spd_cproj_mses.append(cproj_mse)
 
-        print(f"{k:>6} | {tc_ce:>12.4f} | {cfc_ce:>12.4f} | {cproj_ce:>12.4f}")
+        print(f"{k:>6} | {tc_ce:>10.4f} | {cfc_ce:>10.4f} | {cproj_ce:>10.4f} | {tc_mse:>10.6f} | {cfc_mse:>10.6f} | {cproj_mse:>10.6f}")
 
-    # Special points
-    print("\nSpecial points:")
-    special_points = {}
+    # Special points (CE)
+    print("\nSpecial points (CE):")
+    special_points_ce = {}
 
-    # Transcoder at training k
     train_k = transcoder.cfg.top_k
     tc_train_ce = eval_transcoder_ce(model, tokenizer, transcoder, batches, train_k)
-    special_points["Transcoder (train k)"] = (train_k, tc_train_ce)
+    special_points_ce["Transcoder (train k)"] = (train_k, tc_train_ce)
     print(f"  Transcoder (train k={train_k}): CE={tc_train_ce:.4f}")
 
-    # SPD with CI > 0.5 thresholding
     cfc_l0, cfc_thresh_ce = eval_spd_ce_thresholded(spd_model, tokenizer, batches, cfc_name)
-    special_points["SPD c_fc (CI>0.5)"] = (cfc_l0, cfc_thresh_ce)
+    special_points_ce["SPD c_fc (CI>0.5)"] = (cfc_l0, cfc_thresh_ce)
     print(f"  SPD c_fc (CI>0.5): L0={cfc_l0:.1f}, CE={cfc_thresh_ce:.4f}")
 
     cproj_l0, cproj_thresh_ce = eval_spd_ce_thresholded(spd_model, tokenizer, batches, cproj_name)
-    special_points["SPD c_proj (CI>0.5)"] = (cproj_l0, cproj_thresh_ce)
+    special_points_ce["SPD c_proj (CI>0.5)"] = (cproj_l0, cproj_thresh_ce)
     print(f"  SPD c_proj (CI>0.5): L0={cproj_l0:.1f}, CE={cproj_thresh_ce:.4f}")
 
-    # Plot
+    # Special points (MSE)
+    print("\nSpecial points (MSE):")
+    special_points_mse = {}
+
+    tc_train_mse = eval_transcoder_mse(transcoder, mlp_activations, train_k)
+    special_points_mse["Transcoder (train k)"] = (train_k, tc_train_mse)
+    print(f"  Transcoder (train k={train_k}): MSE={tc_train_mse:.6f}")
+
+    cfc_l0_mse, cfc_thresh_mse = eval_spd_mse_thresholded(spd_model, batches, cfc_name)
+    special_points_mse["SPD c_fc (CI>0.5)"] = (cfc_l0_mse, cfc_thresh_mse)
+    print(f"  SPD c_fc (CI>0.5): L0={cfc_l0_mse:.1f}, MSE={cfc_thresh_mse:.6f}")
+
+    cproj_l0_mse, cproj_thresh_mse = eval_spd_mse_thresholded(spd_model, batches, cproj_name)
+    special_points_mse["SPD c_proj (CI>0.5)"] = (cproj_l0_mse, cproj_thresh_mse)
+    print(f"  SPD c_proj (CI>0.5): L0={cproj_l0_mse:.1f}, MSE={cproj_thresh_mse:.6f}")
+
+    # Plots
     plot_pareto(
         args.l0_values, transcoder_ces, spd_cfc_ces, spd_cproj_ces,
-        baselines, special_points, args.save_path,
+        baselines, special_points_ce, args.save_path,
+    )
+
+    mse_save_path = args.save_path.replace(".png", "_mse.png")
+    plot_pareto_mse(
+        args.l0_values, transcoder_mses, spd_cfc_mses, spd_cproj_mses,
+        special_points_mse, mse_save_path,
     )
 
 
