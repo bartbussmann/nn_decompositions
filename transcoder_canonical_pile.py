@@ -94,7 +94,6 @@ def main():
         data_config=data_config,
         input_size=input_size,
         output_size=output_size,
-        compute_loss_fn=compute_loss_llama,
     )
 
     transcoder = BatchTopK(cfg)
@@ -106,7 +105,7 @@ def main():
     print(f"  Steps: {cfg.num_tokens // cfg.batch_size:,}")
     print(f"  Dataset: danbraunai/pile-uncopyrighted-tok")
 
-    train_encoder(transcoder, activation_store, cfg)
+    train_encoder(transcoder, activation_store, cfg, compute_loss_fn=compute_loss_llama)
 
 
 if __name__ == "__main__":

@@ -1,14 +1,10 @@
-from dataclasses import dataclass, field
-from typing import Callable
+from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
 from datasets import load_dataset
 from torch.utils.data import DataLoader, TensorDataset
 from transformers import PreTrainedTokenizerBase
-
-# Type for custom loss functions: (model, tokenizer, input_ids, attention_mask) -> float
-ComputeLossFn = Callable[[nn.Module, PreTrainedTokenizerBase, torch.Tensor, torch.Tensor | None], float]
 
 
 @dataclass
@@ -56,14 +52,12 @@ class ActivationsStore:
         data_config: DataConfig,
         input_size: int,
         output_size: int,
-        compute_loss_fn: ComputeLossFn | None = None,
     ):
         self.model = model
         self.output_module = output_module
         self.data_config = data_config
         self.input_size = input_size
         self.output_size = output_size
-        self.compute_loss_fn = compute_loss_fn
 
         # Activation storage (temporary, written by hooks)
         self._input_acts: torch.Tensor | None = None
