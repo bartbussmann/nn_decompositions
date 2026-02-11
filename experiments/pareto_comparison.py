@@ -336,6 +336,62 @@ def _get_batchtopk_acts(transcoder, x_in, k):
 
 
 # =============================================================================
+# Neurons (top-k hidden activations of the original MLP)
+# =============================================================================
+
+
+def neuron_topk_reconstruction(mlp: nn.Module, x_in: torch.Tensor, k: int) -> torch.Tensor:
+    """Reconstruct MLP output keeping only top-k neurons by activation magnitude.
+
+    Computes h = GELU(c_fc(x)), keeps top-k by |h|, then projects via c_proj.
+    """
+    h = mlp.act(mlp.c_fc(x_in))  # (*, 3072)
+    if k < h.shape[-1]:
+        topk = torch.topk(h.abs(), k, dim=-1)
+        mask = torch.zeros_like(h)
+        mask.scatter_(-1, topk.indices, 1.0)
+        h = h * mask
+    return mlp.c_proj(h)
+
+
+@torch.no_grad()
+def eval_neuron_ce(
+    model: GPT2LMHeadModel,
+    tokenizer,
+    batches: list[tuple[torch.Tensor, torch.Tensor]],
+    k: int,
+) -> float:
+    """Evaluate CE loss with top-k neuron reconstruction."""
+    mlp = model.transformer.h[LAYER].mlp
+
+    total_loss = 0.0
+    for input_ids, attention_mask in batches:
+
+        def _patched(hidden_states):
+            return neuron_topk_reconstruction(mlp, hidden_states, k)
+
+        with patched_forward(mlp, _patched):
+            total_loss += compute_ce_loss(model, tokenizer, input_ids, attention_mask)
+
+    return total_loss / len(batches)
+
+
+@torch.no_grad()
+def eval_neuron_mse(
+    model: GPT2LMHeadModel,
+    mlp_activations: list[tuple[torch.Tensor, torch.Tensor]],
+    k: int,
+) -> float:
+    """Evaluate MSE between top-k neuron reconstruction and original MLP output."""
+    mlp = model.transformer.h[LAYER].mlp
+    total_mse = 0.0
+    for mlp_in, mlp_out in mlp_activations:
+        recon = neuron_topk_reconstruction(mlp, mlp_in, k)
+        total_mse += F.mse_loss(recon, mlp_out).item()
+    return total_mse / len(mlp_activations)
+
+
+# =============================================================================
 # SPD
 # =============================================================================
 
@@ -371,9 +427,9 @@ def eval_spd_ce(
         out = spd_model(input_ids, attention_mask=attention_mask, cache_type="input")
         pre_weight_acts = out.cache
 
-        # Compute CI scores
+        # Compute CI scores (post-sigmoid clipped to [0,1] so dead and anti-components rank equally)
         ci = spd_model.calc_causal_importances(pre_weight_acts, sampling="continuous")
-        ci_scores = ci.pre_sigmoid[module_name]  # (batch, seq_len, C)
+        ci_scores = ci.lower_leaky[module_name].clamp(0, 1)  # (batch, seq_len, C)
 
         # Top-k mask
         topk_indices = torch.topk(ci_scores, k, dim=-1).indices
@@ -468,7 +524,7 @@ def eval_spd_mse(
         out = spd_model(input_ids, attention_mask=attention_mask, cache_type="input")
         pre_weight_acts = out.cache
         ci = spd_model.calc_causal_importances(pre_weight_acts, sampling="continuous")
-        ci_scores = ci.pre_sigmoid[module_name]
+        ci_scores = ci.lower_leaky[module_name].clamp(0, 1)
 
         topk_indices = torch.topk(ci_scores, k, dim=-1).indices
         mask = torch.zeros_like(ci_scores)
@@ -580,6 +636,7 @@ def plot_pareto(
     transcoder_ces: list[float],
     spd_cfc_ces: list[float],
     spd_cproj_ces: list[float],
+    neuron_ces: list[float],
     baselines: dict[str, float],
     special_points: dict[str, tuple[float, float]],
     save_path: str,
@@ -593,6 +650,7 @@ def plot_pareto(
     ax.plot(l0_values, transcoder_ces, "o-", color="tab:blue", label="Transcoder")
     ax.plot(l0_values, spd_cfc_ces, "s-", color="tab:orange", label="SPD (c_fc)")
     ax.plot(l0_values, spd_cproj_ces, "^-", color="tab:green", label="SPD (c_proj)")
+    ax.plot(l0_values, neuron_ces, "d-", color="tab:red", label="Neurons")
 
     # Special points
     sp_colors = {
@@ -639,6 +697,7 @@ def plot_pareto_mse(
     transcoder_mses: list[float],
     spd_cfc_mses: list[float],
     spd_cproj_mses: list[float],
+    neuron_mses: list[float],
     special_points: dict[str, tuple[float, float]],
     save_path: str,
 ):
@@ -648,6 +707,7 @@ def plot_pareto_mse(
     ax.plot(l0_values, transcoder_mses, "o-", color="tab:blue", label="Transcoder")
     ax.plot(l0_values, spd_cfc_mses, "s-", color="tab:orange", label="SPD (c_fc)")
     ax.plot(l0_values, spd_cproj_mses, "^-", color="tab:green", label="SPD (c_proj)")
+    ax.plot(l0_values, neuron_mses, "d-", color="tab:red", label="Neurons")
 
     sp_colors = {
         "BatchTopK (train k)": "tab:blue",
@@ -686,13 +746,13 @@ def plot_pareto_mse(
 
 def main():
     parser = argparse.ArgumentParser(description="L0 vs CE Pareto comparison")
-    parser.add_argument("--transcoder_path", type=str, required=True)
-    parser.add_argument("--spd_path", type=str, required=True)
+    parser.add_argument("--transcoder_path", type=str, default="checkpoints/6144_batchtopk_k32_0.0003_final")
+    parser.add_argument("--spd_path", type=str, default="checkpoints/spd_s-17071bcd")
     parser.add_argument(
         "--l0_values",
         type=int,
         nargs="+",
-        default=[1, 2, 3, 5, 10, 20, 50, 100, 200, 500],
+        default=[1, 2, 3, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 3072, 4000, 5000, 6144],
     )
     parser.add_argument("--n_eval_batches", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=8)
@@ -745,30 +805,36 @@ def main():
     transcoder_ces = []
     spd_cfc_ces = []
     spd_cproj_ces = []
+    neuron_ces = []
     transcoder_mses = []
     spd_cfc_mses = []
     spd_cproj_mses = []
+    neuron_mses = []
 
-    print(f"\n{'L0':>6} | {'TC CE':>10} | {'cfc CE':>10} | {'cproj CE':>10} | {'TC MSE':>10} | {'cfc MSE':>10} | {'cproj MSE':>10}")
-    print("-" * 85)
+    print(f"\n{'L0':>6} | {'TC CE':>10} | {'cfc CE':>10} | {'cproj CE':>10} | {'Neur CE':>10} | {'TC MSE':>10} | {'cfc MSE':>10} | {'cproj MSE':>10} | {'Neur MSE':>10}")
+    print("-" * 109)
 
     for k in args.l0_values:
         tc_ce = eval_transcoder_ce(model, tokenizer, transcoder, batches, k)
         cfc_ce = eval_spd_ce(spd_model, tokenizer, batches, cfc_name, k)
         cproj_ce = eval_spd_ce(spd_model, tokenizer, batches, cproj_name, k)
+        n_ce = eval_neuron_ce(model, tokenizer, batches, k)
 
         tc_mse = eval_transcoder_mse(transcoder, mlp_activations, k)
         cfc_mse = eval_spd_mse(spd_model, batches, cfc_name, k)
         cproj_mse = eval_spd_mse(spd_model, batches, cproj_name, k)
+        n_mse = eval_neuron_mse(model, mlp_activations, k)
 
         transcoder_ces.append(tc_ce)
         spd_cfc_ces.append(cfc_ce)
         spd_cproj_ces.append(cproj_ce)
+        neuron_ces.append(n_ce)
         transcoder_mses.append(tc_mse)
         spd_cfc_mses.append(cfc_mse)
         spd_cproj_mses.append(cproj_mse)
+        neuron_mses.append(n_mse)
 
-        print(f"{k:>6} | {tc_ce:>10.4f} | {cfc_ce:>10.4f} | {cproj_ce:>10.4f} | {tc_mse:>10.6f} | {cfc_mse:>10.6f} | {cproj_mse:>10.6f}")
+        print(f"{k:>6} | {tc_ce:>10.4f} | {cfc_ce:>10.4f} | {cproj_ce:>10.4f} | {n_ce:>10.4f} | {tc_mse:>10.6f} | {cfc_mse:>10.6f} | {cproj_mse:>10.6f} | {n_mse:>10.6f}")
 
     # Special points (CE)
     print("\nSpecial points (CE):")
@@ -821,13 +887,13 @@ def main():
 
     # Plots
     plot_pareto(
-        args.l0_values, transcoder_ces, spd_cfc_ces, spd_cproj_ces,
+        args.l0_values, transcoder_ces, spd_cfc_ces, spd_cproj_ces, neuron_ces,
         baselines, special_points_ce, args.save_path,
     )
 
     mse_save_path = args.save_path.replace(".png", "_mse.png")
     plot_pareto_mse(
-        args.l0_values, transcoder_mses, spd_cfc_mses, spd_cproj_mses,
+        args.l0_values, transcoder_mses, spd_cfc_mses, spd_cproj_mses, neuron_mses,
         special_points_mse, mse_save_path,
     )
 
