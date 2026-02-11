@@ -7,7 +7,7 @@ Matches the SPD decomposition run s-275c8f21 as closely as possible:
 - Same number of steps (400k)
 
 Usage:
-    python transcoder_canonical_pile.py
+    python experiments/transcoder_canonical_pile.py
 """
 
 import sys
@@ -16,7 +16,8 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
-# SPD codebase for model loading
+# Add project root and SPD codebase to path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path("/workspace/spd")))
 
 from transformers import AutoTokenizer
@@ -61,6 +62,12 @@ def main():
     input_module = model.h[LAYER].rms_2
     output_module = model.h[LAYER].mlp
 
+    # Match SPD training: 64 sequences * 512 tokens = 32,768 tokens/step, 400k steps
+    spd_batch_size = 64
+    seq_len = 512
+    tokens_per_step = spd_batch_size * seq_len  # 32,768
+    n_steps = 400_000
+
     cfg = EncoderConfig(
         input_size=input_size,
         output_size=output_size,
@@ -68,8 +75,8 @@ def main():
         encoder_type="batchtopk",
         top_k=24,
         l1_coeff=0.0,
-        batch_size=4096,
-        num_tokens=400_000 * 4096,  # 400k steps * 4096 tokens/step
+        batch_size=tokens_per_step,
+        num_tokens=n_steps * tokens_per_step,
         lr=3e-4,
         wandb_project="pile_transcoder",
         device=DEVICE,
@@ -80,8 +87,8 @@ def main():
         tokenizer=tokenizer,
         is_tokenized=True,
         token_column="input_ids",
-        seq_len=512,
-        model_batch_size=64,
+        seq_len=seq_len,
+        model_batch_size=spd_batch_size,
         train_batch_size=cfg.batch_size,
         num_batches_in_buffer=10,
         device=DEVICE,
