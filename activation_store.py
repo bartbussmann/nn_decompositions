@@ -159,6 +159,7 @@ class ActivationsStore:
 
     def _fill_buffer(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Fill buffer with activations from multiple forward passes."""
+        to_cpu = self.data_config.buffer_on_cpu
         all_inputs = []
         all_outputs = []
         for _ in range(self.data_config.num_batches_in_buffer):
@@ -167,17 +168,15 @@ class ActivationsStore:
             if attention_mask is not None:
                 # Only keep activations for real (non-padding) tokens
                 mask = attention_mask.bool().unsqueeze(-1)  # (batch, seq, 1)
-                all_inputs.append(input_acts[mask.expand_as(input_acts)].reshape(-1, self.input_size))
-                all_outputs.append(output_acts[mask.expand_as(output_acts)].reshape(-1, self.output_size))
+                inp = input_acts[mask.expand_as(input_acts)].reshape(-1, self.input_size)
+                out = output_acts[mask.expand_as(output_acts)].reshape(-1, self.output_size)
             else:
                 # Pre-tokenized: no padding, keep all tokens
-                all_inputs.append(input_acts.reshape(-1, self.input_size))
-                all_outputs.append(output_acts.reshape(-1, self.output_size))
-        inputs = torch.cat(all_inputs, dim=0)
-        outputs = torch.cat(all_outputs, dim=0)
-        if self.data_config.buffer_on_cpu:
-            return inputs.cpu(), outputs.cpu()
-        return inputs, outputs
+                inp = input_acts.reshape(-1, self.input_size)
+                out = output_acts.reshape(-1, self.output_size)
+            all_inputs.append(inp.cpu() if to_cpu else inp)
+            all_outputs.append(out.cpu() if to_cpu else out)
+        return torch.cat(all_inputs, dim=0), torch.cat(all_outputs, dim=0)
 
     def _get_dataloader(self) -> DataLoader:
         """Create dataloader from buffers."""
