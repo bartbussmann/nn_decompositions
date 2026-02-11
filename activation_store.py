@@ -24,6 +24,7 @@ class DataConfig:
     lowercase: bool = False
     is_tokenized: bool = False
     token_column: str = "input_ids"
+    buffer_on_cpu: bool = False
 
 
 class ActivationsStore:
@@ -172,7 +173,11 @@ class ActivationsStore:
                 # Pre-tokenized: no padding, keep all tokens
                 all_inputs.append(input_acts.reshape(-1, self.input_size))
                 all_outputs.append(output_acts.reshape(-1, self.output_size))
-        return torch.cat(all_inputs, dim=0), torch.cat(all_outputs, dim=0)
+        inputs = torch.cat(all_inputs, dim=0)
+        outputs = torch.cat(all_outputs, dim=0)
+        if self.data_config.buffer_on_cpu:
+            return inputs.cpu(), outputs.cpu()
+        return inputs, outputs
 
     def _get_dataloader(self) -> DataLoader:
         """Create dataloader from buffers."""
@@ -186,10 +191,12 @@ class ActivationsStore:
         """Get next batch of (input, target) activations from buffer."""
         try:
             batch = next(self.dataloader_iter)
-            return batch[0], batch[1]
         except (StopIteration, TypeError):
             self.input_buffer, self.output_buffer = self._fill_buffer()
             self.dataloader = self._get_dataloader()
             self.dataloader_iter = iter(self.dataloader)
             batch = next(self.dataloader_iter)
-            return batch[0], batch[1]
+        x_in, y_target = batch[0], batch[1]
+        if self.data_config.buffer_on_cpu:
+            return x_in.to(self.data_config.device), y_target.to(self.data_config.device)
+        return x_in, y_target
