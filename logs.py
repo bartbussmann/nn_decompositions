@@ -2,12 +2,16 @@ import json
 import os
 from contextlib import contextmanager
 from dataclasses import asdict
+from typing import Callable
 
 import torch
 import torch.nn as nn
 import wandb
 
 from config import EncoderConfig
+
+# (model, tokenizer, input_ids, attention_mask | None) -> float
+ComputeLossFn = Callable[[nn.Module, object, torch.Tensor, torch.Tensor | None], float]
 
 
 # =============================================================================
@@ -45,7 +49,7 @@ def log_wandb(output: dict, step: int, wandb_run, suffix: str | None = None):
 # Model Performance Evaluation
 # =============================================================================
 
-def _compute_loss(model, tokenizer, input_ids, attention_mask):
+def _compute_loss_hf(model, tokenizer, input_ids, attention_mask):
     """Compute CE loss for a HuggingFace causal LM."""
     labels = input_ids.clone()
     labels[input_ids == tokenizer.pad_token_id] = -100
@@ -71,20 +75,23 @@ def _patched_forward(module: nn.Module, patched_fn):
 def get_performance_metrics(
     activation_store,
     encoder,
-    batch_tokens: tuple[torch.Tensor, torch.Tensor] | None = None,
+    batch_tokens: tuple[torch.Tensor, torch.Tensor | None] | None = None,
+    compute_loss_fn: ComputeLossFn | None = None,
 ) -> dict:
     """Compute CE degradation and recovery metrics."""
     cfg = encoder.cfg
     if batch_tokens is None:
         input_ids, attention_mask = activation_store.get_batch_tokens()
         input_ids = input_ids[:cfg.n_eval_seqs]
-        attention_mask = attention_mask[:cfg.n_eval_seqs]
+        if attention_mask is not None:
+            attention_mask = attention_mask[:cfg.n_eval_seqs]
     else:
         input_ids, attention_mask = batch_tokens
 
     model = activation_store.model
     tokenizer = activation_store.tokenizer
-    loss = lambda ids, mask: _compute_loss(model, tokenizer, ids, mask)
+    compute_loss = compute_loss_fn or _compute_loss_hf
+    loss = lambda ids, mask: compute_loss(model, tokenizer, ids, mask)
 
     input_acts, output_acts = activation_store.get_activations(input_ids, attention_mask)
     input_acts_flat = input_acts.reshape(-1, cfg.input_size)
@@ -133,10 +140,11 @@ def log_encoder_performance(
     activation_store,
     encoder,
     suffix: str | None = None,
-    batch_tokens: tuple[torch.Tensor, torch.Tensor] | None = None,
+    batch_tokens: tuple[torch.Tensor, torch.Tensor | None] | None = None,
+    compute_loss_fn: ComputeLossFn | None = None,
 ):
     """Log model performance metrics to wandb."""
-    log_dict = get_performance_metrics(activation_store, encoder, batch_tokens)
+    log_dict = get_performance_metrics(activation_store, encoder, batch_tokens, compute_loss_fn)
     if suffix is not None:
         log_dict = {f"{k}/{suffix}": v for k, v in log_dict.items()}
     wandb_run.log(log_dict, step=step)

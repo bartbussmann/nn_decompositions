@@ -3,6 +3,7 @@ import tqdm
 
 from config import EncoderConfig
 from logs import (
+    ComputeLossFn,
     init_wandb,
     log_encoder_performance,
     log_wandb,
@@ -14,6 +15,7 @@ def train_encoder(
     encoder,
     activation_store,
     cfg: EncoderConfig,
+    compute_loss_fn: ComputeLossFn | None = None,
 ):
     """Train any encoder (SAE or transcoder)."""
     num_batches = cfg.num_tokens // cfg.batch_size
@@ -29,7 +31,8 @@ def train_encoder(
         log_wandb(output, i, wandb_run)
 
         if i % cfg.perf_log_freq == 0:
-            log_encoder_performance(wandb_run, i, activation_store, encoder)
+            log_encoder_performance(wandb_run, i, activation_store, encoder,
+                                    compute_loss_fn=compute_loss_fn)
 
         if cfg.checkpoint_freq != "final" and i % cfg.checkpoint_freq == 0:
             save_checkpoint(encoder, cfg, i)
@@ -54,6 +57,7 @@ def train_encoder_group(
     encoders,
     activation_store,
     cfgs: list[EncoderConfig],
+    compute_loss_fn: ComputeLossFn | None = None,
 ):
     """Train multiple encoders on the same activation stream."""
     num_batches = cfgs[0].num_tokens // cfgs[0].batch_size
@@ -94,12 +98,13 @@ def train_encoder_group(
             input_ids, attention_mask = activation_store.get_batch_tokens()
             batch_tokens = (
                 input_ids[:cfgs[0].n_eval_seqs],
-                attention_mask[:cfgs[0].n_eval_seqs],
+                attention_mask[:cfgs[0].n_eval_seqs] if attention_mask is not None else None,
             )
             for encoder, cfg in zip(encoders, cfgs):
                 log_encoder_performance(
                     wandb_run, i, activation_store, encoder,
                     suffix=cfg.encoder_type, batch_tokens=batch_tokens,
+                    compute_loss_fn=compute_loss_fn,
                 )
             del batch_tokens
             torch.cuda.empty_cache()

@@ -22,6 +22,9 @@ class DataConfig:
     seed: int = 42
     streaming: bool = True
     lowercase: bool = False
+    is_tokenized: bool = False
+    token_column: str = "input_ids"
+    buffer_on_cpu: bool = False
 
 
 class ActivationsStore:
@@ -90,7 +93,16 @@ class ActivationsStore:
         self.dataset = self.dataset.shuffle(seed=cfg.seed, buffer_size=10000)
         self.data_iter = iter(self.dataset)
 
-    def get_batch_tokens(self) -> tuple[torch.Tensor, torch.Tensor]:
+    def get_batch_tokens(self) -> tuple[torch.Tensor, torch.Tensor | None]:
+        """Get a batch of tokens. Returns (input_ids, attention_mask).
+
+        For pre-tokenized data, attention_mask is None (no padding).
+        """
+        if self.data_config.is_tokenized:
+            return self._get_batch_tokens_pretokenized()
+        return self._get_batch_tokens_text()
+
+    def _get_batch_tokens_text(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Get a batch of (input_ids, attention_mask) by tokenizing text on-the-fly."""
         cfg = self.data_config
         texts = []
@@ -117,6 +129,22 @@ class ActivationsStore:
             tokens["attention_mask"].to(cfg.device),
         )
 
+    def _get_batch_tokens_pretokenized(self) -> tuple[torch.Tensor, None]:
+        """Get a batch of input_ids from a pre-tokenized dataset. No padding needed."""
+        cfg = self.data_config
+        batch_ids = []
+        for _ in range(cfg.model_batch_size):
+            try:
+                sample = next(self.data_iter)
+            except StopIteration:
+                self.data_iter = iter(self.dataset)
+                sample = next(self.data_iter)
+            ids = sample[cfg.token_column]
+            if not isinstance(ids, torch.Tensor):
+                ids = torch.tensor(ids, dtype=torch.long)
+            batch_ids.append(ids[:cfg.seq_len])
+        return torch.stack(batch_ids).to(cfg.device), None
+
     @torch.no_grad()
     def get_activations(
         self, input_ids: torch.Tensor, attention_mask: torch.Tensor | None = None,
@@ -131,15 +159,23 @@ class ActivationsStore:
 
     def _fill_buffer(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Fill buffer with activations from multiple forward passes."""
+        to_cpu = self.data_config.buffer_on_cpu
         all_inputs = []
         all_outputs = []
         for _ in range(self.data_config.num_batches_in_buffer):
             input_ids, attention_mask = self.get_batch_tokens()
             input_acts, output_acts = self.get_activations(input_ids, attention_mask)
-            # Only keep activations for real (non-padding) tokens
-            mask = attention_mask.bool().unsqueeze(-1)  # (batch, seq, 1)
-            all_inputs.append(input_acts[mask.expand_as(input_acts)].reshape(-1, self.input_size))
-            all_outputs.append(output_acts[mask.expand_as(output_acts)].reshape(-1, self.output_size))
+            if attention_mask is not None:
+                # Only keep activations for real (non-padding) tokens
+                mask = attention_mask.bool().unsqueeze(-1)  # (batch, seq, 1)
+                inp = input_acts[mask.expand_as(input_acts)].reshape(-1, self.input_size)
+                out = output_acts[mask.expand_as(output_acts)].reshape(-1, self.output_size)
+            else:
+                # Pre-tokenized: no padding, keep all tokens
+                inp = input_acts.reshape(-1, self.input_size)
+                out = output_acts.reshape(-1, self.output_size)
+            all_inputs.append(inp.cpu() if to_cpu else inp)
+            all_outputs.append(out.cpu() if to_cpu else out)
         return torch.cat(all_inputs, dim=0), torch.cat(all_outputs, dim=0)
 
     def _get_dataloader(self) -> DataLoader:
@@ -154,10 +190,12 @@ class ActivationsStore:
         """Get next batch of (input, target) activations from buffer."""
         try:
             batch = next(self.dataloader_iter)
-            return batch[0], batch[1]
         except (StopIteration, TypeError):
             self.input_buffer, self.output_buffer = self._fill_buffer()
             self.dataloader = self._get_dataloader()
             self.dataloader_iter = iter(self.dataloader)
             batch = next(self.dataloader_iter)
-            return batch[0], batch[1]
+        x_in, y_target = batch[0], batch[1]
+        if self.data_config.buffer_on_cpu:
+            return x_in.to(self.data_config.device), y_target.to(self.data_config.device)
+        return x_in, y_target
