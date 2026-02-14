@@ -7,7 +7,7 @@ from transformers import GPT2LMHeadModel, AutoTokenizer
 from activation_store import ActivationsStore, DataConfig
 from base import BatchTopK, TopK
 from config import EncoderConfig
-from training import train_encoder_group
+from training import train_encoder_group, train_encoder
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -24,11 +24,11 @@ output_size = model.config.n_embd  # 768
 shared = dict(
     input_size=input_size,
     output_size=output_size,
-    dict_size=768,
+    dict_size=768*8,
     top_k=32,
     l1_coeff=0.0,
-    batch_size=64,
-    num_tokens=int(1e8),  # 100M tokens
+    batch_size=4096,
+    num_tokens=int(5e8),  # 500M tokens
     lr=3e-4,
     wandb_project="gpt2_transcoder",
     device=device,
@@ -45,8 +45,8 @@ data_config = DataConfig(
     dataset_name="Skylion007/openwebtext",
     tokenizer=tokenizer,
     text_column="text",
-    seq_len=1024,
-    model_batch_size=16,
+    seq_len=256,
+    model_batch_size=32,
     train_batch_size=shared["batch_size"],
     num_batches_in_buffer=10,
     device=device,
@@ -70,8 +70,8 @@ print(f"  [1] BatchTopK: {batchtopk_cfg.name}")
 print(f"  Layer: {layer}")
 print(f"  Dict size: {topk_cfg.dict_size}, Top-k: {topk_cfg.top_k}")
 
-train_encoder_group(
-    [topk_transcoder, batchtopk_transcoder],
+train_encoder(
+    batchtopk_transcoder,
     activation_store,
-    [topk_cfg, batchtopk_cfg],
+    batchtopk_cfg,
 )

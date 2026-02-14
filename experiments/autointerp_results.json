@@ -1,0 +1,6009 @@
+{
+  "config": {
+    "total_tokens": 2000000,
+    "seq_len": 128,
+    "n_latents": 100,
+    "dead_latent_threshold": 15,
+    "random_seed": 42,
+    "openai_model": "gpt-5-mini-2025-08-07",
+    "timestamp": "2026-02-13T00:17:28.838072"
+  },
+  "results": {
+    "transcoder": {
+      "method": "transcoder",
+      "autointerp_score": 0.714285671710968,
+      "std_dev": 5.990492013552284e-08,
+      "n_features": 100,
+      "per_feature": {
+        "1143": {
+          "latent": 1143,
+          "explanation": "Words naming medical conditions diseases disorders syndromes and symptoms",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            8,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "419": {
+          "latent": 419,
+          "explanation": "the modal phrase can be and similar can + be constructions",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            4,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2243": {
+          "latent": 2243,
+          "explanation": "mentions of cell lines and the words cell or cells",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            5,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1190": {
+          "latent": 1190,
+          "explanation": "double angle bracket annotation markers like << and >> and the annotated contents",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            5,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3030": {
+          "latent": 3030,
+          "explanation": "the substring over appearing as a prefix or standalone word regardless of case",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2244": {
+          "latent": 2244,
+          "explanation": "LaTeX math subscripts and related subscript syntax like _ { } and their immediately following characters",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "3001": {
+          "latent": 3001,
+          "explanation": "the preposition at in temporal or locational phrases",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            8,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "4058": {
+          "latent": 4058,
+          "explanation": "uppercase letter sequences acronyms or short capitalized substrings often enclosed in delimiters",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            5,
+            9,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3047": {
+          "latent": 3047,
+          "explanation": "Activates on inline citation and reference tokens enclosed in doubled angle brackets such as <<[@ >> <<CR>> <<B>>",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            6,
+            8,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "420": {
+          "latent": 420,
+          "explanation": "Activates on short substrings and prefixes inside technical scientific words (e.g., phot physio immun lectro)",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            9,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "457": {
+          "latent": 457,
+          "explanation": "Activates on the word cell and phrases about cell biology such as cell cycle growth proliferation survival and cultures",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            10,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1205": {
+          "latent": 1205,
+          "explanation": "Words beginning with a capital letter P",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            4,
+            6
+          ],
+          "score": 0.7142857142857143
+        },
+        "1384": {
+          "latent": 1384,
+          "explanation": "Activates on angle bracketed numeric placeholder tokens such as <<00>> and similar <<0>> style markers",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            6,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "2309": {
+          "latent": 2309,
+          "explanation": "tokens or markup enclosed in double angle brackets like <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1144": {
+          "latent": 1144,
+          "explanation": "Activates on the special marker <<->>> appearing between adjacent uppercase alphanumeric substrings",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            7,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "3051": {
+          "latent": 3051,
+          "explanation": "Activates on programming and software technology names and acronyms such as languages libraries APIs and protocols",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            7,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "512": {
+          "latent": 512,
+          "explanation": "numeric literals including hex and decimal numbers and nearby punctuation like commas parentheses braces",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "572": {
+          "latent": 572,
+          "explanation": "Fragments of scientific paper text including numbers statistics units figure labels and methodological result phrases",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            9,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2272": {
+          "latent": 2272,
+          "explanation": "ordinal words and superlative size words such as second third fourth smallest biggest",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            10,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "414": {
+          "latent": 414,
+          "explanation": "Activates on LaTeX TeX command tokens and punctuation fragments shown inside angled token markers",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            8,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "638": {
+          "latent": 638,
+          "explanation": "Activates on LaTeX environment markers and array related markup tokens",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            7,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "3143": {
+          "latent": 3143,
+          "explanation": "the token to and verbs expressing communication or informing",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1399": {
+          "latent": 1399,
+          "explanation": "Activates on degree and intensifier adverbs like so very more most ever strongly",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            5,
+            7
+          ],
+          "score": 0.7142857142857143
+        },
+        "2424": {
+          "latent": 2424,
+          "explanation": "Angle bracketed blank or whitespace placeholder tokens like <<                        >>",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            5,
+            7,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "3123": {
+          "latent": 3123,
+          "explanation": "Activates on tokens or substrings marked with double angle brackets",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            5,
+            6,
+            7
+          ],
+          "score": 0.7142857142857143
+        },
+        "2375": {
+          "latent": 2375,
+          "explanation": "bibliographic citation tokens such as years page numbers author abbreviations and citation punctuation",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            5,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "3182": {
+          "latent": 3182,
+          "explanation": "Activates on double angle bracket markup markers like << and >> and bracketed tagged tokens",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            7,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "2429": {
+          "latent": 2429,
+          "explanation": "second person pronouns and vocative addresses like you your yours in dialogue",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            7,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "102": {
+          "latent": 102,
+          "explanation": "Activates on numbers and numeric tokens including digits multi digit numbers and numeric punctuation",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            11,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2477": {
+          "latent": 2477,
+          "explanation": "the substring sh or Sh at the start of words or tokens",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "3318": {
+          "latent": 3318,
+          "explanation": "Activates on substrings enclosed in double angle brackets like <<identifier>> often marking math symbols or LaTeX tokens",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            6,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1414": {
+          "latent": 1414,
+          "explanation": "text stating Let ... be the first second or third derivative of",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            5,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1461": {
+          "latent": 1461,
+          "explanation": "Activates on technical academic physics math expressions including LaTeX fragments and nearby function words in papers",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            9,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "4008": {
+          "latent": 4008,
+          "explanation": "subword tokens enclosed in double angle brackets",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            6,
+            9,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "668": {
+          "latent": 668,
+          "explanation": "the substring sp at the beginnings of words case insensitive",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            8,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "108": {
+          "latent": 108,
+          "explanation": "Activates on long runs of equals signs used as section title separators or underlines",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            7,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "789": {
+          "latent": 789,
+          "explanation": "possessive pronouns such as my your his and similar",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            8,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2484": {
+          "latent": 2484,
+          "explanation": "Activates on biomedical organ and disease terms for example lung liver tumor cancer",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            7,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "26": {
+          "latent": 26,
+          "explanation": "the capitalized word After typically at the start of a sentence",
+          "predictions": [],
+          "correct seqs": [
+            8,
+            9,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "655": {
+          "latent": 655,
+          "explanation": "Activates on URL and email fragments and punctuation separators like http :// . @ and header labels",
+          "predictions": [],
+          "correct seqs": [
+            7,
+            8,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1476": {
+          "latent": 1476,
+          "explanation": "return statements including the keyword return and its following value and semicolon",
+          "predictions": [],
+          "correct seqs": [
+            9,
+            10,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "816": {
+          "latent": 816,
+          "explanation": "Activates on common function words and short prepositions/articles like the of in and punctuation",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            8,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "2545": {
+          "latent": 2545,
+          "explanation": "the substring comp or Comp inside words",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            8,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "3333": {
+          "latent": 3333,
+          "explanation": "text enclosed in double angle brackets like << ... >>",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "884": {
+          "latent": 884,
+          "explanation": "Activates on the phrase we have in mathematical statements",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            8,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1488": {
+          "latent": 1488,
+          "explanation": "Short uppercase or mixed case identifier fragments and code token substrings in source code",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            6,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "3323": {
+          "latent": 3323,
+          "explanation": "Activates on sentence boundaries including punctuation and sentence initial function or transition words",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            9,
+            10,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1501": {
+          "latent": 1501,
+          "explanation": "newline characters or line break tokens in code and text",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            9,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3416": {
+          "latent": 3416,
+          "explanation": "numeric quantities and expressions such as numbers commas currency percent signs and years",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            7,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "122": {
+          "latent": 122,
+          "explanation": "Activates on HTML element names and user interaction words such as div click submit load iframe form button",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            9,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3435": {
+          "latent": 3435,
+          "explanation": "Single letter mathematical variables and math font identifiers inside LaTeX math expressions",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1557": {
+          "latent": 1557,
+          "explanation": "legal citation fragments like F F2d F3d and their surrounding punctuation and court parentheticals",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            10,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "130": {
+          "latent": 130,
+          "explanation": "the word be in constructions like Let x be in math problem variable definitions",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            7,
+            8,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "187": {
+          "latent": 187,
+          "explanation": "numbers and numeric punctuation in scientific and statistical text",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            10,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1523": {
+          "latent": 1523,
+          "explanation": "Activates on short substrings and punctuation fragments inside tokens such as symbols braces prefixes and word parts",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            6,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "905": {
+          "latent": 905,
+          "explanation": "Activates on hexadecimal byte escape sequences like xNN (hex byte values)",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            8,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2615": {
+          "latent": 2615,
+          "explanation": "Numeric subscripts and index separators like _1 _2 and commas in mathematical variable lists",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1563": {
+          "latent": 1563,
+          "explanation": "forms of the verb to be such as is was and are",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            6,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "177": {
+          "latent": 177,
+          "explanation": "Activates on double angle bracket markup tokens like << and >> in LaTeX or escaped TeX sequences",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            8,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "898": {
+          "latent": 898,
+          "explanation": "common function words punctuation and other high-frequency short tokens",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            8,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2586": {
+          "latent": 2586,
+          "explanation": "Activates on numeric quantities and measurements including numbers with units symbols or mathematical notation",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            5,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "3491": {
+          "latent": 3491,
+          "explanation": "legal case citation abbreviations and punctuation such as S Ct L Ed 2d and page numbers",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            6,
+            7,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3523": {
+          "latent": 3523,
+          "explanation": "Activates on LaTeX math syntax including backslash commands braces subscripts superscripts and common math macros",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            7,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "284": {
+          "latent": 284,
+          "explanation": "Activates on inline citation and bibliography reference tokens including bracketed @ bib and numeric tags",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            7,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "3549": {
+          "latent": 3549,
+          "explanation": "Activates on short common English determiners and pronouns such as the a my their that",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            6,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "2631": {
+          "latent": 2631,
+          "explanation": "Activates on the tokenization marker << and bracketed token boundaries",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            6,
+            7,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "3569": {
+          "latent": 3569,
+          "explanation": "Activates on double angle bracket markers like << and >> used around XML HTML tags and attributes",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "936": {
+          "latent": 936,
+          "explanation": "Text referring to war conflict violence and related events or actors",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "2720": {
+          "latent": 2720,
+          "explanation": "the \u0394 symbol used to denote deletions or mutant constructs",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            6,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1726": {
+          "latent": 1726,
+          "explanation": "patent claim phrasing and technical terms such as comprises provided configured plurality having",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            7,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "2673": {
+          "latent": 2673,
+          "explanation": "Activates on words or phrases enclosed in quotation marks especially titles like songs shows and episodes",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            8,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "322": {
+          "latent": 322,
+          "explanation": "Activates on error and exception diagnostic messages like Error cannot find No module named unresolved external",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            8,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "917": {
+          "latent": 917,
+          "explanation": "Activates on the standalone indefinite article a and its capitalized form A in text",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2783": {
+          "latent": 2783,
+          "explanation": "double angle bracket placeholders like <<...>> in the text",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1736": {
+          "latent": 1736,
+          "explanation": "Activates on Objective-C type names and type annotations like NS UI id BOOL and other method signature tokens",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            6,
+            8,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "955": {
+          "latent": 955,
+          "explanation": "common function words and punctuation like the the to of in commas and dates",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            8,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "326": {
+          "latent": 326,
+          "explanation": "Statements calling for further studies future research or specific aims in scientific papers",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            7,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "2885": {
+          "latent": 2885,
+          "explanation": "the word expression especially in contexts describing protein or gene expression",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            7,
+            9,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "1007": {
+          "latent": 1007,
+          "explanation": "Activates on C type and storage class keywords and tokens in declarations and function signatures",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            7,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "956": {
+          "latent": 956,
+          "explanation": "Mentions of stem cells and their differentiation into specific cell types",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            7,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1847": {
+          "latent": 1847,
+          "explanation": "period characters and decimal points in numbers",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            8,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "356": {
+          "latent": 356,
+          "explanation": "numeric tokens enclosed in double angle brackets like citation or reference markers",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            6,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "1739": {
+          "latent": 1739,
+          "explanation": "Activates on scholarly citation and reference bracket tokens and adjacent punctuation",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            5,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "3580": {
+          "latent": 3580,
+          "explanation": "Activates on the substring com or comm at beginnings or inside words regardless of capitalization",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "3648": {
+          "latent": 3648,
+          "explanation": "Activates on commas and short discourse connectors such as conjunctions and transition words like pero porque para",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            5,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "2872": {
+          "latent": 2872,
+          "explanation": "punctuation and structural characters in code and JSON such as braces brackets commas colons quotes",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            7,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "380": {
+          "latent": 380,
+          "explanation": "Activates on short common words and titlecase tokens in headlines navigation and UI elements",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            7,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "3799": {
+          "latent": 3799,
+          "explanation": "technical collider particle physics terminology including jets leptons decays couplings cross sections and experimental selection details",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            8,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1865": {
+          "latent": 1865,
+          "explanation": "the prefix anti and hyphenated anti- terms in biomedical contexts",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            10,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1087": {
+          "latent": 1087,
+          "explanation": "Activates on the substring methyl and methylated forms in chemical names and positional substituent notation",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            9,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1889": {
+          "latent": 1889,
+          "explanation": "adjectives or past participles ending in -ed describing states feelings or reactions",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            6,
+            9,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "3676": {
+          "latent": 3676,
+          "explanation": "Activates on common short function words such as in the and of",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "397": {
+          "latent": 397,
+          "explanation": "Activates on date and time expressions especially the word on before dates days months and timestamps",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1130": {
+          "latent": 1130,
+          "explanation": "the first two letters (two-letter prefixes) of many words",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2898": {
+          "latent": 2898,
+          "explanation": "the leading asterisk used at the start of lines in block comments",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            7,
+            9,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "384": {
+          "latent": 384,
+          "explanation": "Activates on tab characters used for indentation in code shown between the << and >> markers",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            8,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "2945": {
+          "latent": 2945,
+          "explanation": "Activates on legal citation elements such as Id v U S case names section symbols and citation numbers",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            9,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "2079": {
+          "latent": 2079,
+          "explanation": "Activates on the uppercase letter I as a token or at the start of acronyms initials and the pronoun I",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            6,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2207": {
+          "latent": 2207,
+          "explanation": "LaTeX display math delimiters and similar bracketed environment labels",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            6,
+            7,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "3943": {
+          "latent": 3943,
+          "explanation": "Activates on the double angle bracket markers << and >> used as highlight or annotation delimiters",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            8,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        }
+      }
+    },
+    "spd_cfc_ci>0.0": {
+      "method": "spd_cfc_ci>0.0",
+      "autointerp_score": 0.7187039256095886,
+      "std_dev": 0.022621627897024155,
+      "n_features": 97,
+      "per_feature": {
+        "2038": {
+          "latent": 2038,
+          "explanation": "Text enclosed in double angle brackets << and >> typically variable names symbols or numeric tokens",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            8,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1572": {
+          "latent": 1572,
+          "explanation": "Activates on legal citation markers section symbols reporter abbreviations and court document citation formatting",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "2758": {
+          "latent": 2758,
+          "explanation": "the standalone indefinite article a",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            5,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2901": {
+          "latent": 2901,
+          "explanation": "the annotation delimiters marking highlighted spans like double angle brackets and their contents",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            7,
+            9,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "3077": {
+          "latent": 3077,
+          "explanation": "Activates on common function words and short grammatical tokens such as the to of did not was not commas",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            6,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "1580": {
+          "latent": 1580,
+          "explanation": "Activates on legal citation fragments and court document formalities like reporter abbreviations years court names statutes",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            6,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "3311": {
+          "latent": 3311,
+          "explanation": "Capitalized name or proper noun substrings and initials pieces of personal and place names",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            8,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3118": {
+          "latent": 3118,
+          "explanation": "common German function morphemes and determiners such as es der die dies and the suffix ung",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            7,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "644": {
+          "latent": 644,
+          "explanation": "identifier subwords and tokens split by camelCase PascalCase underscores and punctuation in code",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            8,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1596": {
+          "latent": 1596,
+          "explanation": "non ASCII characters such as accented letters and characters from Greek Cyrillic and other scripts",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "700": {
+          "latent": 700,
+          "explanation": "the letter k or K including variants like Greek kappa and k starting substrings",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            9,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "3284": {
+          "latent": 3284,
+          "explanation": "Activates on short common words and punctuation or control tokens such as and or at from that",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            3,
+            5
+          ],
+          "score": 0.7142857142857143
+        },
+        "2303": {
+          "latent": 2303,
+          "explanation": "words beginning with the letter f",
+          "predictions": [],
+          "correct seqs": [
+            7,
+            9,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1615": {
+          "latent": 1615,
+          "explanation": "the comma punctuation token",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            6,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1619": {
+          "latent": 1619,
+          "explanation": "tokens enclosed in double angle brackets like <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "683": {
+          "latent": 683,
+          "explanation": "short function words and punctuation tokens like and to the the commas parentheses arrows",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            7,
+            8,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "705": {
+          "latent": 705,
+          "explanation": "punctuation and short legal citation tokens such as periods commas and citation suffixes like th d 2d",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            5,
+            6,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "2762": {
+          "latent": 2762,
+          "explanation": "Activates on the substring dis at the start of words including capitalized Dis",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            6,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "3364": {
+          "latent": 3364,
+          "explanation": "the word the",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            4,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "726": {
+          "latent": 726,
+          "explanation": "common short function words like prepositions articles auxiliaries and conjunctions",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1626": {
+          "latent": 1626,
+          "explanation": "text enclosed in double angle brackets like << ... >>",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            5,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "2751": {
+          "latent": 2751,
+          "explanation": "Activates on double angle bracket markup tokens such as << and >> surrounding annotated words or tokens",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            8,
+            9,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2121": {
+          "latent": 2121,
+          "explanation": "Activates on single word tokens and identifiers in code markup or inline attribute contexts",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            6,
+            7,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3362": {
+          "latent": 3362,
+          "explanation": "numeric tokens or numbers enclosed in double angle brackets",
+          "predictions": [],
+          "correct seqs": [
+            9,
+            11,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "599": {
+          "latent": 599,
+          "explanation": "tokens enclosed in double angle brackets indicating highlighted or annotated words",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            9,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3384": {
+          "latent": 3384,
+          "explanation": "Activates on nouns and named entities appearing in titles categories dates and monetary amounts",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            8,
+            9,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2870": {
+          "latent": 2870,
+          "explanation": "double angle bracket markup surrounding identifiers",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1620": {
+          "latent": 1620,
+          "explanation": "short common function words and auxiliary verbs like is have was to will not am be",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            9,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "773": {
+          "latent": 773,
+          "explanation": "numbers and numeric tokens including digits decimals ranges units and small spelled out numbers",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            6,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "759": {
+          "latent": 759,
+          "explanation": "Activates on short common tokens such as function words auxiliaries abbreviations and short numbers",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            8,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2685": {
+          "latent": 2685,
+          "explanation": "short function words connectors and small punctuation or code tokens",
+          "predictions": [],
+          "correct seqs": [
+            9,
+            12
+          ],
+          "score": 0.8571428571428571
+        },
+        "3621": {
+          "latent": 3621,
+          "explanation": "the word the as a definite article",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            7,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "190": {
+          "latent": 190,
+          "explanation": "numeric sequences such as years page numbers section numbers and other digit substrings",
+          "predictions": [],
+          "correct seqs": [
+            8,
+            9,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "2590": {
+          "latent": 2590,
+          "explanation": "Activates on text substrings enclosed in double angle brackets like << ... >>",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            10,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "3655": {
+          "latent": 3655,
+          "explanation": "Activates on relative pronouns and demonstrative words such as which that who this",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            6,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1650": {
+          "latent": 1650,
+          "explanation": "Activates on short words substrings and symbols commonly found in code identifiers comments and percentages",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            7,
+            8,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "203": {
+          "latent": 203,
+          "explanation": "Subordinating conjunctions and similar short function words such as as if when so",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            6,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "1697": {
+          "latent": 1697,
+          "explanation": "forms of the verb be including is are was were been be becomes",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            8,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1685": {
+          "latent": 1685,
+          "explanation": "short 2 to 4 letter substrings occurring inside words",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            7,
+            8,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "2040": {
+          "latent": 2040,
+          "explanation": "stretches of whitespace including spaces tabs newlines and indentation",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            10,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "775": {
+          "latent": 775,
+          "explanation": "short common words and small morphemes such as prepositions verbs and affixes",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            6,
+            7,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "2573": {
+          "latent": 2573,
+          "explanation": "the initial letter G or g at the start of words or substrings",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            5,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "3731": {
+          "latent": 3731,
+          "explanation": "the token et as used in citations like et al and author lists",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            8,
+            9,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "44": {
+          "latent": 44,
+          "explanation": "nouns referring to attractions activities and places in travel and leisure contexts",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            5,
+            6
+          ],
+          "score": 0.7857142857142857
+        },
+        "226": {
+          "latent": 226,
+          "explanation": "common English function words and short stopwords such as the a this an of and",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            9,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "2146": {
+          "latent": 2146,
+          "explanation": "contiguous whitespace sequences such as multiple spaces or newlines",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            6,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1722": {
+          "latent": 1722,
+          "explanation": "Subword word internal fragments produced by tokenization for common internal substrings",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            7,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1030": {
+          "latent": 1030,
+          "explanation": "Activates on common short verbs and their inflected forms such as give point turn lead",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            6,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "841": {
+          "latent": 841,
+          "explanation": "short common English function words like prepositions conjunctions and simple verbs",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            4,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "240": {
+          "latent": 240,
+          "explanation": "common verbs and their inflected forms including past and progressive",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            8,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "1725": {
+          "latent": 1725,
+          "explanation": "Activates on short alphanumeric tokens numbers and code or markup tokens",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            5,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "241": {
+          "latent": 241,
+          "explanation": "short substrings or character fragments inside words across languages and scripts",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            7,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1801": {
+          "latent": 1801,
+          "explanation": "tokens enclosed in double angle brackets like << ... >>",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            8,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "1041": {
+          "latent": 1041,
+          "explanation": "Activates on punctuation and short standalone tokens such as commas parentheses brackets and brief reserved words",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            8,
+            9,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "3698": {
+          "latent": 3698,
+          "explanation": "Activates on short common function words and punctuation in both prose and code",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            8,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "926": {
+          "latent": 926,
+          "explanation": "Activates on short math tokens such as single variables numbers punctuation and simple words like let is of",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            6,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1805": {
+          "latent": 1805,
+          "explanation": "punctuation tokens especially the period token as used in decimals and numeric punctuation",
+          "predictions": [],
+          "correct seqs": [
+            7,
+            10,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3902": {
+          "latent": 3902,
+          "explanation": "Activates on tokens enclosed in double angle brackets",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            8,
+            11
+          ],
+          "score": 0.7857142857142857
+        },
+        "3938": {
+          "latent": 3938,
+          "explanation": "legal and courtroom related words and phrases",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            6,
+            7,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2311": {
+          "latent": 2311,
+          "explanation": "Activates on short substrings or small tokens (1\u20134 characters) inside words or code contexts",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            6,
+            8,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "337": {
+          "latent": 337,
+          "explanation": "single character tokens and short symbols such as letters digits and punctuation",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            7,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1061": {
+          "latent": 1061,
+          "explanation": "Activates on short standalone tokens such as punctuation symbols and brief content words",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            6,
+            7,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "2363": {
+          "latent": 2363,
+          "explanation": "the word the used as the definite article",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            5,
+            9,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "3074": {
+          "latent": 3074,
+          "explanation": "the substring << used as an annotation or highlight marker",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            4,
+            7
+          ],
+          "score": 0.7142857142857143
+        },
+        "351": {
+          "latent": 351,
+          "explanation": "hyphenated or dash connected substrings including number unit and compound forms",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3921": {
+          "latent": 3921,
+          "explanation": "double angle bracket bracketed substrings like <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            6,
+            8,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1154": {
+          "latent": 1154,
+          "explanation": "Activates on small tokens and symbols inside double angle bracket annotations such as numbers letters and punctuation",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            5,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1820": {
+          "latent": 1820,
+          "explanation": "occurrences of double angle bracket markup and their contents like <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            8,
+            9,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "3991": {
+          "latent": 3991,
+          "explanation": "the angle bracket highlight markers << or >> used around tokens in LaTeX and math expressions",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            6,
+            8,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "1212": {
+          "latent": 1212,
+          "explanation": "the special highlight delimiters represented by << and >> around tokens",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            6,
+            9,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1941": {
+          "latent": 1941,
+          "explanation": "newline characters or line break tokens",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            5,
+            7
+          ],
+          "score": 0.7142857142857143
+        },
+        "4055": {
+          "latent": 4055,
+          "explanation": "Activates on double angle bracket markers like << and >> used to mark highlights or annotations",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            7,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "2473": {
+          "latent": 2473,
+          "explanation": "discourse markers and connective/filler words such as therefore recently obviously moreover now yeah but or",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            7,
+            8,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "356": {
+          "latent": 356,
+          "explanation": "Tokens enclosed in double angle brackets including short words numbers and punctuation",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            6,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1191": {
+          "latent": 1191,
+          "explanation": "the letter T or t at the start of words or subword tokens",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            8,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "2444": {
+          "latent": 2444,
+          "explanation": "double angle bracket annotation markers like << and >>",
+          "predictions": [],
+          "correct seqs": [
+            7,
+            8,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "431": {
+          "latent": 431,
+          "explanation": "verbs in various tenses and forms",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            10,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "499": {
+          "latent": 499,
+          "explanation": "isolated single-character tokens such as single letters or digits",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            7,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1218": {
+          "latent": 1218,
+          "explanation": "numeric tokens enclosed in double angle brackets like <<123>>",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2612": {
+          "latent": 2612,
+          "explanation": "Tokens or punctuation enclosed in double angle brackets for example text like <<word>>",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            8,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "519": {
+          "latent": 519,
+          "explanation": "Activates on content words such as meaningful nouns verbs and adjectives rather than function words",
+          "predictions": [],
+          "correct seqs": [
+            7,
+            8,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "4087": {
+          "latent": 4087,
+          "explanation": "short common words and numerals highlighted in the text",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            7,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1955": {
+          "latent": 1955,
+          "explanation": "Activates on punctuation symbols and programming math operators such as dots colons arrows parentheses and angle brackets",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            8,
+            10,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2613": {
+          "latent": 2613,
+          "explanation": "short math or code tokens like single letters numbers and symbols often inside formulas or code",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            10,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1954": {
+          "latent": 1954,
+          "explanation": "double angle bracket markup like << and >> surrounding punctuation tags or symbols",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            7,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1480": {
+          "latent": 1480,
+          "explanation": "the word be including capitalized Be at sentence starts",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            8,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1560": {
+          "latent": 1560,
+          "explanation": "short common function words such as prepositions articles and conjunctions",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            8,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1976": {
+          "latent": 1976,
+          "explanation": "the letter f or substrings containing the character f regardless of case",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            8,
+            9,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2913": {
+          "latent": 2913,
+          "explanation": "Activates on punctuation characters such as parentheses braces commas and colons in code and markup",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            5,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1420": {
+          "latent": 1420,
+          "explanation": "Activates on punctuation whitespace and control characters such as newlines spaces and standalone punctuation tokens",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            10,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1972": {
+          "latent": 1972,
+          "explanation": "verbs and verb forms including past tense past participles and gerunds",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            8,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "533": {
+          "latent": 533,
+          "explanation": "leading indentation whitespace tabs or spaces at the start of code lines",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            5,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "3052": {
+          "latent": 3052,
+          "explanation": "commas and comma punctuation within or around clauses",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            8,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "2638": {
+          "latent": 2638,
+          "explanation": "subword fragments or tokens shown inside double angle brackets like <<fragment>>",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            7,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1992": {
+          "latent": 1992,
+          "explanation": "short common words roughly four letters long such as film cell byte year when",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            14
+          ],
+          "score": 0.8571428571428571
+        },
+        "2018": {
+          "latent": 2018,
+          "explanation": "the conjunction and",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            8,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "592": {
+          "latent": 592,
+          "explanation": "Activates on common short English words primarily verbs and function words like prepositions and auxiliaries",
+          "predictions": [],
+          "correct seqs": [
+            10,
+            11,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        }
+      }
+    },
+    "spd_down_proj_ci>0.0": {
+      "method": "spd_down_proj_ci>0.0",
+      "autointerp_score": 0.7157142758369446,
+      "std_dev": 0.010050373151898384,
+      "n_features": 100,
+      "per_feature": {
+        "1610": {
+          "latent": 1610,
+          "explanation": "expressions of gratitude such as thank and thanks",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            6,
+            8,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1054": {
+          "latent": 1054,
+          "explanation": "Activates on angle bracket markup and HTML XML style tags or words enclosed in angled brackets",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            7,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2581": {
+          "latent": 2581,
+          "explanation": "the substring dis at the beginning of words or morphemes",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            8,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1050": {
+          "latent": 1050,
+          "explanation": "short function words and small tokens such as prepositions and the possessive 's",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            8,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1057": {
+          "latent": 1057,
+          "explanation": "LaTeX math mode commands and symbols inside mathematical expressions",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            8,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2130": {
+          "latent": 2130,
+          "explanation": "common short function words such as articles prepositions and conjunctions",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2540": {
+          "latent": 2540,
+          "explanation": "LaTeX math commands and backslash control sequences inside math expressions",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            7,
+            9,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "2193": {
+          "latent": 2193,
+          "explanation": "text segments enclosed in double angle brackets like << ... >>",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            6,
+            9,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "452": {
+          "latent": 452,
+          "explanation": "word initial characters or starting letter sequences especially capitalized initials like F",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            7,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2583": {
+          "latent": 2583,
+          "explanation": "short common function words such as the a to of and similar words",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            5,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2155": {
+          "latent": 2155,
+          "explanation": "tokens or substrings enclosed in double angle brackets << >>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            5,
+            7,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "447": {
+          "latent": 447,
+          "explanation": "adjectives and adjectival word forms describing properties or qualities",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            8,
+            9,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "487": {
+          "latent": 487,
+          "explanation": "short tokens such as punctuation marks small words and code or markup identifiers",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            10,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1070": {
+          "latent": 1070,
+          "explanation": "subword fragments and short substrings inside words identifiers and punctuation separated tokens",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            7,
+            9,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "1714": {
+          "latent": 1714,
+          "explanation": "the letter G or g within words names and sequences",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            9,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2012": {
+          "latent": 2012,
+          "explanation": "punctuation and small code tokens such as parentheses commas dots arrows angle brackets and similar symbols",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            8,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "419": {
+          "latent": 419,
+          "explanation": "whitespace spans such as newlines and indentation spaces or tabs",
+          "predictions": [],
+          "correct seqs": [
+            7,
+            8,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "492": {
+          "latent": 492,
+          "explanation": "the double angle bracket markup tokens << and >> used as annotation delimiters",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            11,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2639": {
+          "latent": 2639,
+          "explanation": "the opening double angle bracket substring <<",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            6,
+            9,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1097": {
+          "latent": 1097,
+          "explanation": "Activates on double angle bracket sequences << >> and their contents including punctuation numbers and tags",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            10,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2616": {
+          "latent": 2616,
+          "explanation": "Activates on double angle bracket markers used to mark highlighted spans",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            8,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1092": {
+          "latent": 1092,
+          "explanation": "tokens or text enclosed between the markers << and >>",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            6,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "494": {
+          "latent": 494,
+          "explanation": "the beginnings of words or tokens especially capitalized or initial substrings",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            10,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2658": {
+          "latent": 2658,
+          "explanation": "the word the and similar short common function words or short substrings",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            7,
+            8,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1643": {
+          "latent": 1643,
+          "explanation": "Activates on short letter sequences enclosed in double angle brackets for example p sl x C etc",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            8,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "2009": {
+          "latent": 2009,
+          "explanation": "Punctuation and delimiter tokens in code such as braces parentheses semicolons and angle brackets",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            9,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "2180": {
+          "latent": 2180,
+          "explanation": "punctuation symbols and bracket or angle bracket style tokens",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            5,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "116": {
+          "latent": 116,
+          "explanation": "Activates on single letter math variables and LaTeX math symbols and commands",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            7,
+            9,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "1113": {
+          "latent": 1113,
+          "explanation": "Activates on short common function words and punctuation such as articles prepositions commas hyphens",
+          "predictions": [],
+          "correct seqs": [
+            8,
+            12,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "538": {
+          "latent": 538,
+          "explanation": "Activates on HTML and XML style angle bracket tags and tag like tokens including tag names and attributes",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            6,
+            8,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "599": {
+          "latent": 599,
+          "explanation": "substrings enclosed in double angle brackets like <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            5,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2683": {
+          "latent": 2683,
+          "explanation": "punctuation symbols including periods commas brackets arrows and quotes",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            5,
+            7,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "27": {
+          "latent": 27,
+          "explanation": "the tokens << and >> used as annotation or bracket markers in the text",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            5,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "2730": {
+          "latent": 2730,
+          "explanation": "Activates on double angle bracketed punctuation and operator tokens such as -> ** . and the linebreak marker \u21b5",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            10,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1114": {
+          "latent": 1114,
+          "explanation": "the substring << used as markup delimiters in LaTeX or annotated text",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            9,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "468": {
+          "latent": 468,
+          "explanation": "Activates on short common tokens such as punctuation parentheses and common small words like from the and import",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            8,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1626": {
+          "latent": 1626,
+          "explanation": "numbers enclosed in double angle brackets used as citation or reference markers",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            7,
+            8,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "1178": {
+          "latent": 1178,
+          "explanation": "text marked with double angle brackets or the substring << used around tokens",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            7,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1177": {
+          "latent": 1177,
+          "explanation": "Activates on punctuation and short code delimiters such as commas semicolons parentheses braces angle brackets and operators",
+          "predictions": [],
+          "correct seqs": [
+            9,
+            11,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "743": {
+          "latent": 743,
+          "explanation": "Activates on the double angle bracket tokens used to mark highlighted spans",
+          "predictions": [],
+          "correct seqs": [
+            9,
+            10,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2794": {
+          "latent": 2794,
+          "explanation": "tokens preceded or enclosed by the special marker substring <<",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "122": {
+          "latent": 122,
+          "explanation": "substrings enclosed in double angle brackets like <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            8,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1808": {
+          "latent": 1808,
+          "explanation": "common function words and short content words often at clause or sentence boundaries",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            6,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1810": {
+          "latent": 1810,
+          "explanation": "short common words punctuation and other small noncontent tokens",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            8,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "1273": {
+          "latent": 1273,
+          "explanation": "Activates on common short function words and punctuation",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            7,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2799": {
+          "latent": 2799,
+          "explanation": "Common short function words and stopwords such as of the and be you may",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            7,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1696": {
+          "latent": 1696,
+          "explanation": "Activates on short common function words and pronouns such as to she you I we what",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            8,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "149": {
+          "latent": 149,
+          "explanation": "numeric quantities and measurements including digits with units percentages and scientific notation",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            6,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "140": {
+          "latent": 140,
+          "explanation": "short uppercase letter sequences acronyms and fragmented uppercase substrings",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            5,
+            7,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2854": {
+          "latent": 2854,
+          "explanation": "Activates on characters and short tokens enclosed in double angle brackets such as punctuation markup whitespace and small substrings",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2864": {
+          "latent": 2864,
+          "explanation": "Activates on substrings enclosed in double angle brackets << and >> including punctuation and short tokens",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            6,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "774": {
+          "latent": 774,
+          "explanation": "Greek characters and Greek words in text",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            8,
+            9,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "760": {
+          "latent": 760,
+          "explanation": "common short function words punctuation and markup tokens",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            9,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "672": {
+          "latent": 672,
+          "explanation": "numeric tokens and numeric substrings including years counts exponents table and reference numbers",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            7,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1284": {
+          "latent": 1284,
+          "explanation": "Activates on math problem connective keywords and symbols such as Let Suppose is of arrows operators",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            7,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "1725": {
+          "latent": 1725,
+          "explanation": "the double angle bracket annotation tokens << and >>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            6,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "150": {
+          "latent": 150,
+          "explanation": "the special highlight markers << and >> and text immediately adjacent",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            5,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "2892": {
+          "latent": 2892,
+          "explanation": "short common function words punctuation and other small tokens",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            6,
+            7,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "206": {
+          "latent": 206,
+          "explanation": "Activates on common English articles and short function words such as the the a an this",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            12,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1288": {
+          "latent": 1288,
+          "explanation": "short common function words like articles prepositions conjunctions and other small tokens",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            9,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "780": {
+          "latent": 780,
+          "explanation": "double angle bracket tokens such as << used to mark highlighted or escaped text",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            8,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1738": {
+          "latent": 1738,
+          "explanation": "line breaks and surrounding whitespace such as newlines tabs and indentation",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            6,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "2940": {
+          "latent": 2940,
+          "explanation": "Short alphanumeric tokens and abbreviations including numbers and punctuation fragments",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            10,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "217": {
+          "latent": 217,
+          "explanation": "common English articles and determiners such as the a an this his",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            7,
+            8,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1301": {
+          "latent": 1301,
+          "explanation": "Activates on short letter substrings and initials often at word boundaries or inside names",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            9,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "922": {
+          "latent": 922,
+          "explanation": "Activates on single letter mathematical variable names inside LaTeX math expressions",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            9,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1337": {
+          "latent": 1337,
+          "explanation": "newline or line break characters and long runs of whitespace",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            6,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "2988": {
+          "latent": 2988,
+          "explanation": "Activates on punctuation and nonalphabetic operator symbols such as commas colons plus signs arrows parentheses",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            7,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "816": {
+          "latent": 816,
+          "explanation": "common short function words and punctuation such as prepositions determiners conjunctions pronouns commas periods",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            10,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1764": {
+          "latent": 1764,
+          "explanation": "punctuation and short punctuation-containing tokens such as periods, colons, arrows, and abbreviations",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            7,
+            14
+          ],
+          "score": 0.7857142857142857
+        },
+        "1803": {
+          "latent": 1803,
+          "explanation": "common English function words and short determiners pronouns and conjunctions",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            7,
+            8,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2529": {
+          "latent": 2529,
+          "explanation": "Activates on single-character tokens including particles punctuation and short function morphemes across languages",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            6,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1323": {
+          "latent": 1323,
+          "explanation": "Activates on short 2\u20134 letter substrings within or at the start of many words",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            8,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "265": {
+          "latent": 265,
+          "explanation": "Activates on the substring >> as used in markup and punctuation sequences",
+          "predictions": [],
+          "correct seqs": [
+            8,
+            11,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "313": {
+          "latent": 313,
+          "explanation": "short letter substrings within words especially at word starts or internal segments",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            10,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "952": {
+          "latent": 952,
+          "explanation": "Activates on single standalone words or short tokens regardless of their meaning",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            6,
+            7
+          ],
+          "score": 0.7142857142857143
+        },
+        "1338": {
+          "latent": 1338,
+          "explanation": "Activates on tokens or identifiers enclosed in double angle brackets like <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            8,
+            9,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1388": {
+          "latent": 1388,
+          "explanation": "placeholder tokens enclosed in double angle brackets like <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            6,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1016": {
+          "latent": 1016,
+          "explanation": "the double angle bracket markers << and >> used to mark highlighted text",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            8,
+            10,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1884": {
+          "latent": 1884,
+          "explanation": "short common substrings and function words appearing inside or across words (eg the to which)",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            10,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1911": {
+          "latent": 1911,
+          "explanation": "common short function words such as articles prepositions conjunctions and auxiliary verbs",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            7,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "330": {
+          "latent": 330,
+          "explanation": "Activates on double angle bracket markup tokens used for inline annotations links and document markup",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            8,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "3019": {
+          "latent": 3019,
+          "explanation": "text enclosed in the annotation markers << >> typically short substrings or punctuation",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            8,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "1010": {
+          "latent": 1010,
+          "explanation": "short tokenlike words and code symbols especially SQL keywords identifiers and punctuation",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            7,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "340": {
+          "latent": 340,
+          "explanation": "short tokens such as punctuation symbols digits and brief one to three character substrings",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            7,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "3043": {
+          "latent": 3043,
+          "explanation": "short common function words and articles such as the the a an was on",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            4,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "2365": {
+          "latent": 2365,
+          "explanation": "common function words and short grammatical tokens such as articles pronouns prepositions and conjunctions",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            9,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "3041": {
+          "latent": 3041,
+          "explanation": "short tokens or substrings including small function words punctuation symbols and short character sequences",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            9,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "1022": {
+          "latent": 1022,
+          "explanation": "Common short English words including pronouns function words and short nouns or proper nouns",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            6,
+            8,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1033": {
+          "latent": 1033,
+          "explanation": "text or tokens enclosed between double angle brackets << and >>",
+          "predictions": [],
+          "correct seqs": [
+            8,
+            10,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1408": {
+          "latent": 1408,
+          "explanation": "short two to four letter substrings within words often at token starts or syllable boundaries",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "3063": {
+          "latent": 3063,
+          "explanation": "common short function words such as the in for of and it an a",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            7,
+            9,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "3025": {
+          "latent": 3025,
+          "explanation": "Activates on the substring is as found inside words like display and quasi-isomorphism",
+          "predictions": [],
+          "correct seqs": [
+            7,
+            8,
+            11
+          ],
+          "score": 0.7857142857142857
+        },
+        "1509": {
+          "latent": 1509,
+          "explanation": "verbs and verb forms including past participles gerunds and simple verb bases",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            6,
+            7
+          ],
+          "score": 0.7142857142857143
+        },
+        "1513": {
+          "latent": 1513,
+          "explanation": "LaTeX math symbols commands and formula tokens including subscripts superscripts and operators",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            9,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "377": {
+          "latent": 377,
+          "explanation": "short code identifiers keywords small common words and symbols in code or markup",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            8,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "2396": {
+          "latent": 2396,
+          "explanation": "punctuation characters and short punctuation tokens such as periods commas parentheses percent and arrow symbols",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            7,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "385": {
+          "latent": 385,
+          "explanation": "the double angle bracket delimiters << and >> surrounding tokens",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            5,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1553": {
+          "latent": 1553,
+          "explanation": "short tokens such as numbers punctuation and brief words or substrings",
+          "predictions": [],
+          "correct seqs": [
+            9,
+            12,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1999": {
+          "latent": 1999,
+          "explanation": "the word inner especially in mathematical phrases like inner symmetries",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            9,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        }
+      }
+    },
+    "spd_cfc_ci>0.5": {
+      "method": "spd_cfc_ci>0.5",
+      "autointerp_score": 0.714285671710968,
+      "std_dev": 5.990492013552284e-08,
+      "n_features": 100,
+      "per_feature": {
+        "1326": {
+          "latent": 1326,
+          "explanation": "single letter variable tokens inside math expressions marked with << >>",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            8,
+            9,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "3179": {
+          "latent": 3179,
+          "explanation": "Text describing experimental methods with numeric units concentrations temperatures times and reagent names",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            7,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3128": {
+          "latent": 3128,
+          "explanation": "individual letters or single character substrings inside words including accented and non Latin letters",
+          "predictions": [],
+          "correct seqs": [
+            7,
+            8,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "519": {
+          "latent": 519,
+          "explanation": "Activates on individual words and short tokens including nouns verbs acronyms and substrings regardless of part of speech",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            5,
+            6,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "513": {
+          "latent": 513,
+          "explanation": "Common English verbs and short function words including prepositions gerunds and base verbs",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            8,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "3300": {
+          "latent": 3300,
+          "explanation": "the letter t or T inside words and substrings",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            5,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2272": {
+          "latent": 2272,
+          "explanation": "short common words and small code tokens such as prepositions conjunctions and short identifiers",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            5,
+            7
+          ],
+          "score": 0.7142857142857143
+        },
+        "575": {
+          "latent": 575,
+          "explanation": "the period dot character in URLs decimals filenames abbreviations and similar contexts",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "3347": {
+          "latent": 3347,
+          "explanation": "runs of spaces or tabs used for indentation or spacing in code and JSON files",
+          "predictions": [],
+          "correct seqs": [
+            9,
+            10,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1340": {
+          "latent": 1340,
+          "explanation": "Activates on short function words punctuation and symbols often enclosed in angle bracket markup",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            6,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "3381": {
+          "latent": 3381,
+          "explanation": "punctuation and short function tokens such as commas periods brackets asterisks and short connectors",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            7,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "1313": {
+          "latent": 1313,
+          "explanation": "Activates on common function words and sentence punctuation including and that what commas periods newlines",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            8,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1371": {
+          "latent": 1371,
+          "explanation": "Activates on programming punctuation and control flow tokens like braces semicolons parentheses and keywords if else return",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            6,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "3409": {
+          "latent": 3409,
+          "explanation": "numeric placeholders written as digits inside double angle brackets",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            6,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "2677": {
+          "latent": 2677,
+          "explanation": "tokens or substrings enclosed in double angle brackets like << ... >>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            5,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "1394": {
+          "latent": 1394,
+          "explanation": "angle bracket markup and tag like tokens such as HTML XML tags and similar punctuation",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "3443": {
+          "latent": 3443,
+          "explanation": "Activates on short function words and punctuation such as prepositions conjunctions commas and other small tokens",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            7,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "634": {
+          "latent": 634,
+          "explanation": "Activates on short word initial letter sequences or prefixes often capitalized two to three letters",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            7,
+            8,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1443": {
+          "latent": 1443,
+          "explanation": "Activates on short internal letter substrings of words typically 2 to 4 characters long",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            5,
+            6
+          ],
+          "score": 0.7142857142857143
+        },
+        "3160": {
+          "latent": 3160,
+          "explanation": "Activates on punctuation and operator tokens in code such as commas parentheses comparison and logical operators",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            9,
+            10,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "714": {
+          "latent": 714,
+          "explanation": "Activates on initial substrings or prefixes at the start of words",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            6,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "494": {
+          "latent": 494,
+          "explanation": "text delimited by double angle brackets << and >> including separators blank spans and highlighted fragments",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            8,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "792": {
+          "latent": 792,
+          "explanation": "opening brackets parentheses angle brackets and other left punctuation characters",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            9,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "3082": {
+          "latent": 3082,
+          "explanation": "the annotation markers << and >> surrounding tokens",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            5,
+            6,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "2319": {
+          "latent": 2319,
+          "explanation": "word initial substrings at the start of tokens or words",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3515": {
+          "latent": 3515,
+          "explanation": "substrings enclosed between the markers << and >>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            5,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "1691": {
+          "latent": 1691,
+          "explanation": "common function words and punctuation tokens",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            8,
+            10,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "3496": {
+          "latent": 3496,
+          "explanation": "Activates on short two letter substrings at the start of words or word fragments",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            6,
+            10,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "114": {
+          "latent": 114,
+          "explanation": "Activates on digits and numeric tokens including decimals and surrounding punctuation such as parentheses commas pipes and asterisks",
+          "predictions": [],
+          "correct seqs": [
+            7,
+            8,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "811": {
+          "latent": 811,
+          "explanation": "underscores inside identifiers and symbol names in code",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "3034": {
+          "latent": 3034,
+          "explanation": "Numeric tokens and digit substrings such as integers decimals indices and counts",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            9,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1474": {
+          "latent": 1474,
+          "explanation": "newline and paragraph break tokens such as linefeed empty-line markers",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1715": {
+          "latent": 1715,
+          "explanation": "Activates on the period character or dot tokens including sentence ending periods and ellipses",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            8,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "825": {
+          "latent": 825,
+          "explanation": "nouns and noun phrases including common nouns pronouns and nouns used as subjects or objects",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "2304": {
+          "latent": 2304,
+          "explanation": "tokens enclosed in double angle brackets like <<token>>",
+          "predictions": [],
+          "correct seqs": [
+            7,
+            9,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "20": {
+          "latent": 20,
+          "explanation": "Activates on short word prefixes usually the first two to four letters of words",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            8,
+            10,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1737": {
+          "latent": 1737,
+          "explanation": "Activates on short common function words and auxiliaries such as has had with have and contractions",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            6,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3530": {
+          "latent": 3530,
+          "explanation": "Activates on double angle bracket highlight markers used to surround or mark tokens in the text",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            4,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "824": {
+          "latent": 824,
+          "explanation": "the character f or F within words and at word starts",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            11,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "124": {
+          "latent": 124,
+          "explanation": "numerical quantity plus time unit or age expressions such as year week hour minute time",
+          "predictions": [],
+          "correct seqs": [
+            9,
+            10,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3588": {
+          "latent": 3588,
+          "explanation": "the period character indicating sentence endings",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            8,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "2931": {
+          "latent": 2931,
+          "explanation": "the substring oc and standalone letter C within words",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            7,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "144": {
+          "latent": 144,
+          "explanation": "short common function words such as prepositions and small auxiliary verbs",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3650": {
+          "latent": 3650,
+          "explanation": "double angle bracket markup like << and >> and text enclosed by them",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            7,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "871": {
+          "latent": 871,
+          "explanation": "Activates on occurrences of the left double angle bracket sequence << appearing before tokens or tags",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            7,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2519": {
+          "latent": 2519,
+          "explanation": "short common function words and punctuation sequences in sports news text",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            7,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2884": {
+          "latent": 2884,
+          "explanation": "words expressing quantity degree comparison or improvement such as more less higher shorter significant efficiency",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            5,
+            6,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "1791": {
+          "latent": 1791,
+          "explanation": "tokens enclosed in double angle brackets like <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            9,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "160": {
+          "latent": 160,
+          "explanation": "double angle bracket markup tokens of the form << ... >> containing citations or labels",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            6,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "966": {
+          "latent": 966,
+          "explanation": "the annotation delimiters << and >> appearing around tokens",
+          "predictions": [],
+          "correct seqs": [
+            9,
+            10,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3685": {
+          "latent": 3685,
+          "explanation": "the contraction \u2019re as in we\u2019re you\u2019re they\u2019re etc",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            8,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "1809": {
+          "latent": 1809,
+          "explanation": "identifiers and variable names in code and mathematical expressions",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            7,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1057": {
+          "latent": 1057,
+          "explanation": "Activates on single letter mathematical identifiers or indices enclosed in the << >> markers",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            8,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1004": {
+          "latent": 1004,
+          "explanation": "the token p or P including <p> tags and p starting substrings",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            8,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1817": {
+          "latent": 1817,
+          "explanation": "short common function words and conjunctions like and or the often near punctuation",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            8,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "2687": {
+          "latent": 2687,
+          "explanation": "the token to in to infinitive constructions",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            7,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "3514": {
+          "latent": 3514,
+          "explanation": "parenthetical citations and parenthetical metadata such as years pH notes and reference markers",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "3652": {
+          "latent": 3652,
+          "explanation": "Activates on LaTeX math delimiters and commands like dollar signs backslashes and common math macros",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            7,
+            9,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1834": {
+          "latent": 1834,
+          "explanation": "the substrings << and >> used as highlight or markup delimiters",
+          "predictions": [],
+          "correct seqs": [
+            7,
+            9,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "215": {
+          "latent": 215,
+          "explanation": "LaTeX math and environment tokens such as aligned split right prime short math symbols and numeric exponents",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            6,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "3709": {
+          "latent": 3709,
+          "explanation": "common function words and short tokens such as articles prepositions and numbers",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            8,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "224": {
+          "latent": 224,
+          "explanation": "Activates on a period appearing inside double angle brackets for example a period enclosed by << and >>",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            7,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1074": {
+          "latent": 1074,
+          "explanation": "the substring name or Name often enclosed in tags angle brackets or adjacent punctuation",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            9,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "3711": {
+          "latent": 3711,
+          "explanation": "substrings enclosed in double angle brackets like <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            6,
+            8,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "2759": {
+          "latent": 2759,
+          "explanation": "double angle bracket tokens such as << and >>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            7,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "349": {
+          "latent": 349,
+          "explanation": "Activates on closing punctuation and delimiter tokens marked inside double angle brackets",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            8,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1092": {
+          "latent": 1092,
+          "explanation": "Activates on sentence punctuation such as periods colons ellipses and question marks",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            7,
+            9,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1911": {
+          "latent": 1911,
+          "explanation": "Activates on tokens enclosed in << and >> typically numeric values or arrow and sign markers",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            6,
+            8,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "2732": {
+          "latent": 2732,
+          "explanation": "short lowercase letter substrings or common subword tokens inside words",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            6,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3808": {
+          "latent": 3808,
+          "explanation": "Activates on double angle bracket tokens like << and >> marking highlighted spans or linebreaks",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            6,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2792": {
+          "latent": 2792,
+          "explanation": "Activates on double angle bracket tokens << and >> and text enclosed by them",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            6,
+            8,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1103": {
+          "latent": 1103,
+          "explanation": "common function words and punctuation such as articles prepositions and commas",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            5,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "393": {
+          "latent": 393,
+          "explanation": "Activates on substrings enclosed in double angle brackets like <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            10,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1866": {
+          "latent": 1866,
+          "explanation": "Activates on token starts often capturing the first one or two characters including punctuation and capital letters",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            5,
+            8,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3835": {
+          "latent": 3835,
+          "explanation": "tokens or text enclosed in double angle bracket markers like << ... >>",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "3228": {
+          "latent": 3228,
+          "explanation": "intraword connectors such as hyphens underscores and similar joining punctuation",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            8,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3163": {
+          "latent": 3163,
+          "explanation": "Common stop words such as articles conjunctions prepositions plus punctuation and newline markers",
+          "predictions": [],
+          "correct seqs": [
+            7,
+            9,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "406": {
+          "latent": 406,
+          "explanation": "Activates on short tokens inside double angle brackets for variables or numbers such as <<2>> <<N>> <<j>> <<u>>",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            7,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2936": {
+          "latent": 2936,
+          "explanation": "short function words and possessive markers such as articles pronouns to and s",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            8,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1921": {
+          "latent": 1921,
+          "explanation": "Activates on double angle bracket markers like << and >> around punctuation numbers and arrows",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            5,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "1137": {
+          "latent": 1137,
+          "explanation": "for loop index comparisons like i < ... or j < ... in code contexts",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            8,
+            9,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "1165": {
+          "latent": 1165,
+          "explanation": "text enclosed in double angle brackets like <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            9,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "2986": {
+          "latent": 2986,
+          "explanation": "common short function words such as articles prepositions and determiners",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            5,
+            7,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "1116": {
+          "latent": 1116,
+          "explanation": "Activates on the dot character as in decimal points and abbreviation/citation periods",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            6,
+            7,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "445": {
+          "latent": 445,
+          "explanation": "Activates on programming code tokens including identifiers constants macros and symbols",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            4,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "2106": {
+          "latent": 2106,
+          "explanation": "coordinating conjunctions such as and or and similar words",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            7,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "3184": {
+          "latent": 3184,
+          "explanation": "newline characters and blank empty lines",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1918": {
+          "latent": 1918,
+          "explanation": "the substring un when it appears at the start of or immediately before words",
+          "predictions": [],
+          "correct seqs": [
+            7,
+            8,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2113": {
+          "latent": 2113,
+          "explanation": "the angle bracket markers << and >> surrounding tokens",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            8,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1225": {
+          "latent": 1225,
+          "explanation": "LaTeX macro tokens beginning with backslash such as frac partial sqrt mathrmmathbf etc",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            8,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "353": {
+          "latent": 353,
+          "explanation": "Activates on substrings containing the letter t often as part of stems like ct act or t-containing segments",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            4,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "3886": {
+          "latent": 3886,
+          "explanation": "short 2 to 4 character substrings within words including accented characters and hyphenation",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            6,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "473": {
+          "latent": 473,
+          "explanation": "the letter G or g at the start of words or as a standalone token",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            8,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "4094": {
+          "latent": 4094,
+          "explanation": "the substring << used as a marker in LaTeX or text",
+          "predictions": [],
+          "correct seqs": [
+            7,
+            8,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "477": {
+          "latent": 477,
+          "explanation": "double angle bracket tokens << and >> surrounding text",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            9,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "2116": {
+          "latent": 2116,
+          "explanation": "tokens or substrings enclosed in double angle brackets like <<token>>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            4,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "3215": {
+          "latent": 3215,
+          "explanation": "Activates on short common words pronouns and punctuation tokens appearing inside the markers",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            4,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "2997": {
+          "latent": 2997,
+          "explanation": "Activates on the coordinating conjunction and and on comma punctuation",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            10,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2250": {
+          "latent": 2250,
+          "explanation": "Bracketed citations and reference link markers such as [@ citations ](# links and inline reference identifiers",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            9,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "4087": {
+          "latent": 4087,
+          "explanation": "Activates on numerals and common short lowercase words such as small adjectives and standalone tokens",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            5,
+            8,
+            10
+          ],
+          "score": 0.7142857142857143
+        }
+      }
+    },
+    "spd_down_proj_ci>0.5": {
+      "method": "spd_down_proj_ci>0.5",
+      "autointerp_score": 0.714285671710968,
+      "std_dev": 5.990492013552284e-08,
+      "n_features": 100,
+      "per_feature": {
+        "2361": {
+          "latent": 2361,
+          "explanation": "Activates on substrings enclosed in double angle brackets such as <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            8,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "1634": {
+          "latent": 1634,
+          "explanation": "words that begin with an uppercase letter such as titlecase or capitalized tokens",
+          "predictions": [],
+          "correct seqs": [
+            9,
+            10,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1676": {
+          "latent": 1676,
+          "explanation": "double angle bracket tokens like << and >> and their escaped bracket variants",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            9,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "33": {
+          "latent": 33,
+          "explanation": "common short function words punctuation and hyphenated or tokenized word fragments",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            7,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "2364": {
+          "latent": 2364,
+          "explanation": "common auxiliary verbs and the pronoun we",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            7,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "1132": {
+          "latent": 1132,
+          "explanation": "Periods and commas in legal and journal citation abbreviations and reference strings",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "138": {
+          "latent": 138,
+          "explanation": "Activates on the substring => used as an arrow or mapping operator in code",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            8,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1185": {
+          "latent": 1185,
+          "explanation": "common short function words and punctuation such as the the a in and parentheses",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            6,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "819": {
+          "latent": 819,
+          "explanation": "spans of whitespace including spaces tabs and blank lines between tokens",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            9,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1151": {
+          "latent": 1151,
+          "explanation": "Text inside or the markers of double angle brackets used as annotations like double angle brackets << >>",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "646": {
+          "latent": 646,
+          "explanation": "punctuation whitespace and short formatting or markup tokens such as quotes commas asterisks apostrophes",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "130": {
+          "latent": 130,
+          "explanation": "Activates on double less-than and greater-than bracket markup tokens",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            5,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "2376": {
+          "latent": 2376,
+          "explanation": "Activates on single letters and very short letter substrings or abbreviations",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            10,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1755": {
+          "latent": 1755,
+          "explanation": "Activates on common English function words and determiners such as the the a of which other",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            9,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2566": {
+          "latent": 2566,
+          "explanation": "Activates on double angle bracket markers used as section or link placeholders in documents",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            7,
+            9,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "1738": {
+          "latent": 1738,
+          "explanation": "runs of leading whitespace tabs or spaces and blank newlines before code or comments",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            7,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "154": {
+          "latent": 154,
+          "explanation": "Single characters or short character tokens enclosed in double angle brackets",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            3,
+            7
+          ],
+          "score": 0.7142857142857143
+        },
+        "1774": {
+          "latent": 1774,
+          "explanation": "short 2 to 4 character substrings occurring inside words",
+          "predictions": [],
+          "correct seqs": [
+            7,
+            8,
+            9,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "223": {
+          "latent": 223,
+          "explanation": "common short function words and punctuation such as articles prepositions conjunctions commas and periods",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            6,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1129": {
+          "latent": 1129,
+          "explanation": "tokens enclosed in double angle brackets like <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            6,
+            7
+          ],
+          "score": 0.7142857142857143
+        },
+        "166": {
+          "latent": 166,
+          "explanation": "Activates on tokens or short substrings enclosed in double angle brackets like annotations and tags",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            5,
+            8,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "167": {
+          "latent": 167,
+          "explanation": "the capital letter E at the start of words or tokens",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            7,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2598": {
+          "latent": 2598,
+          "explanation": "Activates on text enclosed in double angle brackets like <<...>> including annotations tags and LaTeX markers",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            7,
+            9,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "2741": {
+          "latent": 2741,
+          "explanation": "Activates on short common function words and small tokens such as articles pronouns prepositions and numbers",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1827": {
+          "latent": 1827,
+          "explanation": "the annotation markers the substrings << and >> often surrounding punctuation or short tokens",
+          "predictions": [],
+          "correct seqs": [
+            7,
+            10,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "736": {
+          "latent": 736,
+          "explanation": "short function words such as pronouns and auxiliary modal verbs",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            8,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1124": {
+          "latent": 1124,
+          "explanation": "Text enclosed in double angle brackets",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2770": {
+          "latent": 2770,
+          "explanation": "forms of the verb be including is am are was were been be",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1630": {
+          "latent": 1630,
+          "explanation": "punctuation symbols and short function words such as commas quotes parentheses and small connectors",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            6,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1178": {
+          "latent": 1178,
+          "explanation": "punctuation sequences and short nonalphanumeric substrings such as brackets arrows and URL symbols",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            5,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1078": {
+          "latent": 1078,
+          "explanation": "the double angle bracket tokens << or >> used as markers",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            12,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "237": {
+          "latent": 237,
+          "explanation": "short common function words such as prepositions and articles",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            9,
+            10,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1860": {
+          "latent": 1860,
+          "explanation": "Activates on substrings of programming identifiers such as CamelCase parts and lowercase segments within variable or function names",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            8,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "2329": {
+          "latent": 2329,
+          "explanation": "text enclosed in double angle brackets like <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            6,
+            9,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "1846": {
+          "latent": 1846,
+          "explanation": "plural nouns and plural pronouns referring to groups people or collective entities",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            5,
+            8,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "288": {
+          "latent": 288,
+          "explanation": "short function words punctuation and line break tokens",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            6,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1873": {
+          "latent": 1873,
+          "explanation": "Common short function words and auxiliary verbs including pronouns conjunctions commas and the particle to",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            7,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "339": {
+          "latent": 339,
+          "explanation": "three letter alphabetic substrings inside words",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2752": {
+          "latent": 2752,
+          "explanation": "Activates on short contiguous substrings of words two to four characters long across languages and scripts",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            5,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2804": {
+          "latent": 2804,
+          "explanation": "numeric digit sequences and numbers embedded in text math expressions and markup",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            6,
+            7,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "718": {
+          "latent": 718,
+          "explanation": "auxiliary and common function verbs and copulas like be have get is are was being has",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            6,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1905": {
+          "latent": 1905,
+          "explanation": "newline and line break tokens such as \u21b5 and CRLF sequences",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            6,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "355": {
+          "latent": 355,
+          "explanation": "Activates on substrings enclosed in double angle brackets like <<...>> including punctuation and short tokens",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            6,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "797": {
+          "latent": 797,
+          "explanation": "common English prepositions and other short function words",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            10,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2841": {
+          "latent": 2841,
+          "explanation": "substrings enclosed in << and >>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            7,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1279": {
+          "latent": 1279,
+          "explanation": "double angle bracket tokens like << and >> and text enclosed by them",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            9,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1362": {
+          "latent": 1362,
+          "explanation": "punctuation characters such as commas periods and closing quotation marks",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            7,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1269": {
+          "latent": 1269,
+          "explanation": "short word fragments and punctuation like periods and hyphenation induced substrings",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            3,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "2808": {
+          "latent": 2808,
+          "explanation": "short function words such as pronouns and auxiliaries like we you I can will to",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            7,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "366": {
+          "latent": 366,
+          "explanation": "common short function words and determiners such as the the a who among",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            6,
+            10,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1026": {
+          "latent": 1026,
+          "explanation": "common short function words such as articles prepositions and pronouns",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            10,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "835": {
+          "latent": 835,
+          "explanation": "numeric tokens including digits decimals ordinals percentages and unit markers",
+          "predictions": [],
+          "correct seqs": [
+            10,
+            12,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1945": {
+          "latent": 1945,
+          "explanation": "common small function words and punctuation such as if which that as commas",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            9,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "407": {
+          "latent": 407,
+          "explanation": "Common short function words and grammatical tokens such as articles prepositions conjunctions and possessive 's",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            10,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2864": {
+          "latent": 2864,
+          "explanation": "punctuation characters and punctuation like tokens such as dots colons equals arrows and angle brackets",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            7,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "412": {
+          "latent": 412,
+          "explanation": "Activates on short substrings inside words especially when marked with angle brackets",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            8,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "1370": {
+          "latent": 1370,
+          "explanation": "individual words or tokens across varied parts of speech",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            9,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1949": {
+          "latent": 1949,
+          "explanation": "Activates on tokens enclosed in double angle brackets representing markup tags attributes or code placeholders",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            5,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "1371": {
+          "latent": 1371,
+          "explanation": "Activates on numeric tokens and number related words like digits integers fractions and the word number",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            6,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "1954": {
+          "latent": 1954,
+          "explanation": "Tokens enclosed in double angle brackets for example tokens wrapped between << and >>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            7,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2891": {
+          "latent": 2891,
+          "explanation": "single non\u2011Latin characters for example Greek and Cyrillic letters",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            7,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "2037": {
+          "latent": 2037,
+          "explanation": "Activates on double angle bracket tokens representing short uppercase letters symbols or token fragments",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            7,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1380": {
+          "latent": 1380,
+          "explanation": "the substring << as used in <<...>> annotation markers",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            5,
+            7,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "838": {
+          "latent": 838,
+          "explanation": "substrings enclosed in double angle brackets like <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            6,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1385": {
+          "latent": 1385,
+          "explanation": "short letter substrings of words especially 1 to 4 letters long",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            9,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2893": {
+          "latent": 2893,
+          "explanation": "Activates on common short function words small adverbs and contractions",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            9,
+            10,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "449": {
+          "latent": 449,
+          "explanation": "LaTeX math tokens and symbols such as \\hat, \\rangle, subscripts, fractions, and braces",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            9,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "2978": {
+          "latent": 2978,
+          "explanation": "biomedical and medical terminology and concepts such as diseases pathways and immune signaling",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            7,
+            9,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "1268": {
+          "latent": 1268,
+          "explanation": "Activates on short punctuation whitespace or small one to three character substrings inside words and markup",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            5,
+            8
+          ],
+          "score": 0.7142857142857143
+        },
+        "876": {
+          "latent": 876,
+          "explanation": "Common short words function words and morphemes including punctuation adjacent forms and common suffixes",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            2,
+            11,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "993": {
+          "latent": 993,
+          "explanation": "substrings enclosed in double angle brackets like <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "478": {
+          "latent": 478,
+          "explanation": "Activates on numbers digits and numeric tokens including measurements citations and short numeric substrings",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2923": {
+          "latent": 2923,
+          "explanation": "Activates on punctuation characters common in code markup and URLs such as dots arrows braces colons and underscores",
+          "predictions": [],
+          "correct seqs": [
+            6,
+            10,
+            12,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2165": {
+          "latent": 2165,
+          "explanation": "Activates on text inside or consisting of double angle brackets like <<...>> often around punctuation or tags",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            7,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2065": {
+          "latent": 2065,
+          "explanation": "short technical tokens punctuation symbols and markup fragments such as abbreviations and code sequences",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            6,
+            12,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "3012": {
+          "latent": 3012,
+          "explanation": "Activates on common function words and short articles or prepositions such as the a of and this",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            7,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1424": {
+          "latent": 1424,
+          "explanation": "Activates on tokens enclosed in double angle brackets or the angle bracket delimiters",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            7,
+            9,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1086": {
+          "latent": 1086,
+          "explanation": "substrings enclosed in double angle brackets like <<...>> commonly marking tokens in LaTeX math contexts",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            6,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "1399": {
+          "latent": 1399,
+          "explanation": "short common function words and small punctuation tokens such as was were in to",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            6,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "2180": {
+          "latent": 2180,
+          "explanation": "tokens or text enclosed in double angle brackets like << ... >>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            7,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "483": {
+          "latent": 483,
+          "explanation": "non ASCII multibyte characters such as Greek Cyrillic Arabic Japanese and CJK characters",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            5,
+            8,
+            10
+          ],
+          "score": 0.7142857142857143
+        },
+        "499": {
+          "latent": 499,
+          "explanation": "the word any and related tokens like anyone often in help request contexts",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            4,
+            8,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1442": {
+          "latent": 1442,
+          "explanation": "Common content nouns in technical or formal writing",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            7,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "522": {
+          "latent": 522,
+          "explanation": "the special double angle bracket marker like << or paired <<...>> tokens",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            6,
+            8,
+            9
+          ],
+          "score": 0.7142857142857143
+        },
+        "2177": {
+          "latent": 2177,
+          "explanation": "short tokens like numbers years punctuation dashes brackets and other markup symbols",
+          "predictions": [],
+          "correct seqs": [
+            4,
+            7,
+            9,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "1094": {
+          "latent": 1094,
+          "explanation": "short common function words and everyday verbs",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            10,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1203": {
+          "latent": 1203,
+          "explanation": "short common function words like articles prepositions auxiliary verbs and similar small tokens",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            8,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1445": {
+          "latent": 1445,
+          "explanation": "the period character dot as a token often in code file paths and object access",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            5,
+            8,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "2208": {
+          "latent": 2208,
+          "explanation": "short common function words and adverbial modifiers",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            9,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "2308": {
+          "latent": 2308,
+          "explanation": "the substring << used as an opening marker in LaTeX or markup",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            7,
+            10,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3042": {
+          "latent": 3042,
+          "explanation": "Activates on words and substrings from legal case names and citation fragments",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            8,
+            13,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1204": {
+          "latent": 1204,
+          "explanation": "text spans marked by double angle bracket annotations like << ... >> including empty or whitespace spans",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            6,
+            7,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "3017": {
+          "latent": 3017,
+          "explanation": "Activates on individual LaTeX math variables symbols and short tokens inside math mode",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            7,
+            11,
+            12
+          ],
+          "score": 0.7142857142857143
+        },
+        "530": {
+          "latent": 530,
+          "explanation": "tokens or substrings enclosed in double angle brackets such as <<...>>",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            5,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1106": {
+          "latent": 1106,
+          "explanation": "Tokens marked by double angle bracket annotations between << and >>",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            4,
+            9,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "1503": {
+          "latent": 1503,
+          "explanation": "short lowercase letter substrings of common length two to five appearing inside words",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            3,
+            6,
+            11
+          ],
+          "score": 0.7142857142857143
+        },
+        "528": {
+          "latent": 528,
+          "explanation": "punctuation and short connector tokens such as parentheses commas pipes underscores and similar",
+          "predictions": [],
+          "correct seqs": [
+            2,
+            4,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "572": {
+          "latent": 572,
+          "explanation": "common short function words and punctuation such as and to be or all",
+          "predictions": [],
+          "correct seqs": [
+            1,
+            3,
+            5,
+            14
+          ],
+          "score": 0.7142857142857143
+        },
+        "3051": {
+          "latent": 3051,
+          "explanation": "named entities including person names place names institutions and scientific/technical terms",
+          "predictions": [],
+          "correct seqs": [
+            3,
+            7,
+            8,
+            13
+          ],
+          "score": 0.7142857142857143
+        },
+        "1520": {
+          "latent": 1520,
+          "explanation": "short common English function words and small words such as the of to would you like",
+          "predictions": [],
+          "correct seqs": [
+            5,
+            8,
+            11,
+            14
+          ],
+          "score": 0.7142857142857143
+        }
+      }
+    }
+  }
+}

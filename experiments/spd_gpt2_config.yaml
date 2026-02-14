@@ -9,8 +9,8 @@ wandb_run_name_prefix: ""
 # --- General ---
 seed: 0
 n_mask_samples: 1
-ci_fn_type: vector_mlp
-ci_fn_hidden_dims: [12]
+ci_fn_type: mlp
+ci_fn_hidden_dims: [16]
 sigmoid_type: leaky_hard
 sampling: continuous
 use_delta_component: true
@@ -26,25 +26,46 @@ identity_module_info: null
 # --- Loss ---
 loss_metric_configs:
   - classname: ImportanceMinimalityLoss
-    coeff: 0.0002
+    coeff: 0.0001
     pnorm: 2.0
     beta: 0
-    p_anneal_start_frac: 0.0
+    p_anneal_start_frac: 0.25
     p_anneal_final_p: 0.3
-    p_anneal_end_frac: 1.0
-  - classname: StochasticReconLayerwiseLoss
-    coeff: 2.0
+    p_anneal_end_frac: 0.75
+  - classname: StochasticReconSubsetLoss
+    coeff: 0.5
+    routing:
+      type: uniform_k_subset
+  - classname: PGDReconSubsetLoss
+    coeff: 0.5
+    init: random
+    step_size: 0.5
+    n_steps: 4
+    mask_scope: shared_across_batch
+    routing:
+      type: uniform_k_subset
+  - classname: FaithfulnessLoss
+    coeff: 10000.0
+  - classname: ComponentWeightDecay
+    coeff: 0.00
+  - classname: ComponentL1Penalty
+    coeff: 0.00
+  - classname: DeadComponentWeightDecay
+    coeff: 10000.0
+    ci_threshold: 0.1
+    patience: 200
 output_loss_type: kl
 
 # --- Training ---
-batch_size: 2
-steps: 50_000
+batch_size: 8
+steps: 120_000
 lr_schedule:
   start_val: 3e-4
   fn_type: cosine
   warmup_pct: 0.01
   final_val_frac: 0.1
 gradient_accumulation_steps: 1
+grad_clip_norm_components: 1.0
 
 # --- Faithfulness Warmup ---
 faithfulness_warmup_steps: 200
@@ -69,6 +90,14 @@ eval_metric_configs:
     rounding_threshold: 0.0
   - classname: CIMeanPerComponent
   - classname: StochasticHiddenActsReconLoss
+  - classname: PGDReconSubsetLoss
+    coeff: null
+    init: random
+    step_size: 1.0
+    n_steps: 20
+    mask_scope: shared_across_batch
+    routing:
+      type: uniform_k_subset
 
 # --- Pretrained model ---
 pretrained_model_class: transformers.GPT2LMHeadModel
@@ -83,6 +112,6 @@ task_config:
   dataset_name: "Skylion007/openwebtext"
   is_tokenized: false
   column_name: "text"
-  streaming: false
+  streaming: true
   train_data_split: "train"
   eval_data_split: "train"
