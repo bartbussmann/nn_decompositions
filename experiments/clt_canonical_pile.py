@@ -1,8 +1,9 @@
 """Train a single Cross-Layer Transcoder (CLT) on LlamaSimpleMLP layers 0–3.
 
 Instead of training 4 separate transcoders (one per layer), this trains a single
-CLT that encodes from layer 0's pre-MLP residual stream and decodes to all 4
-layers' MLP outputs simultaneously.
+CLT whose encoder reads from ALL layers' pre-MLP residual streams (concatenated)
+and whose decoder writes to ALL layers' MLP outputs. Each feature can read from
+any layer and write to any layer.
 
 Matches transcoder_canonical_pile.py setup:
 - Same base model (wandb:goodfire/spd/t-32d1bb3b)
@@ -57,17 +58,17 @@ def main():
     model.eval()
 
     tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
-    input_size = model.config.n_embd
-    output_size = model.config.n_embd
+    d_model = model.config.n_embd
+    num_layers = len(LAYERS)
 
-    # Encoder reads from layer 0's pre-MLP residual stream
-    input_module = model.h[LAYERS[0]].rms_2
-    # Decoder targets all layers' MLP outputs
+    # Encoder reads from ALL layers' pre-MLP residual streams (concatenated)
+    input_modules = [model.h[layer].rms_2 for layer in LAYERS]
+    # Decoder writes to ALL layers' MLP outputs
     output_modules = [model.h[layer].mlp for layer in LAYERS]
 
     cfg = EncoderConfig(
-        input_size=input_size,
-        output_size=output_size,
+        input_size=d_model * num_layers,  # concatenated across layers
+        output_size=d_model,              # per-layer output dimension
         dict_size=DICT_SIZE,
         encoder_type="batchtopk",
         top_k=TOP_K,
@@ -75,7 +76,7 @@ def main():
         batch_size=4096,
         num_tokens=int(5e8),
         lr=3e-4,
-        num_output_layers=len(LAYERS),
+        num_output_layers=num_layers,
         wandb_project="pile_clt",
         device=device,
     )
@@ -95,21 +96,21 @@ def main():
 
     activation_store = ActivationsStore(
         model=model,
-        input_module=input_module,
+        input_module=input_modules,
         output_module=output_modules,
         data_config=data_config,
-        input_size=input_size,
-        output_size=output_size,
+        input_size=d_model * num_layers,
+        output_size=d_model,
     )
 
     clt = BatchTopK(cfg)
 
     print(f"Training CLT: {cfg.name}")
     print(f"  Model: LlamaSimpleMLP (t-32d1bb3b)")
-    print(f"  Encoder input: layer {LAYERS[0]} rms_2")
-    print(f"  Decoder targets: layers {LAYERS} MLP outputs")
+    print(f"  Encoder inputs: layers {LAYERS} rms_2 (concatenated → {d_model * num_layers}d)")
+    print(f"  Decoder targets: layers {LAYERS} MLP outputs ({d_model}d each)")
     print(f"  Dict size: {DICT_SIZE}, Top-k: {TOP_K}")
-    print(f"  Num output layers: {len(LAYERS)}")
+    print(f"  Num layers: {num_layers}")
     print(f"  Steps: {cfg.num_tokens // cfg.batch_size:,}")
     print(f"  Dataset: danbraunai/pile-uncopyrighted-tok")
 

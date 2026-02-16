@@ -262,12 +262,11 @@ def test_auxiliary_loss_multi_layer():
     print("PASS: auxiliary loss multi-layer")
 
 
-def test_activation_store_multi_output():
-    """ActivationsStore accepts list of output modules."""
+def test_activation_store_multi_io():
+    """ActivationsStore accepts lists of input and output modules."""
     from activation_store import ActivationsStore, DataConfig
     from unittest.mock import MagicMock
 
-    # Create a simple model with multiple submodules
     class SimpleModel(nn.Module):
         def __init__(self):
             super().__init__()
@@ -283,7 +282,6 @@ def test_activation_store_multi_output():
 
     model = SimpleModel()
 
-    # Mock tokenizer
     tokenizer = MagicMock()
     tokenizer.pad_token = "<pad>"
     tokenizer.pad_token_id = 0
@@ -294,53 +292,61 @@ def test_activation_store_multi_output():
         device="cpu",
     )
 
-    # Test single output module (backward compat)
+    # Test single input/output (backward compat)
     store1 = ActivationsStore.__new__(ActivationsStore)
     store1.model = model
+    store1.input_modules = [model.layer0]
     store1.output_modules = [model.layer1]
+    store1.num_input_layers = 1
     store1.num_output_layers = 1
     store1.data_config = data_config
     store1.input_size = 32
     store1.output_size = 32
-    store1._input_acts = None
+    store1._input_acts_list = [None]
     store1._output_acts_list = [None]
 
-    # Register hooks manually
-    model.layer0.register_forward_hook(lambda m, i, o: setattr(store1, '_input_acts', o.detach()))
+    model.layer0.register_forward_hook(lambda m, i, o: store1._input_acts_list.__setitem__(0, o.detach()))
     model.layer1.register_forward_hook(lambda m, i, o: store1._output_acts_list.__setitem__(0, o.detach()))
 
     x = torch.randn(4, 32)
     model(x)
-    assert store1._input_acts is not None
+    assert store1._input_acts_list[0] is not None
     assert store1._output_acts_list[0] is not None
     assert store1.output_module == model.layer1
-    print("PASS: activation store single output module")
+    print("PASS: activation store single input/output")
 
-    # Test multiple output modules
+    # Test multiple inputs and outputs (CLT)
     store2 = ActivationsStore.__new__(ActivationsStore)
     store2.model = model
+    store2.input_modules = [model.layer0, model.layer1]
     store2.output_modules = [model.layer1, model.layer2]
+    store2.num_input_layers = 2
     store2.num_output_layers = 2
     store2.data_config = data_config
-    store2.input_size = 32
+    store2.input_size = 64  # 2 * 32 (concatenated)
     store2.output_size = 32
-    store2._input_acts = None
+    store2._input_acts_list = [None, None]
     store2._output_acts_list = [None, None]
 
-    model.layer0.register_forward_hook(lambda m, i, o: setattr(store2, '_input_acts', o.detach()))
-
-    def make_hook(store, idx):
+    def make_hook(lst, idx):
         def hook(m, i, o):
-            store._output_acts_list[idx] = o.detach()
+            lst[idx] = o.detach()
         return hook
 
-    model.layer1.register_forward_hook(make_hook(store2, 0))
-    model.layer2.register_forward_hook(make_hook(store2, 1))
+    model.layer0.register_forward_hook(make_hook(store2._input_acts_list, 0))
+    model.layer1.register_forward_hook(make_hook(store2._input_acts_list, 1))
+    model.layer1.register_forward_hook(make_hook(store2._output_acts_list, 0))
+    model.layer2.register_forward_hook(make_hook(store2._output_acts_list, 1))
 
     model(x)
+    assert all(a is not None for a in store2._input_acts_list)
     assert all(a is not None for a in store2._output_acts_list)
-    assert store2.output_module == model.layer1
-    print("PASS: activation store multiple output modules")
+
+    # get_activations should concatenate inputs
+    input_acts, output_acts = store2.get_activations(x)
+    assert input_acts.shape[-1] == 64, f"Expected concatenated input dim 64, got {input_acts.shape[-1]}"
+    assert output_acts.shape[-2] == 2, f"Expected 2 output layers, got {output_acts.shape}"
+    print("PASS: activation store multi-input/output (CLT)")
 
 
 def test_all_features_combined():
@@ -397,6 +403,34 @@ def test_different_input_output_sizes():
     print("PASS: different input/output sizes with CLT")
 
 
+def test_clt_concat_input_multi_output():
+    """Full CLT: concatenated multi-layer input → multi-layer output."""
+    num_layers = 4
+    d_model = 32
+    cfg = EncoderConfig(
+        input_size=d_model * num_layers,  # concatenated
+        output_size=d_model,              # per layer
+        dict_size=256,
+        top_k=8,
+        num_output_layers=num_layers,
+        device="cpu",
+    )
+    encoder = TopK(cfg)
+    assert encoder.W_enc.shape == (d_model * num_layers, 256)
+    assert encoder.W_dec.shape == (num_layers, 256, d_model)
+
+    # Simulate concatenated input from 4 layers
+    x_in = torch.randn(16, d_model * num_layers)
+    y_target = torch.randn(16, num_layers, d_model)
+    output = encoder(x_in, y_target)
+
+    assert output["output"].shape == (16, num_layers, d_model)
+    output["loss"].backward()
+    assert encoder.W_enc.grad is not None
+    assert encoder.W_dec.grad is not None
+    print("PASS: CLT concat input → multi output")
+
+
 if __name__ == "__main__":
     test_single_layer_backward_compat()
     test_sae_backward_compat()
@@ -409,7 +443,8 @@ if __name__ == "__main__":
     test_post_encoder_scale()
     test_decoder_norm()
     test_auxiliary_loss_multi_layer()
-    test_activation_store_multi_output()
+    test_activation_store_multi_io()
     test_all_features_combined()
     test_different_input_output_sizes()
+    test_clt_concat_input_multi_output()
     print("\nAll tests passed!")
