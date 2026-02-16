@@ -37,6 +37,12 @@ class EncoderConfig:
     input_unit_norm: bool = False
     pre_enc_bias: bool = False
 
+    # Cross-layer transcoder
+    num_output_layers: int = 1
+    skip_connection: bool = False
+    train_post_encoder: bool = False
+    post_encoder_scale: float = 1.0
+
     # TopK specific
     top_k: int = 32
     top_k_aux: int = 512
