@@ -71,6 +71,19 @@ def _patched_forward(module: nn.Module, patched_fn):
         module.forward = original_forward
 
 
+@contextmanager
+def _multi_patched_forward(modules_and_fns: list[tuple[nn.Module, Callable]]):
+    """Temporarily replace multiple modules' forward methods."""
+    originals = [(mod, mod.forward) for mod, _ in modules_and_fns]
+    for mod, fn in modules_and_fns:
+        mod.forward = fn
+    try:
+        yield
+    finally:
+        for mod, orig_fn in originals:
+            mod.forward = orig_fn
+
+
 @torch.no_grad()
 def get_performance_metrics(
     activation_store,
@@ -95,32 +108,67 @@ def get_performance_metrics(
 
     input_acts, output_acts = activation_store.get_activations(input_ids, attention_mask)
     input_acts_flat = input_acts.reshape(-1, cfg.input_size)
-    output_acts_flat = output_acts.reshape(-1, cfg.output_size)
+
+    num_layers = activation_store.num_output_layers
+    multi = num_layers > 1
+
+    if multi:
+        output_acts_flat = output_acts.reshape(-1, num_layers, cfg.output_size)
+    else:
+        output_acts_flat = output_acts.reshape(-1, cfg.output_size)
 
     encoder_out = encoder(input_acts_flat, output_acts_flat)["output"].reshape(
         output_acts.shape
     )
 
-    output_module = activation_store.output_module
-    original_forward = output_module.forward
-
     original_loss = loss(input_ids, attention_mask)
 
-    with _patched_forward(output_module, lambda *a, **kw: encoder_out):
-        reconstr_loss = loss(input_ids, attention_mask)
+    if multi:
+        modules = activation_store.output_modules
+        original_forwards = [mod.forward for mod in modules]
+        # encoder_out: (batch, seq, num_layers, output_size)
+        layer_outs = [encoder_out[:, :, i, :] for i in range(num_layers)]
 
-    def zero_forward(*args, **kwargs):
-        return torch.zeros_like(original_forward(*args, **kwargs))
+        with _multi_patched_forward(
+            [(mod, lambda *a, o=o, **kw: o) for mod, o in zip(modules, layer_outs)]
+        ):
+            reconstr_loss = loss(input_ids, attention_mask)
 
-    with _patched_forward(output_module, zero_forward):
-        zero_loss = loss(input_ids, attention_mask)
+        with _multi_patched_forward(
+            [(mod, lambda *a, f=f, **kw: torch.zeros_like(f(*a, **kw)))
+             for mod, f in zip(modules, original_forwards)]
+        ):
+            zero_loss = loss(input_ids, attention_mask)
 
-    def mean_forward(*args, **kwargs):
-        out = original_forward(*args, **kwargs)
-        return out.mean([0, 1]).expand_as(out)
+        def _make_mean_fn(orig_fn):
+            def mean_forward(*args, **kwargs):
+                out = orig_fn(*args, **kwargs)
+                return out.mean([0, 1]).expand_as(out)
+            return mean_forward
 
-    with _patched_forward(output_module, mean_forward):
-        mean_loss = loss(input_ids, attention_mask)
+        with _multi_patched_forward(
+            [(mod, _make_mean_fn(f)) for mod, f in zip(modules, original_forwards)]
+        ):
+            mean_loss = loss(input_ids, attention_mask)
+    else:
+        output_module = activation_store.output_module
+        original_forward = output_module.forward
+
+        with _patched_forward(output_module, lambda *a, **kw: encoder_out):
+            reconstr_loss = loss(input_ids, attention_mask)
+
+        def zero_forward(*args, **kwargs):
+            return torch.zeros_like(original_forward(*args, **kwargs))
+
+        with _patched_forward(output_module, zero_forward):
+            zero_loss = loss(input_ids, attention_mask)
+
+        def mean_forward(*args, **kwargs):
+            out = original_forward(*args, **kwargs)
+            return out.mean([0, 1]).expand_as(out)
+
+        with _patched_forward(output_module, mean_forward):
+            mean_loss = loss(input_ids, attention_mask)
 
     return {
         "performance/original_loss": original_loss,

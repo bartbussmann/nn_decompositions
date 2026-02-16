@@ -36,37 +36,45 @@ class ActivationsStore:
     For SAE training (input == target), pass the same module for both
     input_module and output_module.
 
+    For cross-layer transcoders, pass a list of output modules.
+
     Args:
         model: Any PyTorch model
         input_module: Module whose output is the encoder input
-        output_module: Module whose output is the encoder target
+        output_module: Module(s) whose output is the encoder target.
+            Single module for standard SAE/transcoder, list for CLT.
         data_config: Configuration for data loading
         input_size: Dimension of input activations
-        output_size: Dimension of output activations
+        output_size: Dimension of output activations (per layer)
     """
 
     def __init__(
         self,
         model: nn.Module,
         input_module: nn.Module,
-        output_module: nn.Module,
+        output_module: nn.Module | list[nn.Module],
         data_config: DataConfig,
         input_size: int,
         output_size: int,
     ):
         self.model = model
-        self.output_module = output_module
+        if isinstance(output_module, list):
+            self.output_modules = output_module
+        else:
+            self.output_modules = [output_module]
+        self.num_output_layers = len(self.output_modules)
         self.data_config = data_config
         self.input_size = input_size
         self.output_size = output_size
 
         # Activation storage (temporary, written by hooks)
         self._input_acts: torch.Tensor | None = None
-        self._output_acts: torch.Tensor | None = None
+        self._output_acts_list: list[torch.Tensor | None] = [None] * self.num_output_layers
 
         # Register hooks
         input_module.register_forward_hook(self._input_hook)
-        output_module.register_forward_hook(self._output_hook)
+        for i, mod in enumerate(self.output_modules):
+            mod.register_forward_hook(self._make_output_hook(i))
 
         # Setup dataset
         self._setup_dataset()
@@ -77,11 +85,18 @@ class ActivationsStore:
         self.dataloader: DataLoader | None = None
         self.dataloader_iter: iter | None = None
 
+    @property
+    def output_module(self) -> nn.Module:
+        """First output module (for single-layer compat and perf eval)."""
+        return self.output_modules[0]
+
     def _input_hook(self, module, input, output):
         self._input_acts = output.detach()
 
-    def _output_hook(self, module, input, output):
-        self._output_acts = output.detach()
+    def _make_output_hook(self, idx: int):
+        def hook(module, input, output):
+            self._output_acts_list[idx] = output.detach()
+        return hook
 
     def _setup_dataset(self):
         cfg = self.data_config
@@ -149,19 +164,27 @@ class ActivationsStore:
     def get_activations(
         self, input_ids: torch.Tensor, attention_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Run forward pass and return (input, output) activations."""
+        """Run forward pass and return (input, output) activations.
+
+        For single output module: output shape is (batch, seq, output_size).
+        For multiple output modules: output shape is (batch, seq, num_layers, output_size).
+        """
         kwargs = {}
         if attention_mask is not None:
             kwargs["attention_mask"] = attention_mask
         self.model(input_ids, **kwargs)
-        assert self._input_acts is not None and self._output_acts is not None
-        return self._input_acts, self._output_acts
+        assert self._input_acts is not None
+        assert all(a is not None for a in self._output_acts_list)
+        if self.num_output_layers == 1:
+            return self._input_acts, self._output_acts_list[0]
+        return self._input_acts, torch.stack(self._output_acts_list, dim=-2)
 
     def _fill_buffer(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Fill buffer with activations from multiple forward passes."""
         to_cpu = self.data_config.buffer_on_cpu
         all_inputs = []
         all_outputs = []
+        multi = self.num_output_layers > 1
         for _ in range(self.data_config.num_batches_in_buffer):
             input_ids, attention_mask = self.get_batch_tokens()
             input_acts, output_acts = self.get_activations(input_ids, attention_mask)
@@ -169,11 +192,23 @@ class ActivationsStore:
                 # Only keep activations for real (non-padding) tokens
                 mask = attention_mask.bool().unsqueeze(-1)  # (batch, seq, 1)
                 inp = input_acts[mask.expand_as(input_acts)].reshape(-1, self.input_size)
-                out = output_acts[mask.expand_as(output_acts)].reshape(-1, self.output_size)
+                if multi:
+                    # output_acts: (batch, seq, num_layers, output_size)
+                    out_mask = mask.unsqueeze(-1)  # (batch, seq, 1, 1)
+                    out = output_acts[out_mask.expand_as(output_acts)].reshape(
+                        -1, self.num_output_layers, self.output_size
+                    )
+                else:
+                    out = output_acts[mask.expand_as(output_acts)].reshape(
+                        -1, self.output_size
+                    )
             else:
                 # Pre-tokenized: no padding, keep all tokens
                 inp = input_acts.reshape(-1, self.input_size)
-                out = output_acts.reshape(-1, self.output_size)
+                if multi:
+                    out = output_acts.reshape(-1, self.num_output_layers, self.output_size)
+                else:
+                    out = output_acts.reshape(-1, self.output_size)
             all_inputs.append(inp.cpu() if to_cpu else inp)
             all_outputs.append(out.cpu() if to_cpu else out)
         return torch.cat(all_inputs, dim=0), torch.cat(all_outputs, dim=0)
