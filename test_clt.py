@@ -403,6 +403,37 @@ def test_different_input_output_sizes():
     print("PASS: different input/output sizes with CLT")
 
 
+
+
+def test_clt_is_causal():
+    """In true CLT mode, earlier outputs cannot depend on later-layer inputs."""
+    num_layers = 3
+    d_model = 16
+    cfg = EncoderConfig(
+        input_size=d_model * num_layers,
+        output_size=d_model,
+        dict_size=64,
+        top_k=4,
+        num_output_layers=num_layers,
+        num_input_layers=num_layers,
+        device="cpu",
+    )
+    encoder = TopK(cfg)
+
+    x = torch.randn(8, d_model * num_layers)
+    y = torch.randn(8, num_layers, d_model)
+
+    x_perturbed = x.clone()
+    # perturb only the last source layer chunk
+    x_perturbed[:, -d_model:] += 3.0
+
+    out_a = encoder(x, y)["output"]
+    out_b = encoder(x_perturbed, y)["output"]
+
+    # layer 0 and 1 outputs must be unchanged (can only read src <= tgt)
+    assert torch.allclose(out_a[:, 0], out_b[:, 0], atol=1e-5), "layer 0 changed from future layer"
+    assert torch.allclose(out_a[:, 1], out_b[:, 1], atol=1e-5), "layer 1 changed from future layer"
+    print("PASS: CLT causal masking")
 def test_clt_concat_input_multi_output():
     """Full CLT: concatenated multi-layer input → multi-layer output."""
     num_layers = 4
@@ -413,11 +444,12 @@ def test_clt_concat_input_multi_output():
         dict_size=256,
         top_k=8,
         num_output_layers=num_layers,
+        num_input_layers=num_layers,
         device="cpu",
     )
     encoder = TopK(cfg)
-    assert encoder.W_enc.shape == (d_model * num_layers, 256)
-    assert encoder.W_dec.shape == (num_layers, 256, d_model)
+    assert encoder.W_enc.shape == (num_layers, d_model, 256)
+    assert encoder.W_dec.shape == (num_layers, num_layers, 256, d_model)
 
     # Simulate concatenated input from 4 layers
     x_in = torch.randn(16, d_model * num_layers)
@@ -446,5 +478,6 @@ if __name__ == "__main__":
     test_activation_store_multi_io()
     test_all_features_combined()
     test_different_input_output_sizes()
+    test_clt_is_causal()
     test_clt_concat_input_multi_output()
     print("\nAll tests passed!")
