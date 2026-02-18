@@ -25,6 +25,18 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path("/workspace/spd")))
 
+# Stub missing simple_stories_train.models.gpt2_simple before /workspace/spd imports it.
+import types
+
+_sst = sys.modules.setdefault("simple_stories_train", types.ModuleType("simple_stories_train"))
+_sst_models = types.ModuleType("simple_stories_train.models")
+sys.modules.setdefault("simple_stories_train.models", _sst_models)
+_sst.models = _sst_models
+_gpt2_mod = types.ModuleType("simple_stories_train.models.gpt2_simple")
+_gpt2_mod.LayerNorm = torch.nn.LayerNorm  # placeholder, unused in our code path
+sys.modules["simple_stories_train.models.gpt2_simple"] = _gpt2_mod
+_sst_models.gpt2_simple = _gpt2_mod
+
 from base import BatchTopK, TopK
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -61,9 +73,78 @@ def load_transcoder(checkpoint_dir: str):
 
 
 def load_spd_model(wandb_path: str):
-    from analysis.collect_spd_activations import load_spd_model as _load
+    """Load SPD ComponentModel, using local cache if available."""
+    import yaml
 
-    return _load(wandb_path)
+    from spd.configs import GlobalCiConfig, ModulePatternInfoConfig
+    from spd.models.component_model import ComponentModel, handle_deprecated_state_dict_keys_
+    from spd.utils.general_utils import resolve_class
+    from spd.utils.module_utils import expand_module_patterns
+
+    # Try local cache first (avoids wandb login requirement)
+    run_id = wandb_path.split("/")[-1]
+    local_dir = Path(f"/workspace/spd/wandb/{run_id}/files")
+    if local_dir.exists():
+        config_path = local_dir / "final_config.yaml"
+        checkpoint_candidates = sorted(local_dir.glob("model_*.pth"))
+        assert checkpoint_candidates, f"No model checkpoint in {local_dir}"
+        checkpoint_path = checkpoint_candidates[-1]
+    else:
+        # Fall back to wandb download
+        from spd.utils.wandb_utils import (
+            download_wandb_file,
+            fetch_latest_wandb_checkpoint,
+            fetch_wandb_run_dir,
+        )
+        import wandb
+
+        api = wandb.Api()
+        run = api.run(wandb_path)
+        run_dir = fetch_wandb_run_dir(run.id)
+        checkpoint_remote = fetch_latest_wandb_checkpoint(run, prefix="model")
+        checkpoint_path = download_wandb_file(run, run_dir, checkpoint_remote.name)
+        config_path = download_wandb_file(run, run_dir, "final_config.yaml")
+
+    with open(config_path) as f:
+        raw_config = yaml.safe_load(f)
+
+    pretrained_model_name = raw_config.get("pretrained_model_name")
+    model_class_path = raw_config["pretrained_model_class"]
+
+    if model_class_path == "spd.pretrain.models.llama_simple_mlp.LlamaSimpleMLP":
+        import importlib
+
+        mod = importlib.import_module("spd.pretrain.models.llama_simple_mlp")
+        target_model = mod.LlamaSimpleMLP.from_pretrained(pretrained_model_name)
+    else:
+        model_class = resolve_class(model_class_path)
+        target_model = model_class.from_pretrained(pretrained_model_name)
+
+    target_model.eval()
+    target_model.requires_grad_(False)
+
+    module_info = [
+        ModulePatternInfoConfig(module_pattern=m["module_pattern"], C=m["C"])
+        for m in raw_config["module_info"]
+    ]
+    module_path_info = expand_module_patterns(target_model, module_info)
+
+    raw_ci = raw_config["ci_config"]
+    ci_config = GlobalCiConfig(**raw_ci)
+
+    comp_model = ComponentModel(
+        target_model=target_model,
+        module_path_info=module_path_info,
+        ci_config=ci_config,
+        pretrained_model_output_attr=raw_config.get("pretrained_model_output_attr", "idx_0"),
+        sigmoid_type=raw_config.get("sigmoid_type", "leaky_hard"),
+    )
+
+    weights = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    handle_deprecated_state_dict_keys_(weights)
+    comp_model.load_state_dict(weights)
+
+    return comp_model, raw_config
 
 
 # =============================================================================
