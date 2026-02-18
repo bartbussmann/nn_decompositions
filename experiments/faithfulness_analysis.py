@@ -175,16 +175,30 @@ def load_eval_tokens(n_sequences: int, seq_len: int) -> torch.Tensor:
 
 
 @torch.no_grad()
-def collect_mlp_inputs(
+def collect_mlp_inputs_and_ci_masks(
+    spd_model,
     base_model,
     input_ids: torch.Tensor,
     batch_size: int,
-) -> torch.Tensor:
-    """Collect post-rms_2 activations (MLP inputs) for all tokens."""
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Collect MLP inputs and per-token CI > 0 masks for c_fc and down_proj.
+
+    Returns:
+        mlp_inputs: (N_tokens, d_model)
+        cfc_masks:  (N_tokens, C_cfc)  binary float
+        down_masks: (N_tokens, C_down) binary float
+    """
+    cfc_name = f"h.{LAYER}.mlp.c_fc"
+    down_name = f"h.{LAYER}.mlp.down_proj"
+
     all_inputs = []
+    all_cfc_masks = []
+    all_down_masks = []
 
     for i in range(0, len(input_ids), batch_size):
         batch = input_ids[i : i + batch_size].to(DEVICE)
+
+        # Collect MLP inputs via hook on rms_2
         captured = {}
 
         def _hook(mod, inp, out):
@@ -194,10 +208,25 @@ def collect_mlp_inputs(
         base_model(batch)
         hook.remove()
 
-        mlp_in = captured["mlp_input"].reshape(-1, captured["mlp_input"].shape[-1])
-        all_inputs.append(mlp_in.cpu())
+        mlp_in = captured["mlp_input"]  # (B, S, d_model)
 
-    return torch.cat(all_inputs, dim=0)
+        # Compute CI scores via SPD forward
+        out = spd_model(batch, cache_type="input")
+        ci = spd_model.calc_causal_importances(out.cache, sampling="continuous")
+
+        cfc_ci = ci.lower_leaky[cfc_name].clamp(0, 1)   # (B, S, C_cfc)
+        down_ci = ci.lower_leaky[down_name].clamp(0, 1)  # (B, S, C_down)
+
+        # Flatten (B, S, ...) -> (B*S, ...)
+        all_inputs.append(mlp_in.reshape(-1, mlp_in.shape[-1]).cpu())
+        all_cfc_masks.append((cfc_ci > 0).float().reshape(-1, cfc_ci.shape[-1]).cpu())
+        all_down_masks.append((down_ci > 0).float().reshape(-1, down_ci.shape[-1]).cpu())
+
+    return (
+        torch.cat(all_inputs, dim=0),
+        torch.cat(all_cfc_masks, dim=0),
+        torch.cat(all_down_masks, dim=0),
+    )
 
 
 # =============================================================================
@@ -240,8 +269,12 @@ def make_transcoder_fn(transcoder):
     return fn
 
 
-def make_spd_mlp_fn(spd_model, base_model):
-    """Return fn(x) -> SPD replacement MLP output (all components active)."""
+def make_spd_mlp_fn(spd_model, base_model, cfc_mask: torch.Tensor, down_mask: torch.Tensor):
+    """Return fn(x) -> SPD replacement MLP output with CI > 0 component masks.
+
+    cfc_mask:  (C_cfc,) binary float — which c_fc components are active
+    down_mask: (C_down,) binary float — which down_proj components are active
+    """
     cfc_name = f"h.{LAYER}.mlp.c_fc"
     down_name = f"h.{LAYER}.mlp.down_proj"
     gelu = base_model.h[LAYER].mlp.gelu
@@ -250,17 +283,19 @@ def make_spd_mlp_fn(spd_model, base_model):
     down_comp = spd_model.components[down_name]
 
     def fn(x):
-        # c_fc replacement: x @ V @ U + bias
-        h = x @ cfc_comp.V
-        h = h @ cfc_comp.U
+        # c_fc replacement with mask: zero out inactive components
+        h = x @ cfc_comp.V          # (C_cfc,)
+        h = h * cfc_mask             # mask inactive components
+        h = h @ cfc_comp.U          # (d_mlp,)
         if cfc_comp.bias is not None:
             h = h + cfc_comp.bias
 
         h = gelu(h)
 
-        # down_proj replacement: h @ V @ U + bias
-        out = h @ down_comp.V
-        out = out @ down_comp.U
+        # down_proj replacement with mask
+        out = h @ down_comp.V        # (C_down,)
+        out = out * down_mask        # mask inactive components
+        out = out @ down_comp.U      # (d_model,)
         if down_comp.bias is not None:
             out = out + down_comp.bias
 
@@ -281,18 +316,23 @@ def compute_jacobian_correlations(
     n_samples: int,
     label: str = "",
 ) -> list[float]:
-    """Compute per-sample Jacobian cosine similarities between two functions."""
+    """Compute per-sample Jacobian cosine similarities.
+
+    fn_replacement is either a callable or a list of per-sample callables.
+    """
     n_total = mlp_inputs.shape[0]
     assert n_samples <= n_total, f"n_samples={n_samples} > available tokens={n_total}"
 
     indices = torch.linspace(0, n_total - 1, n_samples).long()
+    per_sample = isinstance(fn_replacement, list)
     scores = []
 
-    for idx in tqdm(indices, desc=f"Jacobians ({label})"):
+    for i, idx in enumerate(tqdm(indices, desc=f"Jacobians ({label})")):
         x = mlp_inputs[idx].to(DEVICE).float()
+        fn_repl = fn_replacement[i] if per_sample else fn_replacement
 
         J_orig = torch.autograd.functional.jacobian(fn_original, x, vectorize=True)
-        J_repl = torch.autograd.functional.jacobian(fn_replacement, x, vectorize=True)
+        J_repl = torch.autograd.functional.jacobian(fn_repl, x, vectorize=True)
 
         sim = F.cosine_similarity(
             J_orig.reshape(1, -1), J_repl.reshape(1, -1)
@@ -312,7 +352,7 @@ def plot_faithfulness(tc_scores: list[float], spd_scores: list[float], save_path
 
     # Bar chart with SE error bars
     ax = axes[0]
-    methods = ["Transcoder", "SPD"]
+    methods = ["Transcoder", "SPD (CI>0)"]
     means = [np.mean(tc_scores), np.mean(spd_scores)]
     ses = [
         np.std(tc_scores) / np.sqrt(len(tc_scores)),
@@ -340,7 +380,7 @@ def plot_faithfulness(tc_scores: list[float], spd_scores: list[float], save_path
     # Histogram of per-token scores
     ax = axes[1]
     ax.hist(tc_scores, bins=30, alpha=0.6, color="tab:blue", label="Transcoder", density=True)
-    ax.hist(spd_scores, bins=30, alpha=0.6, color="tab:orange", label="SPD", density=True)
+    ax.hist(spd_scores, bins=30, alpha=0.6, color="tab:orange", label="SPD (CI>0)", density=True)
     ax.axvline(np.mean(tc_scores), color="tab:blue", linestyle="--", linewidth=2)
     ax.axvline(np.mean(spd_scores), color="tab:orange", linestyle="--", linewidth=2)
     ax.set_xlabel("Jacobian Cosine Similarity")
@@ -406,19 +446,34 @@ def main():
     print(f"Loading {args.n_sequences} sequences (seq_len={args.seq_len})...")
     tokenized_data = load_eval_tokens(args.n_sequences, args.seq_len)
 
-    # Collect MLP inputs
-    print("Collecting MLP inputs (post-rms_2)...")
-    mlp_inputs = collect_mlp_inputs(base_model, tokenized_data, args.batch_size)
+    # Collect MLP inputs and CI masks
+    print("Collecting MLP inputs and CI masks...")
+    mlp_inputs, cfc_masks, down_masks = collect_mlp_inputs_and_ci_masks(
+        spd_model, base_model, tokenized_data, args.batch_size
+    )
     n_tokens = mlp_inputs.shape[0]
     d_model = mlp_inputs.shape[1]
+    avg_cfc_l0 = cfc_masks.sum(-1).mean().item()
+    avg_down_l0 = down_masks.sum(-1).mean().item()
     print(f"  {n_tokens} tokens, d_model={d_model}")
+    print(f"  Avg active components (CI>0): c_fc={avg_cfc_l0:.1f}, down_proj={avg_down_l0:.1f}")
 
     n_samples = min(args.n_samples, n_tokens)
 
     # Build layer functions
     fn_orig = make_original_mlp_fn(base_model)
     fn_tc = make_transcoder_fn(transcoder)
-    fn_spd = make_spd_mlp_fn(spd_model, base_model)
+
+    # Build per-token SPD functions with CI > 0 masks
+    indices = torch.linspace(0, n_tokens - 1, n_samples).long()
+    spd_fns = [
+        make_spd_mlp_fn(
+            spd_model, base_model,
+            cfc_masks[idx].to(DEVICE),
+            down_masks[idx].to(DEVICE),
+        )
+        for idx in indices
+    ]
 
     # Compute Jacobian correlations
     print(f"\nComputing Jacobian correlations ({n_samples} samples)...")
@@ -429,7 +484,7 @@ def main():
     )
 
     spd_scores = compute_jacobian_correlations(
-        fn_orig, fn_spd, mlp_inputs, n_samples, label="SPD"
+        fn_orig, spd_fns, mlp_inputs, n_samples, label="SPD (CI>0)"
     )
 
     # Summarize
@@ -444,10 +499,11 @@ def main():
     print(f"\n{'='*60}")
     print("RESULTS: Jacobian Correlation (Mechanistic Faithfulness)")
     print(f"{'='*60}")
-    print(f"  Transcoder:  {tc_mean:.4f} +/- {tc_se:.4f}  (std={tc_std:.4f})")
-    print(f"  SPD:         {spd_mean:.4f} +/- {spd_se:.4f}  (std={spd_std:.4f})")
-    print(f"  N samples:   {n_samples}")
-    print(f"  Time:        {elapsed:.1f}s")
+    print(f"  Transcoder:    {tc_mean:.4f} +/- {tc_se:.4f}  (std={tc_std:.4f})")
+    print(f"  SPD (CI>0):    {spd_mean:.4f} +/- {spd_se:.4f}  (std={spd_std:.4f})")
+    print(f"  N samples:     {n_samples}")
+    print(f"  SPD avg L0:    c_fc={avg_cfc_l0:.1f}, down_proj={avg_down_l0:.1f}")
+    print(f"  Time:          {elapsed:.1f}s")
 
     # Save
     results = {
@@ -465,10 +521,12 @@ def main():
             "se": float(tc_se),
             "scores": tc_scores,
         },
-        "spd": {
+        "spd_ci_gt_0": {
             "mean": float(spd_mean),
             "std": float(spd_std),
             "se": float(spd_se),
+            "avg_l0_cfc": avg_cfc_l0,
+            "avg_l0_down": avg_down_l0,
             "scores": spd_scores,
         },
     }
