@@ -229,8 +229,7 @@ class BatchTopKTranscoder(SharedTranscoder):
 
         self.update_inactive_features(acts)
 
-        l0_norm = (acts > 0).float().sum(-1)
-        .mean()
+        l0_norm = (acts > 0).float().sum(-1).mean()
         l1_loss = self.cfg.l1_coeff * acts.float().abs().sum(-1).mean()
         aux_loss = self._get_auxiliary_loss(y_target, y_pred, acts_dense)
         return self._build_loss_dict(
