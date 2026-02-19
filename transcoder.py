@@ -39,6 +39,14 @@ class SharedTranscoder(nn.Module):
 
         self.to(cfg.dtype).to(cfg.device)
 
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        """Encode input to sparse activations. Subclasses must implement."""
+        raise NotImplementedError
+
+    def decode(self, acts: torch.Tensor) -> torch.Tensor:
+        """Decode sparse activations to output."""
+        return acts @ self.W_dec + self.b_dec
+
     def preprocess_input(
         self, x: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
@@ -130,21 +138,23 @@ class Vanilla(SharedTranscoder):
     def __init__(self, cfg: EncoderConfig):
         super().__init__(cfg)
 
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
+        x_enc = x - self.b_dec if use_pre_enc_bias else x
+        return F.relu(x_enc @ self.W_enc + self.b_enc)
+
     def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
-        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        acts = F.relu(x_enc @ self.W_enc + self.b_enc)
-        y_pred = acts @ self.W_dec + self.b_dec
+        acts = self.encode(x_in)
+        y_pred = self.decode(acts)
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
         self.update_inactive_features(acts)
 
         l0_norm = (acts > 0).float().sum(-1).mean()
-        l1_norm = acts.float().abs().sum(-1).mean()
-        l1_loss = self.cfg.l1_coeff * l1_norm
+        l1_loss = self.cfg.l1_coeff * acts.float().abs().sum(-1).mean()
         return self._build_loss_dict(
             y_target, y_pred, acts, y_pred_out, l0_norm,
             extra_losses={"l1_loss": l1_loss},
@@ -157,26 +167,33 @@ class TopK(SharedTranscoder):
     def __init__(self, cfg: EncoderConfig):
         super().__init__(cfg)
 
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
+        x_enc = x - self.b_dec if use_pre_enc_bias else x
+        acts = F.relu(x_enc @ self.W_enc)
+        acts_topk = torch.topk(acts, self.cfg.top_k, dim=-1)
+        return torch.zeros_like(acts).scatter(-1, acts_topk.indices, acts_topk.values)
+
     def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
-        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        acts = F.relu(x_enc @ self.W_enc)
-        acts_topk = torch.topk(acts, self.cfg.top_k, dim=-1)
-        acts_sparse = torch.zeros_like(acts).scatter(-1, acts_topk.indices, acts_topk.values)
-        y_pred = acts_sparse @ self.W_dec + self.b_dec
+        acts = self.encode(x_in)
+        y_pred = self.decode(acts)
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
-        self.update_inactive_features(acts_sparse)
+        self.update_inactive_features(acts)
 
-        l0_norm = (acts_sparse > 0).float().sum(-1).mean()
-        l1_norm = acts_sparse.float().abs().sum(-1).mean()
-        l1_loss = self.cfg.l1_coeff * l1_norm
-        aux_loss = self._get_auxiliary_loss(y_target, y_pred, acts)
+        # Dense acts for auxiliary loss
+        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
+        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
+        acts_dense = F.relu(x_enc @ self.W_enc)
+
+        l0_norm = (acts > 0).float().sum(-1).mean()
+        l1_loss = self.cfg.l1_coeff * acts.float().abs().sum(-1).mean()
+        aux_loss = self._get_auxiliary_loss(y_target, y_pred, acts_dense)
         return self._build_loss_dict(
-            y_target, y_pred, acts_sparse, y_pred_out, l0_norm,
+            y_target, y_pred, acts, y_pred_out, l0_norm,
             extra_losses={"l1_loss": l1_loss, "aux_loss": aux_loss},
         )
 
@@ -187,30 +204,37 @@ class BatchTopK(SharedTranscoder):
     def __init__(self, cfg: EncoderConfig):
         super().__init__(cfg)
 
-    def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
-        x_in, _, _ = self.preprocess_input(x_in)
-        y_target, y_mean, y_std = self.preprocess_input(y_target)
-
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
         use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
-        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
+        x_enc = x - self.b_dec if use_pre_enc_bias else x
         acts = F.relu(x_enc @ self.W_enc)
-        acts_topk = torch.topk(acts.flatten(), self.cfg.top_k * x_in.shape[0], dim=-1)
-        acts_sparse = (
+        acts_topk = torch.topk(acts.flatten(), self.cfg.top_k * x.shape[0], dim=-1)
+        return (
             torch.zeros_like(acts.flatten())
             .scatter(-1, acts_topk.indices, acts_topk.values)
             .reshape(acts.shape)
         )
-        y_pred = acts_sparse @ self.W_dec + self.b_dec
+
+    def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
+        x_in, _, _ = self.preprocess_input(x_in)
+        y_target, y_mean, y_std = self.preprocess_input(y_target)
+
+        acts = self.encode(x_in)
+        y_pred = self.decode(acts)
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
-        self.update_inactive_features(acts_sparse)
+        self.update_inactive_features(acts)
 
-        l0_norm = (acts_sparse > 0).float().sum(-1).mean()
-        l1_norm = acts_sparse.float().abs().sum(-1).mean()
-        l1_loss = self.cfg.l1_coeff * l1_norm
-        aux_loss = self._get_auxiliary_loss(y_target, y_pred, acts)
+        # Dense acts for auxiliary loss
+        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
+        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
+        acts_dense = F.relu(x_enc @ self.W_enc)
+
+        l0_norm = (acts > 0).float().sum(-1).mean()
+        l1_loss = self.cfg.l1_coeff * acts.float().abs().sum(-1).mean()
+        aux_loss = self._get_auxiliary_loss(y_target, y_pred, acts_dense)
         return self._build_loss_dict(
-            y_target, y_pred, acts_sparse, y_pred_out, l0_norm,
+            y_target, y_pred, acts, y_pred_out, l0_norm,
             extra_losses={"l1_loss": l1_loss, "aux_loss": aux_loss},
         )
 
@@ -289,18 +313,26 @@ class JumpReLUEncoder(SharedTranscoder):
         super().__init__(cfg)
         self.jumprelu = JumpReLUActivation(cfg.dict_size, cfg.bandwidth, cfg.device)
 
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
+        x_enc = x - self.b_dec if use_pre_enc_bias else x
+        pre_acts = F.relu(x_enc @ self.W_enc + self.b_enc)
+        return self.jumprelu(pre_acts)
+
     def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
-        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        pre_acts = F.relu(x_enc @ self.W_enc + self.b_enc)
-        acts = self.jumprelu(pre_acts)
-        y_pred = acts @ self.W_dec + self.b_dec
+        acts = self.encode(x_in)
+        y_pred = self.decode(acts)
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
         self.update_inactive_features(acts)
+
+        # Pre-acts needed for differentiable L0 via StepFunction
+        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
+        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
+        pre_acts = F.relu(x_enc @ self.W_enc + self.b_enc)
 
         l0_norm = (
             StepFunction.apply(pre_acts, self.jumprelu.log_threshold, self.cfg.bandwidth)
