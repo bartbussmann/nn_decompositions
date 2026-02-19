@@ -1,6 +1,6 @@
 """Train a transcoder on the SimpleStories 4-layer LlamaSimple model (layer 3 MLP).
 
-This script trains a TopK transcoder to decompose the MLP at layer 3 of the
+This script trains a TopKTranscoder transcoder to decompose the MLP at layer 3 of the
 canonical SimpleStories model used in SPD experiments.
 
 Model: wandb:goodfire/spd/runs/erq48r3w (LlamaSimple 4-layer, 1.25M params)
@@ -19,7 +19,7 @@ from transformers import AutoTokenizer
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from activation_store import ActivationsStore, DataConfig
-from base import BatchTopK, TopK
+from transcoder import BatchTopKTranscoder, TopKTranscoder
 from config import EncoderConfig
 from training import train_encoder
 
@@ -84,6 +84,6 @@ print(f"  Input/Output size: {input_size}")
 print(f"  Dict size: {cfg.dict_size}")
 print(f"  Top-k: {cfg.top_k}")
 
-transcoder = TopK(cfg)
+transcoder = TopKTranscoder(cfg)
 
 train_encoder(transcoder, activation_store, cfg)

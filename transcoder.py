@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from config import EncoderConfig
 
 
-class SharedEncoder(nn.Module):
+class SharedTranscoder(nn.Module):
     """Base class for encoder-decoder models (SAE and Transcoder).
 
     Supports both SAE mode (input = target) and Transcoder mode (input != target).
@@ -38,6 +38,20 @@ class SharedEncoder(nn.Module):
         self.num_batches_not_active = torch.zeros((cfg.dict_size,)).to(cfg.device)
 
         self.to(cfg.dtype).to(cfg.device)
+
+    def encode(
+        self, x: torch.Tensor, return_dense: bool = False
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        """Encode input to sparse activations. Subclasses must implement.
+
+        If return_dense=True, also returns the dense (pre-sparsification) activations
+        as a second element.
+        """
+        raise NotImplementedError
+
+    def decode(self, acts: torch.Tensor) -> torch.Tensor:
+        """Decode sparse activations to output."""
+        return acts @ self.W_dec + self.b_dec
 
     def preprocess_input(
         self, x: torch.Tensor
@@ -75,7 +89,7 @@ class SharedEncoder(nn.Module):
     def _get_auxiliary_loss(
         self, y_target: torch.Tensor, y_pred: torch.Tensor, acts: torch.Tensor
     ) -> torch.Tensor:
-        """Auxiliary loss to revive dead features (used by TopK variants)."""
+        """Auxiliary loss to revive dead features (used by TopKTranscoder variants)."""
         dead_features = self.num_batches_not_active >= self.cfg.n_batches_to_dead
         if dead_features.sum() > 0:
             residual = y_target.float() - y_pred.float()
@@ -124,93 +138,103 @@ class SharedEncoder(nn.Module):
         return result
 
 
-class Vanilla(SharedEncoder):
-    """Vanilla L1-regularized encoder-decoder."""
+class VanillaTranscoder(SharedTranscoder):
+    """VanillaTranscoder L1-regularized encoder-decoder."""
 
     def __init__(self, cfg: EncoderConfig):
         super().__init__(cfg)
+
+    def encode(self, x: torch.Tensor, return_dense: bool = False):
+        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
+        x_enc = x - self.b_dec if use_pre_enc_bias else x
+        acts = F.relu(x_enc @ self.W_enc + self.b_enc)
+        return (acts, acts) if return_dense else acts
 
     def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
-        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        acts = F.relu(x_enc @ self.W_enc + self.b_enc)
-        y_pred = acts @ self.W_dec + self.b_dec
+        acts = self.encode(x_in)
+        y_pred = self.decode(acts)
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
         self.update_inactive_features(acts)
 
         l0_norm = (acts > 0).float().sum(-1).mean()
-        l1_norm = acts.float().abs().sum(-1).mean()
-        l1_loss = self.cfg.l1_coeff * l1_norm
+        l1_loss = self.cfg.l1_coeff * acts.float().abs().sum(-1).mean()
         return self._build_loss_dict(
             y_target, y_pred, acts, y_pred_out, l0_norm,
             extra_losses={"l1_loss": l1_loss},
         )
 
 
-class TopK(SharedEncoder):
-    """TopK sparse encoder-decoder with auxiliary loss."""
+class TopKTranscoder(SharedTranscoder):
+    """TopKTranscoder sparse encoder-decoder with auxiliary loss."""
 
     def __init__(self, cfg: EncoderConfig):
         super().__init__(cfg)
+
+    def encode(self, x: torch.Tensor, return_dense: bool = False):
+        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
+        x_enc = x - self.b_dec if use_pre_enc_bias else x
+        acts = F.relu(x_enc @ self.W_enc + self.b_enc)
+        acts_topk = torch.topk(acts, self.cfg.top_k, dim=-1)
+        acts_sparse = torch.zeros_like(acts).scatter(-1, acts_topk.indices, acts_topk.values)
+        return (acts_sparse, acts) if return_dense else acts_sparse
 
     def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
-        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        acts = F.relu(x_enc @ self.W_enc)
-        acts_topk = torch.topk(acts, self.cfg.top_k, dim=-1)
-        acts_sparse = torch.zeros_like(acts).scatter(-1, acts_topk.indices, acts_topk.values)
-        y_pred = acts_sparse @ self.W_dec + self.b_dec
+        acts, acts_dense = self.encode(x_in, return_dense=True)
+        y_pred = self.decode(acts)
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
-        self.update_inactive_features(acts_sparse)
+        self.update_inactive_features(acts)
 
-        l0_norm = (acts_sparse > 0).float().sum(-1).mean()
-        l1_norm = acts_sparse.float().abs().sum(-1).mean()
-        l1_loss = self.cfg.l1_coeff * l1_norm
-        aux_loss = self._get_auxiliary_loss(y_target, y_pred, acts)
+        l0_norm = (acts > 0).float().sum(-1).mean()
+        l1_loss = self.cfg.l1_coeff * acts.float().abs().sum(-1).mean()
+        aux_loss = self._get_auxiliary_loss(y_target, y_pred, acts_dense)
         return self._build_loss_dict(
-            y_target, y_pred, acts_sparse, y_pred_out, l0_norm,
+            y_target, y_pred, acts, y_pred_out, l0_norm,
             extra_losses={"l1_loss": l1_loss, "aux_loss": aux_loss},
         )
 
 
-class BatchTopK(SharedEncoder):
-    """BatchTopK - topk across flattened batch."""
+class BatchTopKTranscoder(SharedTranscoder):
+    """BatchTopKTranscoder - topk across flattened batch."""
 
     def __init__(self, cfg: EncoderConfig):
         super().__init__(cfg)
 
-    def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
-        x_in, _, _ = self.preprocess_input(x_in)
-        y_target, y_mean, y_std = self.preprocess_input(y_target)
-
+    def encode(self, x: torch.Tensor, return_dense: bool = False):
         use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
-        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        acts = F.relu(x_enc @ self.W_enc)
-        acts_topk = torch.topk(acts.flatten(), self.cfg.top_k * x_in.shape[0], dim=-1)
+        x_enc = x - self.b_dec if use_pre_enc_bias else x
+        acts = F.relu(x_enc @ self.W_enc + self.b_enc)
+        acts_topk = torch.topk(acts.flatten(), self.cfg.top_k * x.shape[0], dim=-1)
         acts_sparse = (
             torch.zeros_like(acts.flatten())
             .scatter(-1, acts_topk.indices, acts_topk.values)
             .reshape(acts.shape)
         )
-        y_pred = acts_sparse @ self.W_dec + self.b_dec
+        return (acts_sparse, acts) if return_dense else acts_sparse
+
+    def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
+        x_in, _, _ = self.preprocess_input(x_in)
+        y_target, y_mean, y_std = self.preprocess_input(y_target)
+
+        acts, acts_dense = self.encode(x_in, return_dense=True)
+        y_pred = self.decode(acts)
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
-        self.update_inactive_features(acts_sparse)
+        self.update_inactive_features(acts)
 
-        l0_norm = (acts_sparse > 0).float().sum(-1).mean()
-        l1_norm = acts_sparse.float().abs().sum(-1).mean()
-        l1_loss = self.cfg.l1_coeff * l1_norm
-        aux_loss = self._get_auxiliary_loss(y_target, y_pred, acts)
+        l0_norm = (acts > 0).float().sum(-1)
+        .mean()
+        l1_loss = self.cfg.l1_coeff * acts.float().abs().sum(-1).mean()
+        aux_loss = self._get_auxiliary_loss(y_target, y_pred, acts_dense)
         return self._build_loss_dict(
-            y_target, y_pred, acts_sparse, y_pred_out, l0_norm,
+            y_target, y_pred, acts, y_pred_out, l0_norm,
             extra_losses={"l1_loss": l1_loss, "aux_loss": aux_loss},
         )
 
@@ -282,22 +306,26 @@ class StepFunction(autograd.Function):
         return x_grad, threshold_grad, None
 
 
-class JumpReLUEncoder(SharedEncoder):
+class JumpReLUTranscoder(SharedTranscoder):
     """JumpReLU with learnable thresholds."""
 
     def __init__(self, cfg: EncoderConfig):
         super().__init__(cfg)
         self.jumprelu = JumpReLUActivation(cfg.dict_size, cfg.bandwidth, cfg.device)
 
+    def encode(self, x: torch.Tensor, return_dense: bool = False):
+        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
+        x_enc = x - self.b_dec if use_pre_enc_bias else x
+        pre_acts = F.relu(x_enc @ self.W_enc + self.b_enc)
+        acts = self.jumprelu(pre_acts)
+        return (acts, pre_acts) if return_dense else acts
+
     def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
-        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        pre_acts = F.relu(x_enc @ self.W_enc + self.b_enc)
-        acts = self.jumprelu(pre_acts)
-        y_pred = acts @ self.W_dec + self.b_dec
+        acts, pre_acts = self.encode(x_in, return_dense=True)
+        y_pred = self.decode(acts)
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
         self.update_inactive_features(acts)

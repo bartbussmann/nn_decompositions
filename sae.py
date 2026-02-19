@@ -4,7 +4,7 @@ SAE is a special case of transcoder where input = target.
 These thin wrappers call forward(x, x).
 """
 
-from base import BatchTopK, JumpReLUEncoder, TopK, Vanilla
+from transcoder import BatchTopKTranscoder, JumpReLUTranscoder, TopKTranscoder, VanillaTranscoder
 from config import SAEConfig
 
 
@@ -18,12 +18,14 @@ def _make_sae_class(base_class):
         def forward(self, x):
             return super().forward(x, x)
 
-    SAE.__name__ = f"{base_class.__name__}SAE"
-    SAE.__qualname__ = f"{base_class.__name__}SAE"
+    # Strip "Transcoder" suffix before adding "SAE" suffix
+    base_name = base_class.__name__.removesuffix("Transcoder")
+    SAE.__name__ = f"{base_name}SAE"
+    SAE.__qualname__ = f"{base_name}SAE"
     return SAE
 
 
-VanillaSAE = _make_sae_class(Vanilla)
-TopKSAE = _make_sae_class(TopK)
-BatchTopKSAE = _make_sae_class(BatchTopK)
-JumpReLUSAE = _make_sae_class(JumpReLUEncoder)
+VanillaSAE = _make_sae_class(VanillaTranscoder)
+TopKSAE = _make_sae_class(TopKTranscoder)
+BatchTopKSAE = _make_sae_class(BatchTopKTranscoder)
+JumpReLUSAE = _make_sae_class(JumpReLUTranscoder)

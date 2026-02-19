@@ -4,7 +4,7 @@
 
 Both methods decompose GPT-2 small's layer 8 MLP into sparse components. We evaluate faithfulness by sweeping L0 (number of active components per token) and measuring how well each method reconstructs the original model behavior.
 
-- **Transcoder** (BatchTopK, 6144 dictionary features, trained k=32): A single encoder-decoder that replaces the full MLP. At evaluation, we keep only the top-k features by activation magnitude.
+- **Transcoder** (BatchTopKTranscoder, 6144 dictionary features, trained k=32): A single encoder-decoder that replaces the full MLP. At evaluation, we keep only the top-k features by activation magnitude.
 - **SPD** (6144 components per weight matrix): Decomposes individual weight matrices (c_fc, c_proj) into rank-1 components with learned causal importance (CI) gates. At evaluation, we keep the top-k components by pre-sigmoid CI score. Each weight matrix is evaluated independently while the other retains original weights.
 
 ## Metrics

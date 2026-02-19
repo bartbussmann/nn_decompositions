@@ -1,11 +1,11 @@
 # %%
-"""Train TopK and BatchTopK transcoders in parallel on MLP layer 8 of GPT-2 small."""
+"""Train TopKTranscoder and BatchTopKTranscoder transcoders in parallel on MLP layer 8 of GPT-2 small."""
 
 import torch
 from transformers import GPT2LMHeadModel, AutoTokenizer
 
 from activation_store import ActivationsStore, DataConfig
-from base import BatchTopK, TopK
+from transcoder import BatchTopKTranscoder, TopKTranscoder
 from config import EncoderConfig
 from training import train_encoder_group, train_encoder
 
@@ -61,12 +61,12 @@ activation_store = ActivationsStore(
     output_size=output_size,
 )
 
-topk_transcoder = TopK(topk_cfg)
-batchtopk_transcoder = BatchTopK(batchtopk_cfg)
+topk_transcoder = TopKTranscoder(topk_cfg)
+batchtopk_transcoder = BatchTopKTranscoder(batchtopk_cfg)
 
 print("Training transcoders:")
-print(f"  [0] TopK: {topk_cfg.name}")
-print(f"  [1] BatchTopK: {batchtopk_cfg.name}")
+print(f"  [0] TopKTranscoder: {topk_cfg.name}")
+print(f"  [1] BatchTopKTranscoder: {batchtopk_cfg.name}")
 print(f"  Layer: {layer}")
 print(f"  Dict size: {topk_cfg.dict_size}, Top-k: {topk_cfg.top_k}")
 

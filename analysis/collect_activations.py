@@ -22,7 +22,7 @@ from transformers import AutoTokenizer, GPT2LMHeadModel
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from base import BatchTopK, JumpReLUEncoder, TopK, Vanilla
+from transcoder import BatchTopKTranscoder, JumpReLUTranscoder, TopKTranscoder, VanillaTranscoder
 from config import EncoderConfig
 
 from spd.models.component_model import ComponentModel
@@ -31,10 +31,10 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 LAYER = 8
 
 ENCODER_CLASSES = {
-    "vanilla": Vanilla,
-    "topk": TopK,
-    "batchtopk": BatchTopK,
-    "jumprelu": JumpReLUEncoder,
+    "vanilla": VanillaTranscoder,
+    "topk": TopKTranscoder,
+    "batchtopk": BatchTopKTranscoder,
+    "jumprelu": JumpReLUTranscoder,
 }
 
 
@@ -126,7 +126,7 @@ def collect_transcoder_activations(
 
         # Compute feature activations
         x_enc = mlp_in - transcoder.b_dec if use_pre_enc_bias else mlp_in
-        if isinstance(transcoder, (TopK, BatchTopK)):
+        if isinstance(transcoder, (TopKTranscoder, BatchTopKTranscoder)):
             acts = F.relu(x_enc @ transcoder.W_enc)  # (B, S, dict_size)
         else:
             acts = F.relu(x_enc @ transcoder.W_enc + transcoder.b_enc)

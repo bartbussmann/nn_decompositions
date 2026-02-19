@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path("/workspace/spd")))
 from transformers import AutoTokenizer
 
 from activation_store import ActivationsStore, DataConfig
-from base import BatchTopK
+from transcoder import BatchTopKTranscoder
 from config import EncoderConfig
 from training import train_encoder
 
@@ -106,7 +106,7 @@ def main():
         output_size=d_model,
     )
 
-    clt = BatchTopK(cfg)
+    clt = BatchTopKTranscoder(cfg)
 
     print(f"Training CLT: {cfg.name}")
     print(f"  Model: LlamaSimpleMLP (t-32d1bb3b)")

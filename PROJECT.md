@@ -20,7 +20,7 @@ In our project, we aim to test this hypothesis by developing new evaluations, an
 
 ## 2. Work Done So Far
 
-I have built familiarity with the SPD codebase by decomposing MNIST MLPs, recovering clean structure: one mechanism per digit class in the output layer and interpretable visual features in the input layer. I implemented SAE variants (TopK, JumpReLU, Stochastic), transcoders, and MOLTs as baselines for systematic comparison against SPD. I also explored training decomposed models from scratch rather than post-hoc, finding that the two approaches yield different decompositions.
+I have built familiarity with the SPD codebase by decomposing MNIST MLPs, recovering clean structure: one mechanism per digit class in the output layer and interpretable visual features in the input layer. I implemented SAE variants (TopKTranscoder, JumpReLU, Stochastic), transcoders, and MOLTs as baselines for systematic comparison against SPD. I also explored training decomposed models from scratch rather than post-hoc, finding that the two approaches yield different decompositions.
 
 I have also explored possible connections between SPD and Shard Theory, including an initial attempt to investigate "shards" in convolutional neural networks, but dropped this direction because it seemed that more fundamental questions about decomposition methods remain open. These experiments have sharpened my understanding of the tradeoffs between parameter-space and activation-space methods, which directly informs the evaluation framework proposed above.
 
