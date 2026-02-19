@@ -15,8 +15,10 @@ def _make_sae_class(base_class):
         def __init__(self, cfg: SAEConfig):
             super().__init__(cfg)
 
-        def forward(self, x):
-            return super().forward(x, x)
+        def forward(self, x_in, y_target=None):
+            if y_target is None:
+                y_target = x_in
+            return super().forward(x_in, y_target)
 
     # Strip "Transcoder" suffix before adding "SAE" suffix
     base_name = base_class.__name__.removesuffix("Transcoder")
