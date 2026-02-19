@@ -14,76 +14,11 @@ Reconstruction at target layer j:
 """
 
 import torch
-import torch.autograd as autograd
 import torch.nn as nn
 import torch.nn.functional as F
 
 from config import CLTConfig
-
-
-# =============================================================================
-# JumpReLU activation components (shared with transcoder.py)
-# =============================================================================
-
-class _RectangleFunction(autograd.Function):
-    @staticmethod
-    def forward(ctx, x):
-        ctx.save_for_backward(x)
-        return ((x > -0.5) & (x < 0.5)).float()
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        (x,) = ctx.saved_tensors
-        grad_input = grad_output.clone()
-        grad_input[(x <= -0.5) | (x >= 0.5)] = 0
-        return grad_input
-
-
-class _JumpReLUFunction(autograd.Function):
-    @staticmethod
-    def forward(ctx, x, log_threshold, bandwidth):
-        ctx.save_for_backward(x, log_threshold, torch.tensor(bandwidth))
-        threshold = torch.exp(log_threshold)
-        return x * (x > threshold).float()
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        x, log_threshold, bandwidth_tensor = ctx.saved_tensors
-        bandwidth = bandwidth_tensor.item()
-        threshold = torch.exp(log_threshold)
-        x_grad = (x > threshold).float() * grad_output
-        threshold_grad = (
-            -(threshold / bandwidth)
-            * _RectangleFunction.apply((x - threshold) / bandwidth)
-            * grad_output
-        )
-        return x_grad, threshold_grad, None
-
-
-class _StepFunction(autograd.Function):
-    @staticmethod
-    def forward(ctx, x, log_threshold, bandwidth):
-        ctx.save_for_backward(x, log_threshold, torch.tensor(bandwidth))
-        threshold = torch.exp(log_threshold)
-        return (x > threshold).float()
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        x, log_threshold, bandwidth_tensor = ctx.saved_tensors
-        bandwidth = bandwidth_tensor.item()
-        threshold = torch.exp(log_threshold)
-        x_grad = torch.zeros_like(x)
-        threshold_grad = (
-            -(1.0 / bandwidth)
-            * _RectangleFunction.apply((x - threshold) / bandwidth)
-            * grad_output
-        )
-        return x_grad, threshold_grad, None
-
-
-# =============================================================================
-# Cross-Layer Transcoder
-# =============================================================================
+from transcoder import JumpReLUFunction, StepFunction
 
 class CrossLayerTranscoder(nn.Module):
     """Cross-layer transcoder with per-layer encoders and triangular decoders.
@@ -169,7 +104,7 @@ class CrossLayerTranscoder(nn.Module):
 
         if self.cfg.encoder_type == "jumprelu":
             log_thresh = self.jumprelu_log_thresholds[layer_idx]
-            acts = _JumpReLUFunction.apply(pre_acts, log_thresh, self.cfg.bandwidth)
+            acts = JumpReLUFunction.apply(pre_acts, log_thresh, self.cfg.bandwidth)
             return (acts, pre_acts) if return_dense else acts
 
         raise ValueError(f"Unknown encoder_type: {self.cfg.encoder_type}")
@@ -295,7 +230,7 @@ class CrossLayerTranscoder(nn.Module):
             total_l0 = torch.tensor(0.0, device=device)
             for i in range(self.cfg.n_layers):
                 log_thresh = self.jumprelu_log_thresholds[i]
-                total_l0 = total_l0 + _StepFunction.apply(
+                total_l0 = total_l0 + StepFunction.apply(
                     all_dense[i], log_thresh, self.cfg.bandwidth,
                 ).sum(-1).mean()
             sparsity_loss = self.cfg.l1_coeff * total_l0 / self.cfg.n_layers
