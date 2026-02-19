@@ -42,7 +42,7 @@ SAE wrappers that call `forward(x, x)` to reconstruct input:
 Use base classes directly for transcoders (input ≠ output):
 
 ```python
-from base import TopK
+from transcoder import TopK
 from config import TranscoderConfig
 
 cfg = TranscoderConfig(
@@ -89,7 +89,7 @@ train_sae(sae, activation_store, model, cfg)
 
 ```python
 from activation_store import TranscoderActivationsStore
-from base import TopK
+from transcoder import TopK
 from config import TranscoderConfig
 from training import train_transcoder
 from transformer_lens import HookedTransformer

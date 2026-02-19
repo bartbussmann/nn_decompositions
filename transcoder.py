@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from config import EncoderConfig
 
 
-class SharedEncoder(nn.Module):
+class SharedTranscoder(nn.Module):
     """Base class for encoder-decoder models (SAE and Transcoder).
 
     Supports both SAE mode (input = target) and Transcoder mode (input != target).
@@ -124,7 +124,7 @@ class SharedEncoder(nn.Module):
         return result
 
 
-class Vanilla(SharedEncoder):
+class Vanilla(SharedTranscoder):
     """Vanilla L1-regularized encoder-decoder."""
 
     def __init__(self, cfg: EncoderConfig):
@@ -151,7 +151,7 @@ class Vanilla(SharedEncoder):
         )
 
 
-class TopK(SharedEncoder):
+class TopK(SharedTranscoder):
     """TopK sparse encoder-decoder with auxiliary loss."""
 
     def __init__(self, cfg: EncoderConfig):
@@ -181,7 +181,7 @@ class TopK(SharedEncoder):
         )
 
 
-class BatchTopK(SharedEncoder):
+class BatchTopK(SharedTranscoder):
     """BatchTopK - topk across flattened batch."""
 
     def __init__(self, cfg: EncoderConfig):
@@ -282,7 +282,7 @@ class StepFunction(autograd.Function):
         return x_grad, threshold_grad, None
 
 
-class JumpReLUEncoder(SharedEncoder):
+class JumpReLUEncoder(SharedTranscoder):
     """JumpReLU with learnable thresholds."""
 
     def __init__(self, cfg: EncoderConfig):

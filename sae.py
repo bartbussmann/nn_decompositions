@@ -4,7 +4,7 @@ SAE is a special case of transcoder where input = target.
 These thin wrappers call forward(x, x).
 """
 
-from base import BatchTopK, JumpReLUEncoder, TopK, Vanilla
+from transcoder import BatchTopK, JumpReLUEncoder, TopK, Vanilla
 from config import SAEConfig
 
 

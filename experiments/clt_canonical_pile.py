@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path("/workspace/spd")))
 from transformers import AutoTokenizer
 
 from activation_store import ActivationsStore, DataConfig
-from base import BatchTopK
+from transcoder import BatchTopK
 from config import EncoderConfig
 from training import train_encoder
 
