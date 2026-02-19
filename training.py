@@ -1,10 +1,11 @@
 import torch
 import tqdm
 
-from config import EncoderConfig
+from config import CLTConfig, EncoderConfig
 from logs import (
     ComputeLossFn,
     init_wandb,
+    log_clt_performance,
     log_encoder_performance,
     log_wandb,
     save_checkpoint,
@@ -111,3 +112,47 @@ def train_encoder_group(
 
     for encoder, cfg in zip(encoders, cfgs):
         save_checkpoint(encoder, cfg, "final")
+
+
+def train_clt(
+    clt,
+    activation_store,
+    cfg: CLTConfig,
+    compute_loss_fn: ComputeLossFn | None = None,
+):
+    """Train a cross-layer transcoder."""
+    num_batches = cfg.num_tokens // cfg.batch_size
+    optimizer = torch.optim.Adam(clt.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2))
+    pbar = tqdm.trange(num_batches)
+
+    wandb_run = init_wandb(cfg)
+
+    for i in pbar:
+        inputs, targets = activation_store.next_batch()
+        output = clt(inputs, targets)
+
+        log_wandb(output, i, wandb_run)
+
+        if i % cfg.perf_log_freq == 0:
+            log_clt_performance(
+                wandb_run, i, activation_store, clt,
+                compute_loss_fn=compute_loss_fn,
+            )
+
+        if cfg.checkpoint_freq != "final" and i % cfg.checkpoint_freq == 0:
+            save_checkpoint(clt, cfg, i)
+
+        loss = output["loss"]
+        pbar.set_postfix({
+            "Loss": f"{loss.item():.4f}",
+            "L0": f"{output['l0_norm']:.4f}",
+            "L2": f"{output['l2_loss']:.4f}",
+            "L1": f"{output.get('l1_loss', 0):.4f}",
+        })
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(clt.parameters(), cfg.max_grad_norm)
+        clt.make_decoder_weights_and_grad_unit_norm()
+        optimizer.step()
+        optimizer.zero_grad()
+
+    save_checkpoint(clt, cfg, "final")
