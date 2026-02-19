@@ -1,10 +1,11 @@
 import torch
 import tqdm
 
-from config import EncoderConfig
+from config import CLTConfig, EncoderConfig
 from logs import (
     ComputeLossFn,
     init_wandb,
+    log_clt_performance,
     log_encoder_performance,
     log_wandb,
     save_checkpoint,
@@ -14,13 +15,16 @@ from logs import (
 def train_encoder(
     encoder,
     activation_store,
-    cfg: EncoderConfig,
+    cfg: EncoderConfig | CLTConfig,
     compute_loss_fn: ComputeLossFn | None = None,
 ):
-    """Train any encoder (SAE or transcoder)."""
+    """Train any encoder (SAE, transcoder, or cross-layer transcoder)."""
     num_batches = cfg.num_tokens // cfg.batch_size
     optimizer = torch.optim.Adam(encoder.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2))
     pbar = tqdm.trange(num_batches)
+
+    is_clt = isinstance(cfg, CLTConfig)
+    log_perf = log_clt_performance if is_clt else log_encoder_performance
 
     wandb_run = init_wandb(cfg)
 
@@ -31,8 +35,8 @@ def train_encoder(
         log_wandb(output, i, wandb_run)
 
         if i % cfg.perf_log_freq == 0:
-            log_encoder_performance(wandb_run, i, activation_store, encoder,
-                                    compute_loss_fn=compute_loss_fn)
+            log_perf(wandb_run, i, activation_store, encoder,
+                     compute_loss_fn=compute_loss_fn)
 
         if cfg.checkpoint_freq != "final" and i % cfg.checkpoint_freq == 0:
             save_checkpoint(encoder, cfg, i)

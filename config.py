@@ -60,6 +60,63 @@ class EncoderConfig:
 
 
 @dataclass
+class CLTConfig:
+    """Config for Cross-Layer Transcoders."""
+
+    # Architecture
+    layers: list[int] = field(default_factory=list)
+    input_size: int = 768
+    output_size: int = 768
+    dict_size: int = 12288  # features per layer
+
+    # Encoder type
+    encoder_type: Literal["vanilla", "topk", "batchtopk", "jumprelu"] = "topk"
+
+    # Training
+    seed: int = 49
+    batch_size: int = 4096
+    lr: float = 3e-4
+    num_tokens: int = int(1e9)
+    l1_coeff: float = 0.0
+    beta1: float = 0.9
+    beta2: float = 0.99
+    max_grad_norm: float = 1.0
+
+    # Device
+    device: str = "cuda:0"
+    dtype: torch.dtype = field(default=torch.float32)
+
+    # Dead feature tracking
+    n_batches_to_dead: int = 50
+
+    # TopK specific
+    top_k: int = 32
+    top_k_aux: int = 512
+    aux_penalty: float = 1 / 32
+
+    # JumpReLU specific
+    bandwidth: float = 0.001
+
+    # Logging
+    wandb_project: str = "cross_layer_transcoders"
+    perf_log_freq: int = 1000
+    checkpoint_freq: int | Literal["final"] = "final"
+    n_eval_seqs: int = 8
+
+    @property
+    def n_layers(self) -> int:
+        return len(self.layers)
+
+    @property
+    def name(self) -> str:
+        layer_str = f"L{self.layers[0]}-{self.layers[-1]}"
+        base = f"clt_{layer_str}_{self.dict_size}_{self.encoder_type}"
+        if self.encoder_type in ("topk", "batchtopk"):
+            base += f"_k{self.top_k}"
+        return f"{base}_{self.lr}"
+
+
+@dataclass
 class SAEConfig(EncoderConfig):
     """Config for Sparse Autoencoders (input_size == output_size)."""
 
