@@ -1,9 +1,9 @@
 """Train a single Cross-Layer Transcoder (CLT) on LlamaSimpleMLP layers 0–3.
 
 Instead of training 4 separate transcoders (one per layer), this trains a single
-CLT whose encoder reads from ALL layers' pre-MLP residual streams (concatenated)
-and whose decoder writes to ALL layers' MLP outputs. Each feature can read from
-any layer and write to any layer.
+CLT with per-layer feature groups. Each feature group reads from its own layer's
+pre-MLP residual stream and writes to that layer and all subsequent layers' MLP
+outputs via a causal decoder.
 
 Matches transcoder_canonical_pile.py setup:
 - Same base model (wandb:goodfire/spd/t-32d1bb3b)
@@ -61,21 +61,22 @@ def main():
     d_model = model.config.n_embd
     num_layers = len(LAYERS)
 
-    # Encoder reads from ALL layers' pre-MLP residual streams (concatenated)
+    # Per-layer encoder reads from each layer's pre-MLP residual stream
     input_modules = [model.h[layer].rms_2 for layer in LAYERS]
-    # Decoder writes to ALL layers' MLP outputs
+    # Causal decoder writes to each layer and all subsequent layers' MLP outputs
     output_modules = [model.h[layer].mlp for layer in LAYERS]
 
     cfg = EncoderConfig(
         input_size=d_model * num_layers,  # concatenated across layers
         output_size=d_model,              # per-layer output dimension
-        dict_size=DICT_SIZE,
+        dict_size=DICT_SIZE,              # features per layer
         encoder_type="batchtopk",
         top_k=TOP_K,
         l1_coeff=0.0,
         batch_size=4096,
         num_tokens=int(5e8),
         lr=3e-4,
+        num_input_layers=num_layers,
         num_output_layers=num_layers,
         wandb_project="pile_clt",
         device=device,
@@ -107,8 +108,9 @@ def main():
 
     print(f"Training CLT: {cfg.name}")
     print(f"  Model: LlamaSimpleMLP (t-32d1bb3b)")
-    print(f"  Encoder inputs: layers {LAYERS} rms_2 (concatenated → {d_model * num_layers}d)")
-    print(f"  Decoder targets: layers {LAYERS} MLP outputs ({d_model}d each)")
+    print(f"  Per-layer encoder inputs: layers {LAYERS} rms_2 ({d_model}d each)")
+    print(f"  Causal decoder targets: layers {LAYERS} MLP outputs ({d_model}d each)")
+    print(f"  Total features: {DICT_SIZE * num_layers} ({DICT_SIZE} per layer)")
     print(f"  Dict size: {DICT_SIZE}, Top-k: {TOP_K}")
     print(f"  Num layers: {num_layers}")
     print(f"  Steps: {cfg.num_tokens // cfg.batch_size:,}")

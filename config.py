@@ -38,6 +38,7 @@ class EncoderConfig:
     pre_enc_bias: bool = False
 
     # Cross-layer transcoder
+    num_input_layers: int = 1
     num_output_layers: int = 1
     skip_connection: bool = False
     train_post_encoder: bool = False
