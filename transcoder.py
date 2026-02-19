@@ -89,7 +89,7 @@ class SharedTranscoder(nn.Module):
     def _get_auxiliary_loss(
         self, y_target: torch.Tensor, y_pred: torch.Tensor, acts: torch.Tensor
     ) -> torch.Tensor:
-        """Auxiliary loss to revive dead features (used by TopK variants)."""
+        """Auxiliary loss to revive dead features (used by TopKTranscoder variants)."""
         dead_features = self.num_batches_not_active >= self.cfg.n_batches_to_dead
         if dead_features.sum() > 0:
             residual = y_target.float() - y_pred.float()
@@ -138,8 +138,8 @@ class SharedTranscoder(nn.Module):
         return result
 
 
-class Vanilla(SharedTranscoder):
-    """Vanilla L1-regularized encoder-decoder."""
+class VanillaTranscoder(SharedTranscoder):
+    """VanillaTranscoder L1-regularized encoder-decoder."""
 
     def __init__(self, cfg: EncoderConfig):
         super().__init__(cfg)
@@ -168,8 +168,8 @@ class Vanilla(SharedTranscoder):
         )
 
 
-class TopK(SharedTranscoder):
-    """TopK sparse encoder-decoder with auxiliary loss."""
+class TopKTranscoder(SharedTranscoder):
+    """TopKTranscoder sparse encoder-decoder with auxiliary loss."""
 
     def __init__(self, cfg: EncoderConfig):
         super().__init__(cfg)
@@ -201,8 +201,8 @@ class TopK(SharedTranscoder):
         )
 
 
-class BatchTopK(SharedTranscoder):
-    """BatchTopK - topk across flattened batch."""
+class BatchTopKTranscoder(SharedTranscoder):
+    """BatchTopKTranscoder - topk across flattened batch."""
 
     def __init__(self, cfg: EncoderConfig):
         super().__init__(cfg)
@@ -229,7 +229,8 @@ class BatchTopK(SharedTranscoder):
 
         self.update_inactive_features(acts)
 
-        l0_norm = (acts > 0).float().sum(-1).mean()
+        l0_norm = (acts > 0).float().sum(-1)
+        .mean()
         l1_loss = self.cfg.l1_coeff * acts.float().abs().sum(-1).mean()
         aux_loss = self._get_auxiliary_loss(y_target, y_pred, acts_dense)
         return self._build_loss_dict(
@@ -305,7 +306,7 @@ class StepFunction(autograd.Function):
         return x_grad, threshold_grad, None
 
 
-class JumpReLUEncoder(SharedTranscoder):
+class JumpReLUTranscoder(SharedTranscoder):
     """JumpReLU with learnable thresholds."""
 
     def __init__(self, cfg: EncoderConfig):

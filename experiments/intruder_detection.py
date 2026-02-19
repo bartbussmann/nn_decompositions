@@ -47,7 +47,7 @@ from autointerp_pile import (
     load_transcoder,
     select_alive_latents,
 )
-from transcoder import BatchTopK, TopK
+from transcoder import BatchTopKTranscoder, TopKTranscoder
 
 
 # =============================================================================
@@ -649,7 +649,7 @@ def main():
                 and transcoder.input_size == transcoder.output_size
             )
             x_enc = mlp_input - transcoder.b_dec if use_pre_enc_bias else mlp_input
-            if isinstance(transcoder, (TopK, BatchTopK)):
+            if isinstance(transcoder, (TopKTranscoder, BatchTopKTranscoder)):
                 return F.relu(x_enc @ transcoder.W_enc)
             else:
                 return F.relu(x_enc @ transcoder.W_enc + transcoder.b_enc)

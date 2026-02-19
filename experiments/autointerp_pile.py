@@ -1,7 +1,7 @@
 """SAEBench-style autointerp evaluation for Transcoder and SPD on LlamaSimpleMLP.
 
 Runs GPT-4o-mini generation + scoring phases on:
-  - Transcoder features (BatchTopK, dict_size=4096)
+  - Transcoder features (BatchTopKTranscoder, dict_size=4096)
   - SPD c_fc components (4096 components, using CI scores)
   - SPD down_proj components (3072 components, using CI scores)
 
@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path("/workspace/spd")))
 sys.path.insert(0, str(Path("/workspace/SAEBench")))
 
-from transcoder import BatchTopK, TopK
+from transcoder import BatchTopKTranscoder, TopKTranscoder
 from sae_bench.sae_bench_utils.indexing_utils import (
     get_iw_sample_indices,
     get_k_largest_indices,
@@ -157,10 +157,10 @@ def load_transcoder(checkpoint_dir: str):
     from config import EncoderConfig
 
     ENCODER_CLASSES = {
-        "vanilla": __import__("base", fromlist=["Vanilla"]).Vanilla,
-        "topk": TopK,
-        "batchtopk": BatchTopK,
-        "jumprelu": __import__("base", fromlist=["JumpReLUEncoder"]).JumpReLUEncoder,
+        "vanilla": __import__("transcoder", fromlist=["VanillaTranscoder"]).VanillaTranscoder,
+        "topk": TopKTranscoder,
+        "batchtopk": BatchTopKTranscoder,
+        "jumprelu": __import__("transcoder", fromlist=["JumpReLUTranscoder"]).JumpReLUTranscoder,
     }
 
     checkpoint_dir = Path(checkpoint_dir)
@@ -228,7 +228,7 @@ def collect_transcoder_activations(
         )
         x_enc = mlp_input - transcoder.b_dec if use_pre_enc_bias else mlp_input
 
-        if isinstance(transcoder, (TopK, BatchTopK)):
+        if isinstance(transcoder, (TopKTranscoder, BatchTopKTranscoder)):
             acts = F.relu(x_enc @ transcoder.W_enc)
         else:
             acts = F.relu(x_enc @ transcoder.W_enc + transcoder.b_enc)
@@ -853,7 +853,7 @@ def main():
                 and transcoder.input_size == transcoder.output_size
             )
             x_enc = mlp_input - transcoder.b_dec if use_pre_enc_bias else mlp_input
-            if isinstance(transcoder, (TopK, BatchTopK)):
+            if isinstance(transcoder, (TopKTranscoder, BatchTopKTranscoder)):
                 return F.relu(x_enc @ transcoder.W_enc)
             else:
                 return F.relu(x_enc @ transcoder.W_enc + transcoder.b_enc)

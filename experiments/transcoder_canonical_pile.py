@@ -1,4 +1,4 @@
-"""Train BatchTopK transcoders on LlamaSimpleMLP MLPs for layers 0–3.
+"""Train BatchTopKTranscoder transcoders on LlamaSimpleMLP MLPs for layers 0–3.
 
 Matches the SPD decomposition run s-275c8f21 as closely as possible:
 - Same base model (wandb:goodfire/spd/t-32d1bb3b)
@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path("/workspace/spd")))
 from transformers import AutoTokenizer
 
 from activation_store import ActivationsStore, DataConfig
-from transcoder import BatchTopK
+from transcoder import BatchTopKTranscoder
 from config import EncoderConfig
 from training import train_encoder
 
@@ -119,11 +119,11 @@ def train_one_layer(layer_top_k_device):
             output_size=output_size,
         )
 
-        transcoder = BatchTopK(cfg)
+        transcoder = BatchTopKTranscoder(cfg)
 
         print(f"[Layer {layer} | {device}] Training transcoder: {cfg.name}")
         print(f"  Model: LlamaSimpleMLP (t-32d1bb3b)")
-        print(f"  Layer: {layer}, BatchTopK: {top_k}")
+        print(f"  Layer: {layer}, BatchTopKTranscoder: {top_k}")
         print(f"  Dict size: {cfg.dict_size}, Top-k: {cfg.top_k}")
         print(f"  Steps: {cfg.num_tokens // cfg.batch_size:,}")
         print(f"  Dataset: danbraunai/pile-uncopyrighted-tok")

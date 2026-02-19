@@ -26,10 +26,10 @@ pip install -e .
 
 Four encoder variants with unified `forward(x_in, y_target)` signature:
 
-- **Vanilla**: Standard encoder with L1 regularization
-- **TopK**: Keeps only the top-k activations per sample
-- **BatchTopK**: Keeps top-k activations across the entire batch
-- **JumpReLUEncoder**: Uses learnable thresholds with straight-through gradients
+- **VanillaTranscoder**: Standard encoder with L1 regularization
+- **TopKTranscoder**: Keeps only the top-k activations per sample
+- **BatchTopKTranscoder**: Keeps top-k activations across the entire batch
+- **JumpReLUTranscoder**: Uses learnable thresholds with straight-through gradients
 
 ### SAEs (`sae.py`)
 
@@ -42,7 +42,7 @@ SAE wrappers that call `forward(x, x)` to reconstruct input:
 Use base classes directly for transcoders (input ≠ output):
 
 ```python
-from transcoder import TopK
+from transcoder import TopKTranscoder
 from config import TranscoderConfig
 
 cfg = TranscoderConfig(
@@ -53,7 +53,7 @@ cfg = TranscoderConfig(
     output_site="mlp_out",
     ...
 )
-transcoder = TopK(cfg)
+transcoder = TopKTranscoder(cfg)
 output = transcoder(x_in, y_target)
 ```
 
@@ -89,7 +89,7 @@ train_sae(sae, activation_store, model, cfg)
 
 ```python
 from activation_store import TranscoderActivationsStore
-from transcoder import TopK
+from transcoder import TopKTranscoder
 from config import TranscoderConfig
 from training import train_transcoder
 from transformer_lens import HookedTransformer
@@ -107,7 +107,7 @@ cfg = TranscoderConfig(
 )
 
 model = HookedTransformer.from_pretrained(cfg.model_name).to(cfg.device)
-transcoder = TopK(cfg)
+transcoder = TopKTranscoder(cfg)
 activation_store = TranscoderActivationsStore(model, cfg)
 
 train_transcoder(transcoder, activation_store, model, cfg)
@@ -124,7 +124,7 @@ Configs are dataclasses with type safety and computed properties:
 | `encoder_type` | `"topk"` | One of: vanilla, topk, batchtopk, jumprelu |
 | `act_size` | `768` | Activation dimension (input = output for SAE) |
 | `dict_size` | `12288` | Dictionary/latent dimension |
-| `top_k` | `32` | Number of active features (TopK variants) |
+| `top_k` | `32` | Number of active features (TopKTranscoder variants) |
 | `l1_coeff` | `0.0` | L1/sparsity regularization coefficient |
 | `site` | `"resid_pre"` | Hook point for activations |
 | `layer` | `8` | Layer to extract from |

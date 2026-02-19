@@ -49,7 +49,7 @@ Config is a dictionary with keys like:
 - `model_name` - TransformerLens model (e.g., "gpt2-small")
 - `layer`, `site` - Which activations to extract (e.g., layer 8, "resid_pre")
 - `dict_size` - SAE latent dimension (e.g., 768 * 16)
-- `top_k` - Active features for TopK variants
+- `top_k` - Active features for TopKTranscoder variants
 - `l1_coeff` - Sparsity penalty coefficient
 - `sae_type` - Which SAE variant to use
 

@@ -29,7 +29,7 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path("/workspace/spd")))
 
-from transcoder import BatchTopK, JumpReLUEncoder, TopK, Vanilla
+from transcoder import BatchTopKTranscoder, JumpReLUTranscoder, TopKTranscoder, VanillaTranscoder
 from config import EncoderConfig
 from spd.models.components import make_mask_infos
 
@@ -142,10 +142,10 @@ def get_mlp_activations(
 # =============================================================================
 
 ENCODER_CLASSES = {
-    "vanilla": Vanilla,
-    "topk": TopK,
-    "batchtopk": BatchTopK,
-    "jumprelu": JumpReLUEncoder,
+    "vanilla": VanillaTranscoder,
+    "topk": TopKTranscoder,
+    "batchtopk": BatchTopKTranscoder,
+    "jumprelu": JumpReLUTranscoder,
 }
 
 
@@ -167,7 +167,7 @@ def transcoder_topk_reconstruction(transcoder, x_in: torch.Tensor, k: int) -> to
     use_pre_enc_bias = transcoder.cfg.pre_enc_bias and transcoder.input_size == transcoder.output_size
     x_enc = x_in - transcoder.b_dec if use_pre_enc_bias else x_in
 
-    if isinstance(transcoder, (TopK, BatchTopK)):
+    if isinstance(transcoder, (TopKTranscoder, BatchTopKTranscoder)):
         acts = F.relu(x_enc @ transcoder.W_enc)
     else:
         acts = F.relu(x_enc @ transcoder.W_enc + transcoder.b_enc)
@@ -184,7 +184,7 @@ def transcoder_batchtopk_reconstruction(transcoder, x_in: torch.Tensor, k: int) 
     use_pre_enc_bias = transcoder.cfg.pre_enc_bias and transcoder.input_size == transcoder.output_size
     x_enc = x_in - transcoder.b_dec if use_pre_enc_bias else x_in
 
-    if isinstance(transcoder, (TopK, BatchTopK)):
+    if isinstance(transcoder, (TopKTranscoder, BatchTopKTranscoder)):
         acts = F.relu(x_enc @ transcoder.W_enc)
     else:
         acts = F.relu(x_enc @ transcoder.W_enc + transcoder.b_enc)
@@ -302,7 +302,7 @@ def _get_batchtopk_acts(transcoder, x_in, k):
     use_pre_enc_bias = transcoder.cfg.pre_enc_bias and transcoder.input_size == transcoder.output_size
     x_enc = x_in - transcoder.b_dec if use_pre_enc_bias else x_in
 
-    if isinstance(transcoder, (TopK, BatchTopK)):
+    if isinstance(transcoder, (TopKTranscoder, BatchTopKTranscoder)):
         acts = F.relu(x_enc @ transcoder.W_enc)
     else:
         acts = F.relu(x_enc @ transcoder.W_enc + transcoder.b_enc)
@@ -855,7 +855,7 @@ def plot_pareto(
     ax.plot(l0_values, neuron_ces, "d-", color="tab:red", label="Neurons")
 
     sp_colors = {
-        "BatchTopK (train k)": "tab:blue",
+        "BatchTopKTranscoder (train k)": "tab:blue",
         "SPD c_fc (CI>0.5)": "tab:orange",
         "SPD down_proj (CI>0.5)": "tab:green",
         "SPD c_fc (CI>0)": "tab:orange",
@@ -903,7 +903,7 @@ def plot_pareto_mse(
     ax.plot(l0_values, neuron_mses, "d-", color="tab:red", label="Neurons")
 
     sp_colors = {
-        "BatchTopK (train k)": "tab:blue",
+        "BatchTopKTranscoder (train k)": "tab:blue",
         "SPD c_fc (CI>0.5)": "tab:orange",
         "SPD down_proj (CI>0.5)": "tab:green",
         "SPD c_fc (CI>0)": "tab:orange",
@@ -1033,8 +1033,8 @@ def main():
 
     train_k = transcoder.cfg.top_k
     tc_l0, tc_train_ce = eval_transcoder_batchtopk_ce(base_model, transcoder, batches, train_k)
-    sp_ce["BatchTopK (train k)"] = (tc_l0, tc_train_ce)
-    print(f"  BatchTopK (train k={train_k}): L0={tc_l0:.1f}, CE={tc_train_ce:.4f}")
+    sp_ce["BatchTopKTranscoder (train k)"] = (tc_l0, tc_train_ce)
+    print(f"  BatchTopKTranscoder (train k={train_k}): L0={tc_l0:.1f}, CE={tc_train_ce:.4f}")
 
     cfc_l0, cfc_t_ce = eval_spd_ce_thresholded(spd_model, batches, cfc_name)
     sp_ce["SPD c_fc (CI>0.5)"] = (cfc_l0, cfc_t_ce)
@@ -1065,8 +1065,8 @@ def main():
     sp_mse = {}
 
     tc_l0_m, tc_train_mse = eval_transcoder_batchtopk_mse(transcoder, mlp_activations, train_k)
-    sp_mse["BatchTopK (train k)"] = (tc_l0_m, tc_train_mse)
-    print(f"  BatchTopK (train k={train_k}): L0={tc_l0_m:.1f}, MSE={tc_train_mse:.6f}")
+    sp_mse["BatchTopKTranscoder (train k)"] = (tc_l0_m, tc_train_mse)
+    print(f"  BatchTopKTranscoder (train k={train_k}): L0={tc_l0_m:.1f}, MSE={tc_train_mse:.6f}")
 
     cfc_l0_m, cfc_t_mse = eval_spd_mse_thresholded(spd_model, batches, cfc_name)
     sp_mse["SPD c_fc (CI>0.5)"] = (cfc_l0_m, cfc_t_mse)
