@@ -39,8 +39,14 @@ class SharedTranscoder(nn.Module):
 
         self.to(cfg.dtype).to(cfg.device)
 
-    def encode(self, x: torch.Tensor) -> torch.Tensor:
-        """Encode input to sparse activations. Subclasses must implement."""
+    def encode(
+        self, x: torch.Tensor, return_dense: bool = False
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        """Encode input to sparse activations. Subclasses must implement.
+
+        If return_dense=True, also returns the dense (pre-sparsification) activations
+        as a second element.
+        """
         raise NotImplementedError
 
     def decode(self, acts: torch.Tensor) -> torch.Tensor:
@@ -138,10 +144,11 @@ class Vanilla(SharedTranscoder):
     def __init__(self, cfg: EncoderConfig):
         super().__init__(cfg)
 
-    def encode(self, x: torch.Tensor) -> torch.Tensor:
+    def encode(self, x: torch.Tensor, return_dense: bool = False):
         use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
         x_enc = x - self.b_dec if use_pre_enc_bias else x
-        return F.relu(x_enc @ self.W_enc + self.b_enc)
+        acts = F.relu(x_enc @ self.W_enc + self.b_enc)
+        return (acts, acts) if return_dense else acts
 
     def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
         x_in, _, _ = self.preprocess_input(x_in)
@@ -167,27 +174,23 @@ class TopK(SharedTranscoder):
     def __init__(self, cfg: EncoderConfig):
         super().__init__(cfg)
 
-    def encode(self, x: torch.Tensor) -> torch.Tensor:
+    def encode(self, x: torch.Tensor, return_dense: bool = False):
         use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
         x_enc = x - self.b_dec if use_pre_enc_bias else x
-        acts = F.relu(x_enc @ self.W_enc)
+        acts = F.relu(x_enc @ self.W_enc + self.b_enc)
         acts_topk = torch.topk(acts, self.cfg.top_k, dim=-1)
-        return torch.zeros_like(acts).scatter(-1, acts_topk.indices, acts_topk.values)
+        acts_sparse = torch.zeros_like(acts).scatter(-1, acts_topk.indices, acts_topk.values)
+        return (acts_sparse, acts) if return_dense else acts_sparse
 
     def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        acts = self.encode(x_in)
+        acts, acts_dense = self.encode(x_in, return_dense=True)
         y_pred = self.decode(acts)
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
         self.update_inactive_features(acts)
-
-        # Dense acts for auxiliary loss
-        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
-        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        acts_dense = F.relu(x_enc @ self.W_enc)
 
         l0_norm = (acts > 0).float().sum(-1).mean()
         l1_loss = self.cfg.l1_coeff * acts.float().abs().sum(-1).mean()
@@ -204,31 +207,27 @@ class BatchTopK(SharedTranscoder):
     def __init__(self, cfg: EncoderConfig):
         super().__init__(cfg)
 
-    def encode(self, x: torch.Tensor) -> torch.Tensor:
+    def encode(self, x: torch.Tensor, return_dense: bool = False):
         use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
         x_enc = x - self.b_dec if use_pre_enc_bias else x
-        acts = F.relu(x_enc @ self.W_enc)
+        acts = F.relu(x_enc @ self.W_enc + self.b_enc)
         acts_topk = torch.topk(acts.flatten(), self.cfg.top_k * x.shape[0], dim=-1)
-        return (
+        acts_sparse = (
             torch.zeros_like(acts.flatten())
             .scatter(-1, acts_topk.indices, acts_topk.values)
             .reshape(acts.shape)
         )
+        return (acts_sparse, acts) if return_dense else acts_sparse
 
     def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        acts = self.encode(x_in)
+        acts, acts_dense = self.encode(x_in, return_dense=True)
         y_pred = self.decode(acts)
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
         self.update_inactive_features(acts)
-
-        # Dense acts for auxiliary loss
-        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
-        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        acts_dense = F.relu(x_enc @ self.W_enc)
 
         l0_norm = (acts > 0).float().sum(-1).mean()
         l1_loss = self.cfg.l1_coeff * acts.float().abs().sum(-1).mean()
@@ -313,26 +312,22 @@ class JumpReLUEncoder(SharedTranscoder):
         super().__init__(cfg)
         self.jumprelu = JumpReLUActivation(cfg.dict_size, cfg.bandwidth, cfg.device)
 
-    def encode(self, x: torch.Tensor) -> torch.Tensor:
+    def encode(self, x: torch.Tensor, return_dense: bool = False):
         use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
         x_enc = x - self.b_dec if use_pre_enc_bias else x
         pre_acts = F.relu(x_enc @ self.W_enc + self.b_enc)
-        return self.jumprelu(pre_acts)
+        acts = self.jumprelu(pre_acts)
+        return (acts, pre_acts) if return_dense else acts
 
     def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        acts = self.encode(x_in)
+        acts, pre_acts = self.encode(x_in, return_dense=True)
         y_pred = self.decode(acts)
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
         self.update_inactive_features(acts)
-
-        # Pre-acts needed for differentiable L0 via StepFunction
-        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
-        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        pre_acts = F.relu(x_enc @ self.W_enc + self.b_enc)
 
         l0_norm = (
             StepFunction.apply(pre_acts, self.jumprelu.log_threshold, self.cfg.bandwidth)
