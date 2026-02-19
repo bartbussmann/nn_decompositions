@@ -47,7 +47,7 @@ from autointerp_pile import (
     load_transcoder,
     select_alive_latents,
 )
-from base import BatchTopK, TopK
+from encoders import BatchTopK, TopK
 
 
 # =============================================================================

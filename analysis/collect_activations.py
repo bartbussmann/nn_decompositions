@@ -22,7 +22,7 @@ from transformers import AutoTokenizer, GPT2LMHeadModel
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from base import BatchTopK, JumpReLUEncoder, TopK, Vanilla
+from encoders import BatchTopK, JumpReLU, TopK, Vanilla
 from config import EncoderConfig
 
 from spd.models.component_model import ComponentModel
@@ -34,7 +34,7 @@ ENCODER_CLASSES = {
     "vanilla": Vanilla,
     "topk": TopK,
     "batchtopk": BatchTopK,
-    "jumprelu": JumpReLUEncoder,
+    "jumprelu": JumpReLU,
 }
 
 

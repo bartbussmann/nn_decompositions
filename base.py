@@ -1,16 +1,14 @@
 import torch
-import torch.autograd as autograd
 import torch.nn as nn
-import torch.nn.functional as F
 
 from config import EncoderConfig
 
 
-class SharedEncoder(nn.Module):
-    """Base class for encoder-decoder models (SAE and Transcoder).
+class BaseEncoder(nn.Module):
+    """Base class for encoder-decoder models (SAE, Transcoder, CLT).
 
-    Supports both SAE mode (input = target) and Transcoder mode (input != target).
-    All subclasses use forward(x_in, y_target) signature.
+    Subclasses implement encode() for their specific activation function.
+    decode() and forward() are shared infrastructure.
     """
 
     def __init__(self, cfg: EncoderConfig):
@@ -83,6 +81,10 @@ class SharedEncoder(nn.Module):
 
         self.to(cfg.dtype).to(cfg.device)
 
+    # =========================================================================
+    # Layerwise CLT masking
+    # =========================================================================
+
     def _init_layerwise_clt_masks(self):
         """Build masks so features read from one input layer and write to downstream outputs only."""
         in_per_layer = self.input_size // self.cfg.num_input_layers
@@ -116,6 +118,10 @@ class SharedEncoder(nn.Module):
             return self.W_dec
         return self.W_dec * w_dec_mask
 
+    # =========================================================================
+    # Preprocessing / postprocessing
+    # =========================================================================
+
     def preprocess_input(
         self, x: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
@@ -136,6 +142,22 @@ class SharedEncoder(nn.Module):
             return out * std + mean
         return out
 
+    # =========================================================================
+    # Encode / decode
+    # =========================================================================
+
+    def _pre_encode(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply pre-encoder bias subtraction if applicable."""
+        use_pre_enc_bias = (
+            self.cfg.pre_enc_bias and self.input_size == self.output_size
+            and self.cfg.num_output_layers == 1
+        )
+        return x - self.b_dec if use_pre_enc_bias else x
+
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        """Encode input to sparse feature activations. Override in subclasses."""
+        raise NotImplementedError
+
     def decode(self, acts: torch.Tensor, x_in: torch.Tensor) -> torch.Tensor:
         """Decode sparse activations to output(s). Includes skip connection."""
         W_dec = self._masked_W_dec()
@@ -155,6 +177,10 @@ class SharedEncoder(nn.Module):
         if self.post_enc_scale is not None:
             return pre_acts * self.post_enc_scale
         return pre_acts
+
+    # =========================================================================
+    # Training utilities
+    # =========================================================================
 
     @torch.no_grad()
     def make_decoder_weights_and_grad_unit_norm(self):
@@ -190,7 +216,6 @@ class SharedEncoder(nn.Module):
                 -1, acts_topk_aux.indices, acts_topk_aux.values
             )
             if self.cfg.num_output_layers > 1:
-                # W_dec[:, dead]: (num_layers, num_dead, output_size)
                 y_pred_aux = torch.einsum(
                     'bd,ldo->blo', acts_aux, self._masked_W_dec()[:, dead_features]
                 )
@@ -230,207 +255,3 @@ class SharedEncoder(nn.Module):
         if extra_losses:
             result.update(extra_losses)
         return result
-
-
-class Vanilla(SharedEncoder):
-    """Vanilla L1-regularized encoder-decoder."""
-
-    def __init__(self, cfg: EncoderConfig):
-        super().__init__(cfg)
-
-    def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
-        x_in, _, _ = self.preprocess_input(x_in)
-        y_target, y_mean, y_std = self.preprocess_input(y_target)
-
-        use_pre_enc_bias = (
-            self.cfg.pre_enc_bias and self.input_size == self.output_size
-            and self.cfg.num_output_layers == 1
-        )
-        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        acts = F.relu(self.apply_post_encoder_scale(x_enc @ self._masked_W_enc() + self.b_enc))
-        y_pred = self.decode(acts, x_in)
-        y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
-
-        self.update_inactive_features(acts)
-
-        l0_norm = (acts > 0).float().sum(-1).mean()
-        l1_norm = acts.float().abs().sum(-1).mean()
-        l1_loss = self.cfg.l1_coeff * l1_norm
-        return self._build_loss_dict(
-            y_target, y_pred, acts, y_pred_out, l0_norm,
-            extra_losses={"l1_loss": l1_loss},
-        )
-
-
-class TopK(SharedEncoder):
-    """TopK sparse encoder-decoder with auxiliary loss."""
-
-    def __init__(self, cfg: EncoderConfig):
-        super().__init__(cfg)
-
-    def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
-        x_in, _, _ = self.preprocess_input(x_in)
-        y_target, y_mean, y_std = self.preprocess_input(y_target)
-
-        use_pre_enc_bias = (
-            self.cfg.pre_enc_bias and self.input_size == self.output_size
-            and self.cfg.num_output_layers == 1
-        )
-        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        acts = F.relu(self.apply_post_encoder_scale(x_enc @ self._masked_W_enc()))
-        acts_topk = torch.topk(acts, self.cfg.top_k, dim=-1)
-        acts_sparse = torch.zeros_like(acts).scatter(-1, acts_topk.indices, acts_topk.values)
-        y_pred = self.decode(acts_sparse, x_in)
-        y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
-
-        self.update_inactive_features(acts_sparse)
-
-        l0_norm = (acts_sparse > 0).float().sum(-1).mean()
-        l1_norm = acts_sparse.float().abs().sum(-1).mean()
-        l1_loss = self.cfg.l1_coeff * l1_norm
-        aux_loss = self._get_auxiliary_loss(y_target, y_pred, acts)
-        return self._build_loss_dict(
-            y_target, y_pred, acts_sparse, y_pred_out, l0_norm,
-            extra_losses={"l1_loss": l1_loss, "aux_loss": aux_loss},
-        )
-
-
-class BatchTopK(SharedEncoder):
-    """BatchTopK - topk across flattened batch."""
-
-    def __init__(self, cfg: EncoderConfig):
-        super().__init__(cfg)
-
-    def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
-        x_in, _, _ = self.preprocess_input(x_in)
-        y_target, y_mean, y_std = self.preprocess_input(y_target)
-
-        use_pre_enc_bias = (
-            self.cfg.pre_enc_bias and self.input_size == self.output_size
-            and self.cfg.num_output_layers == 1
-        )
-        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        acts = F.relu(self.apply_post_encoder_scale(x_enc @ self._masked_W_enc()))
-        acts_topk = torch.topk(acts.flatten(), self.cfg.top_k * x_in.shape[0], dim=-1)
-        acts_sparse = (
-            torch.zeros_like(acts.flatten())
-            .scatter(-1, acts_topk.indices, acts_topk.values)
-            .reshape(acts.shape)
-        )
-        y_pred = self.decode(acts_sparse, x_in)
-        y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
-
-        self.update_inactive_features(acts_sparse)
-
-        l0_norm = (acts_sparse > 0).float().sum(-1).mean()
-        l1_norm = acts_sparse.float().abs().sum(-1).mean()
-        l1_loss = self.cfg.l1_coeff * l1_norm
-        aux_loss = self._get_auxiliary_loss(y_target, y_pred, acts)
-        return self._build_loss_dict(
-            y_target, y_pred, acts_sparse, y_pred_out, l0_norm,
-            extra_losses={"l1_loss": l1_loss, "aux_loss": aux_loss},
-        )
-
-
-# JumpReLU activation components
-class RectangleFunction(autograd.Function):
-    @staticmethod
-    def forward(ctx, x):
-        ctx.save_for_backward(x)
-        return ((x > -0.5) & (x < 0.5)).float()
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        (x,) = ctx.saved_tensors
-        grad_input = grad_output.clone()
-        grad_input[(x <= -0.5) | (x >= 0.5)] = 0
-        return grad_input
-
-
-class JumpReLUFunction(autograd.Function):
-    @staticmethod
-    def forward(ctx, x, log_threshold, bandwidth):
-        ctx.save_for_backward(x, log_threshold, torch.tensor(bandwidth))
-        threshold = torch.exp(log_threshold)
-        return x * (x > threshold).float()
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        x, log_threshold, bandwidth_tensor = ctx.saved_tensors
-        bandwidth = bandwidth_tensor.item()
-        threshold = torch.exp(log_threshold)
-        x_grad = (x > threshold).float() * grad_output
-        threshold_grad = (
-            -(threshold / bandwidth)
-            * RectangleFunction.apply((x - threshold) / bandwidth)
-            * grad_output
-        )
-        return x_grad, threshold_grad, None
-
-
-class JumpReLUActivation(nn.Module):
-    def __init__(self, feature_size: int, bandwidth: float, device: str = "cpu"):
-        super().__init__()
-        self.log_threshold = nn.Parameter(torch.zeros(feature_size, device=device))
-        self.bandwidth = bandwidth
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return JumpReLUFunction.apply(x, self.log_threshold, self.bandwidth)
-
-
-class StepFunction(autograd.Function):
-    @staticmethod
-    def forward(ctx, x, log_threshold, bandwidth):
-        ctx.save_for_backward(x, log_threshold, torch.tensor(bandwidth))
-        threshold = torch.exp(log_threshold)
-        return (x > threshold).float()
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        x, log_threshold, bandwidth_tensor = ctx.saved_tensors
-        bandwidth = bandwidth_tensor.item()
-        threshold = torch.exp(log_threshold)
-        x_grad = torch.zeros_like(x)
-        threshold_grad = (
-            -(1.0 / bandwidth)
-            * RectangleFunction.apply((x - threshold) / bandwidth)
-            * grad_output
-        )
-        return x_grad, threshold_grad, None
-
-
-class JumpReLUEncoder(SharedEncoder):
-    """JumpReLU with learnable thresholds."""
-
-    def __init__(self, cfg: EncoderConfig):
-        super().__init__(cfg)
-        self.jumprelu = JumpReLUActivation(cfg.dict_size, cfg.bandwidth, cfg.device)
-
-    def forward(self, x_in: torch.Tensor, y_target: torch.Tensor) -> dict:
-        x_in, _, _ = self.preprocess_input(x_in)
-        y_target, y_mean, y_std = self.preprocess_input(y_target)
-
-        use_pre_enc_bias = (
-            self.cfg.pre_enc_bias and self.input_size == self.output_size
-            and self.cfg.num_output_layers == 1
-        )
-        x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        pre_acts = F.relu(
-            self.apply_post_encoder_scale(x_enc @ self._masked_W_enc() + self.b_enc)
-        )
-        acts = self.jumprelu(pre_acts)
-        y_pred = self.decode(acts, x_in)
-        y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
-
-        self.update_inactive_features(acts)
-
-        l0_norm = (
-            StepFunction.apply(pre_acts, self.jumprelu.log_threshold, self.cfg.bandwidth)
-            .sum(dim=-1)
-            .mean()
-        )
-        sparsity_loss = self.cfg.l1_coeff * l0_norm
-        return self._build_loss_dict(
-            y_target, y_pred, acts, y_pred_out, l0_norm,
-            extra_losses={"sparsity_loss": sparsity_loss},
-        )

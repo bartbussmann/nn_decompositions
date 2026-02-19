@@ -29,7 +29,7 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path("/workspace/spd")))
 
-from base import BatchTopK, JumpReLUEncoder, TopK, Vanilla
+from encoders import BatchTopK, JumpReLU, TopK, Vanilla
 from config import EncoderConfig
 from spd.models.components import make_mask_infos
 
@@ -145,7 +145,7 @@ ENCODER_CLASSES = {
     "vanilla": Vanilla,
     "topk": TopK,
     "batchtopk": BatchTopK,
-    "jumprelu": JumpReLUEncoder,
+    "jumprelu": JumpReLU,
 }
 
 

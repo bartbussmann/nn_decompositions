@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path("/workspace/spd")))
 sys.path.insert(0, str(Path("/workspace/SAEBench")))
 
-from base import BatchTopK, TopK
+from encoders import BatchTopK, TopK
 from sae_bench.sae_bench_utils.indexing_utils import (
     get_iw_sample_indices,
     get_k_largest_indices,
@@ -157,10 +157,10 @@ def load_transcoder(checkpoint_dir: str):
     from config import EncoderConfig
 
     ENCODER_CLASSES = {
-        "vanilla": __import__("base", fromlist=["Vanilla"]).Vanilla,
+        "vanilla": __import__("encoders", fromlist=["Vanilla"]).Vanilla,
         "topk": TopK,
         "batchtopk": BatchTopK,
-        "jumprelu": __import__("base", fromlist=["JumpReLUEncoder"]).JumpReLUEncoder,
+        "jumprelu": __import__("encoders", fromlist=["JumpReLU"]).JumpReLU,
     }
 
     checkpoint_dir = Path(checkpoint_dir)

@@ -28,7 +28,7 @@ from transformers import AutoTokenizer, GPT2LMHeadModel
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from base import BatchTopK, JumpReLUEncoder, TopK, Vanilla
+from encoders import BatchTopK, JumpReLU, TopK, Vanilla
 from config import EncoderConfig
 
 from spd.models.component_model import ComponentModel
@@ -143,11 +143,11 @@ ENCODER_CLASSES = {
     "vanilla": Vanilla,
     "topk": TopK,
     "batchtopk": BatchTopK,
-    "jumprelu": JumpReLUEncoder,
+    "jumprelu": JumpReLU,
 }
 
 
-def load_transcoder(checkpoint_dir: str) -> TopK | BatchTopK | Vanilla | JumpReLUEncoder:
+def load_transcoder(checkpoint_dir: str) -> TopK | BatchTopK | Vanilla | JumpReLU:
     """Load a transcoder from a checkpoint directory."""
     checkpoint_dir = Path(checkpoint_dir)
     with open(checkpoint_dir / "config.json") as f:

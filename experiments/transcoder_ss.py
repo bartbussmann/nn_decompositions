@@ -19,7 +19,7 @@ from transformers import AutoTokenizer
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from activation_store import ActivationsStore, DataConfig
-from base import BatchTopK, TopK
+from encoders import BatchTopK, TopK
 from config import EncoderConfig
 from training import train_encoder
 

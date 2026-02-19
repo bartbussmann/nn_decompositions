@@ -6,7 +6,7 @@ Tests both backward compatibility (single-layer) and new multi-layer functionali
 import torch
 import torch.nn as nn
 
-from base import BatchTopK, JumpReLUEncoder, TopK, Vanilla
+from encoders import BatchTopK, JumpReLU, TopK, Vanilla
 from config import EncoderConfig, SAEConfig
 from sae import TopKSAE
 
@@ -128,7 +128,7 @@ def test_multi_layer_jumprelu():
         num_output_layers=3,
         device="cpu",
     )
-    encoder = JumpReLUEncoder(cfg)
+    encoder = JumpReLU(cfg)
     x_in = torch.randn(16, 64)
     y_target = torch.randn(16, 3, 64)
     output = encoder(x_in, y_target)
@@ -474,6 +474,43 @@ def test_layerwise_clt_masks():
     print("PASS: layerwise CLT masking")
 
 
+def test_encode_decode_roundtrip():
+    """Test that encode() and decode() work as standalone methods."""
+    cfg = EncoderConfig(
+        input_size=64, output_size=64, dict_size=256, top_k=8, device="cpu",
+    )
+    encoder = TopK(cfg)
+    x_in = torch.randn(16, 64)
+
+    acts = encoder.encode(x_in)
+    assert acts.shape == (16, 256)
+    assert (acts > 0).float().sum(-1).mean() <= 8  # at most top_k active
+
+    y_pred = encoder.decode(acts, x_in)
+    assert y_pred.shape == (16, 64)
+    print("PASS: encode/decode roundtrip")
+
+
+def test_encode_all_variants():
+    """All encoder variants have working encode() methods."""
+    for cls, kwargs in [
+        (Vanilla, {}),
+        (TopK, {"top_k": 8}),
+        (BatchTopK, {"top_k": 8}),
+        (JumpReLU, {}),
+    ]:
+        cfg = EncoderConfig(
+            input_size=64, output_size=64, dict_size=256, device="cpu", **kwargs,
+        )
+        encoder = cls(cfg)
+        x_in = torch.randn(16, 64)
+        acts = encoder.encode(x_in)
+        assert acts.shape == (16, 256), f"{cls.__name__} encode shape: {acts.shape}"
+        y_pred = encoder.decode(acts, x_in)
+        assert y_pred.shape == (16, 64), f"{cls.__name__} decode shape: {y_pred.shape}"
+    print("PASS: encode() works for all variants")
+
+
 if __name__ == "__main__":
     test_single_layer_backward_compat()
     test_sae_backward_compat()
@@ -491,4 +528,6 @@ if __name__ == "__main__":
     test_different_input_output_sizes()
     test_clt_concat_input_multi_output()
     test_layerwise_clt_masks()
+    test_encode_decode_roundtrip()
+    test_encode_all_variants()
     print("\nAll tests passed!")

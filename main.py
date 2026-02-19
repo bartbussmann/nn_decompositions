@@ -5,7 +5,7 @@ import torch
 from transformers import GPT2LMHeadModel, AutoTokenizer
 
 from activation_store import ActivationsStore, DataConfig
-from base import BatchTopK, TopK
+from encoders import BatchTopK, TopK
 from config import EncoderConfig
 from training import train_encoder_group, train_encoder
 
