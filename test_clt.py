@@ -431,6 +431,49 @@ def test_clt_concat_input_multi_output():
     print("PASS: CLT concat input → multi output")
 
 
+def test_layerwise_clt_masks():
+    """Layerwise CLT constrains read/write paths to match CLT equations."""
+    num_layers = 4
+    d_model = 16
+    dict_size = 128
+    cfg = EncoderConfig(
+        input_size=d_model * num_layers,
+        output_size=d_model,
+        dict_size=dict_size,
+        top_k=8,
+        num_input_layers=num_layers,
+        num_output_layers=num_layers,
+        enforce_layerwise_clt=True,
+        device="cpu",
+    )
+    encoder = TopK(cfg)
+
+    assert hasattr(encoder, "W_enc_mask")
+    assert hasattr(encoder, "W_dec_mask")
+
+    # Ensure masked entries are truly inactive in effective weights.
+    W_enc_eff = encoder._masked_W_enc()
+    W_dec_eff = encoder._masked_W_dec()
+    assert W_enc_eff[encoder.W_enc_mask == 0].abs().max() == 0
+    assert W_dec_eff[encoder.W_dec_mask == 0].abs().max() == 0
+
+    # Source-layer feature groups can only write to same or later layers.
+    feats_per_layer = dict_size // num_layers
+    for source in range(num_layers):
+        fs = source * feats_per_layer
+        fe = (source + 1) * feats_per_layer
+        assert (encoder.W_dec_mask[:source, fs:fe] == 0).all()
+        assert (encoder.W_dec_mask[source:, fs:fe] == 1).all()
+
+    x_in = torch.randn(8, d_model * num_layers)
+    y_target = torch.randn(8, num_layers, d_model)
+    output = encoder(x_in, y_target)
+    output["loss"].backward()
+    assert encoder.W_enc.grad is not None
+    assert encoder.W_dec.grad is not None
+    print("PASS: layerwise CLT masking")
+
+
 if __name__ == "__main__":
     test_single_layer_backward_compat()
     test_sae_backward_compat()
@@ -447,4 +490,5 @@ if __name__ == "__main__":
     test_all_features_combined()
     test_different_input_output_sizes()
     test_clt_concat_input_multi_output()
+    test_layerwise_clt_masks()
     print("\nAll tests passed!")

@@ -2,8 +2,9 @@
 
 Instead of training 4 separate transcoders (one per layer), this trains a single
 CLT whose encoder reads from ALL layers' pre-MLP residual streams (concatenated)
-and whose decoder writes to ALL layers' MLP outputs. Each feature can read from
-any layer and write to any layer.
+and whose decoder writes to ALL layers' MLP outputs. Features are partitioned by
+source layer: each feature reads from exactly one input layer and writes to its
+own and later output layers.
 
 Matches transcoder_canonical_pile.py setup:
 - Same base model (wandb:goodfire/spd/t-32d1bb3b)
@@ -76,7 +77,9 @@ def main():
         batch_size=4096,
         num_tokens=int(5e8),
         lr=3e-4,
+        num_input_layers=num_layers,
         num_output_layers=num_layers,
+        enforce_layerwise_clt=True,
         wandb_project="pile_clt",
         device=device,
     )
@@ -120,4 +123,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-u
