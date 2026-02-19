@@ -23,47 +23,18 @@ class SharedEncoder(nn.Module):
         self.output_size = cfg.output_size
         self.dict_size = cfg.dict_size
 
+        self.b_dec = nn.Parameter(torch.zeros(cfg.output_size))
         self.b_enc = nn.Parameter(torch.zeros(cfg.dict_size))
         self.W_enc = nn.Parameter(
             torch.nn.init.kaiming_uniform_(torch.empty(cfg.input_size, cfg.dict_size))
         )
-
-        if cfg.num_output_layers > 1:
-            self.b_dec = nn.Parameter(torch.zeros(cfg.num_output_layers, cfg.output_size))
-            self.W_dec = nn.Parameter(
-                torch.nn.init.kaiming_uniform_(
-                    torch.empty(cfg.num_output_layers, cfg.dict_size, cfg.output_size)
-                )
-            )
-        else:
-            self.b_dec = nn.Parameter(torch.zeros(cfg.output_size))
-            self.W_dec = nn.Parameter(
-                torch.nn.init.kaiming_uniform_(torch.empty(cfg.dict_size, cfg.output_size))
-            )
-            # Initialize W_dec from W_enc only if input_size == output_size (SAE case)
-            if cfg.input_size == cfg.output_size:
-                self.W_dec.data[:] = self.W_enc.t().data
+        self.W_dec = nn.Parameter(
+            torch.nn.init.kaiming_uniform_(torch.empty(cfg.dict_size, cfg.output_size))
+        )
+        # Initialize W_dec from W_enc only if input_size == output_size (SAE case)
+        if cfg.input_size == cfg.output_size:
+            self.W_dec.data[:] = self.W_enc.t().data
         self.W_dec.data[:] = self.W_dec / self.W_dec.norm(dim=-1, keepdim=True)
-
-        # Skip connection (per-layer for CLT)
-        if cfg.skip_connection:
-            if cfg.num_output_layers > 1:
-                self.W_skip = nn.Parameter(
-                    torch.zeros(cfg.num_output_layers, cfg.input_size, cfg.output_size)
-                )
-            else:
-                self.W_skip = nn.Parameter(torch.zeros(cfg.input_size, cfg.output_size))
-        else:
-            self.W_skip = None
-
-        # Post-encoder learnable per-feature scale
-        if cfg.train_post_encoder:
-            self.post_enc_scale = nn.Parameter(
-                torch.full((cfg.dict_size,), cfg.post_encoder_scale)
-            )
-        else:
-            self.post_enc_scale = None
-
         self.num_batches_not_active = torch.zeros((cfg.dict_size,)).to(cfg.device)
 
         self.to(cfg.dtype).to(cfg.device)
@@ -87,25 +58,6 @@ class SharedEncoder(nn.Module):
         if self.cfg.input_unit_norm and mean is not None:
             return out * std + mean
         return out
-
-    def decode(self, acts: torch.Tensor, x_in: torch.Tensor) -> torch.Tensor:
-        """Decode sparse activations to output(s). Includes skip connection."""
-        if self.cfg.num_output_layers > 1:
-            y_pred = torch.einsum('bd,ldo->blo', acts, self.W_dec) + self.b_dec
-        else:
-            y_pred = acts @ self.W_dec + self.b_dec
-        if self.W_skip is not None:
-            if self.cfg.num_output_layers > 1:
-                y_pred = y_pred + torch.einsum('bi,lio->blo', x_in, self.W_skip)
-            else:
-                y_pred = y_pred + x_in @ self.W_skip
-        return y_pred
-
-    def apply_post_encoder_scale(self, pre_acts: torch.Tensor) -> torch.Tensor:
-        """Apply learnable per-feature scale if train_post_encoder is enabled."""
-        if self.post_enc_scale is not None:
-            return pre_acts * self.post_enc_scale
-        return pre_acts
 
     @torch.no_grad()
     def make_decoder_weights_and_grad_unit_norm(self):
@@ -135,11 +87,7 @@ class SharedEncoder(nn.Module):
             acts_aux = torch.zeros_like(acts[:, dead_features]).scatter(
                 -1, acts_topk_aux.indices, acts_topk_aux.values
             )
-            if self.cfg.num_output_layers > 1:
-                # W_dec[:, dead]: (num_layers, num_dead, output_size)
-                y_pred_aux = torch.einsum('bd,ldo->blo', acts_aux, self.W_dec[:, dead_features])
-            else:
-                y_pred_aux = acts_aux @ self.W_dec[dead_features]
+            y_pred_aux = acts_aux @ self.W_dec[dead_features]
             return self.cfg.aux_penalty * (y_pred_aux.float() - residual.float()).pow(2).mean()
         return torch.tensor(0, dtype=y_target.dtype, device=y_target.device)
 
@@ -186,13 +134,10 @@ class Vanilla(SharedEncoder):
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        use_pre_enc_bias = (
-            self.cfg.pre_enc_bias and self.input_size == self.output_size
-            and self.cfg.num_output_layers == 1
-        )
+        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
         x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        acts = F.relu(self.apply_post_encoder_scale(x_enc @ self.W_enc + self.b_enc))
-        y_pred = self.decode(acts, x_in)
+        acts = F.relu(x_enc @ self.W_enc + self.b_enc)
+        y_pred = acts @ self.W_dec + self.b_dec
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
         self.update_inactive_features(acts)
@@ -216,15 +161,12 @@ class TopK(SharedEncoder):
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        use_pre_enc_bias = (
-            self.cfg.pre_enc_bias and self.input_size == self.output_size
-            and self.cfg.num_output_layers == 1
-        )
+        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
         x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        acts = F.relu(self.apply_post_encoder_scale(x_enc @ self.W_enc))
+        acts = F.relu(x_enc @ self.W_enc)
         acts_topk = torch.topk(acts, self.cfg.top_k, dim=-1)
         acts_sparse = torch.zeros_like(acts).scatter(-1, acts_topk.indices, acts_topk.values)
-        y_pred = self.decode(acts_sparse, x_in)
+        y_pred = acts_sparse @ self.W_dec + self.b_dec
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
         self.update_inactive_features(acts_sparse)
@@ -249,19 +191,16 @@ class BatchTopK(SharedEncoder):
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        use_pre_enc_bias = (
-            self.cfg.pre_enc_bias and self.input_size == self.output_size
-            and self.cfg.num_output_layers == 1
-        )
+        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
         x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        acts = F.relu(self.apply_post_encoder_scale(x_enc @ self.W_enc))
+        acts = F.relu(x_enc @ self.W_enc)
         acts_topk = torch.topk(acts.flatten(), self.cfg.top_k * x_in.shape[0], dim=-1)
         acts_sparse = (
             torch.zeros_like(acts.flatten())
             .scatter(-1, acts_topk.indices, acts_topk.values)
             .reshape(acts.shape)
         )
-        y_pred = self.decode(acts_sparse, x_in)
+        y_pred = acts_sparse @ self.W_dec + self.b_dec
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
         self.update_inactive_features(acts_sparse)
@@ -354,14 +293,11 @@ class JumpReLUEncoder(SharedEncoder):
         x_in, _, _ = self.preprocess_input(x_in)
         y_target, y_mean, y_std = self.preprocess_input(y_target)
 
-        use_pre_enc_bias = (
-            self.cfg.pre_enc_bias and self.input_size == self.output_size
-            and self.cfg.num_output_layers == 1
-        )
+        use_pre_enc_bias = self.cfg.pre_enc_bias and self.input_size == self.output_size
         x_enc = x_in - self.b_dec if use_pre_enc_bias else x_in
-        pre_acts = F.relu(self.apply_post_encoder_scale(x_enc @ self.W_enc + self.b_enc))
+        pre_acts = F.relu(x_enc @ self.W_enc + self.b_enc)
         acts = self.jumprelu(pre_acts)
-        y_pred = self.decode(acts, x_in)
+        y_pred = acts @ self.W_dec + self.b_dec
         y_pred_out = self.postprocess_output(y_pred, y_mean, y_std)
 
         self.update_inactive_features(acts)
