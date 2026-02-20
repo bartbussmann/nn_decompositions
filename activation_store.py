@@ -201,6 +201,59 @@ class ActivationsStore:
         return x_in, y_target
 
 
+class RandomActivationStore:
+    """Generates random vectors in activation space, calibrated to real statistics.
+
+    Samples input vectors from a per-dimension Gaussian fitted to real activations,
+    then passes them through the actual output module (e.g. MLP) to produce targets.
+    The transcoder learns the module's real input-output function, but on inputs
+    that would never arise from natural text.
+
+    Call calibrate() before training to fit the Gaussian to real activation stats.
+    Does not support CE performance evaluation — use eval_stores for that.
+    """
+
+    def __init__(
+        self,
+        output_module: nn.Module,
+        input_size: int,
+        output_size: int,
+        batch_size: int,
+        device: str,
+    ):
+        self.output_module = output_module
+        self.input_size = input_size
+        self.output_size = output_size
+        self.batch_size = batch_size
+        self.device = device
+        self.input_mean: torch.Tensor | None = None
+        self.input_std: torch.Tensor | None = None
+
+    def calibrate(self, activation_store: "ActivationsStore", n_batches: int = 10):
+        """Fit per-dimension Gaussian to real input activations."""
+        all_inputs = []
+        for _ in range(n_batches):
+            x_in, _ = activation_store.next_batch()
+            all_inputs.append(x_in)
+        all_inputs = torch.cat(all_inputs)
+        self.input_mean = all_inputs.mean(dim=0).to(self.device)
+        self.input_std = all_inputs.std(dim=0).to(self.device)
+        print(
+            f"Calibrated RandomActivationStore: "
+            f"mean norm={self.input_mean.norm():.2f}, "
+            f"mean std={self.input_std.mean():.4f}"
+        )
+
+    @torch.no_grad()
+    def next_batch(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Generate calibrated random inputs and compute module outputs."""
+        assert self.input_mean is not None, "Must call calibrate() first"
+        x_in = torch.randn(self.batch_size, self.input_size, device=self.device)
+        x_in = x_in * self.input_std + self.input_mean
+        y_target = self.output_module(x_in)
+        return x_in, y_target
+
+
 class RandomTokenActivationStore(ActivationsStore):
     """Activation store that feeds uniformly sampled random tokens through the model.
 

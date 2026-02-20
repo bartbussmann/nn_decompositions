@@ -1,21 +1,43 @@
 # %%
-"""Train a transcoder on random (uniformly sampled) tokens.
+"""Train a transcoder on random data to see if it learns real model mechanisms.
 
-Hypothesis: since the model can't memorize random data, any features the
-transcoder learns must capture real model mechanisms (the MLP's learned
-computations) rather than dataset-specific patterns.
+Two modes:
+  random_tokens       — uniformly sampled tokens (BOS prefix), run through the
+                        full model to get activations. The model still produces
+                        structured activations, but can't memorize datapoints.
+  random_activations  — random vectors in activation space (per-dimension
+                        Gaussian calibrated to real stats), passed directly
+                        through the MLP. The transcoder sees inputs that would
+                        never arise from natural text.
 
-Training data: uniformly sampled tokens (with BOS prefix).
-Evaluation: performance on both random data and real text (OpenWebText).
+Both modes evaluate on real text (OpenWebText) to measure how well the
+transcoder generalises.
+
+Usage:
+    python random_data_transcoder.py                    # defaults to random_tokens
+    python random_data_transcoder.py random_tokens
+    python random_data_transcoder.py random_activations
 """
+
+import sys
 
 import torch
 from transformers import GPT2LMHeadModel, AutoTokenizer
 
-from activation_store import ActivationsStore, RandomTokenActivationStore, DataConfig
+from activation_store import (
+    ActivationsStore,
+    RandomActivationStore,
+    RandomTokenActivationStore,
+    DataConfig,
+)
 from transcoder import BatchTopKTranscoder
 from config import EncoderConfig
 from training import train_encoder
+
+mode = sys.argv[1] if len(sys.argv) > 1 else "random_tokens"
+assert mode in ("random_tokens", "random_activations"), (
+    f"Unknown mode '{mode}'. Choose 'random_tokens' or 'random_activations'."
+)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -42,7 +64,6 @@ cfg = EncoderConfig(
     device=device,
 )
 
-# Hook into MLP input (layer norm before MLP) and MLP output
 input_module = model.transformer.h[layer].ln_2
 output_module = model.transformer.h[layer].mlp
 
@@ -55,18 +76,7 @@ shared_data_kwargs = dict(
     device=device,
 )
 
-# Training store: random tokens
-random_data_config = DataConfig(dataset_name="unused", **shared_data_kwargs)
-random_store = RandomTokenActivationStore(
-    model=model,
-    input_module=input_module,
-    output_module=output_module,
-    data_config=random_data_config,
-    input_size=input_size,
-    output_size=output_size,
-)
-
-# Eval store: real text data
+# Real data store — used for eval (and for calibration in random_activations mode)
 real_data_config = DataConfig(dataset_name="Skylion007/openwebtext", **shared_data_kwargs)
 real_store = ActivationsStore(
     model=model,
@@ -77,17 +87,38 @@ real_store = ActivationsStore(
     output_size=output_size,
 )
 
+if mode == "random_tokens":
+    random_data_config = DataConfig(dataset_name="unused", **shared_data_kwargs)
+    train_store = RandomTokenActivationStore(
+        model=model,
+        input_module=input_module,
+        output_module=output_module,
+        data_config=random_data_config,
+        input_size=input_size,
+        output_size=output_size,
+    )
+elif mode == "random_activations":
+    train_store = RandomActivationStore(
+        output_module=output_module,
+        input_size=input_size,
+        output_size=output_size,
+        batch_size=cfg.batch_size,
+        device=device,
+    )
+    print("Calibrating random activation distribution from real data...")
+    train_store.calibrate(real_store, n_batches=10)
+
 transcoder = BatchTopKTranscoder(cfg)
 
-print("Random Data Transcoder Experiment")
+print(f"\nRandom Data Transcoder Experiment — mode: {mode}")
 print(f"  Layer: {layer}")
 print(f"  Dict size: {cfg.dict_size}, Top-k: {cfg.top_k}")
-print(f"  Training on: random tokens (uniform, BOS prefix)")
-print(f"  Evaluating on: random tokens + real text (OpenWebText)")
+print(f"  Training on: {mode}")
+print(f"  Evaluating on: real text (OpenWebText)")
 
 train_encoder(
     transcoder,
-    random_store,
+    train_store,
     cfg,
     eval_stores={"real_data": real_store},
 )

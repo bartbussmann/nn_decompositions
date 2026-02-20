@@ -42,8 +42,10 @@ def train_encoder(
         log_wandb(output, i, wandb_run)
 
         if i % cfg.perf_log_freq == 0:
-            log_perf(wandb_run, i, activation_store, encoder,
-                     compute_loss_fn=compute_loss_fn)
+            # CE eval requires a model — skip for stores like RandomActivationStore
+            if hasattr(activation_store, 'model'):
+                log_perf(wandb_run, i, activation_store, encoder,
+                         compute_loss_fn=compute_loss_fn)
             if eval_stores:
                 for name, store in eval_stores.items():
                     log_perf(wandb_run, i, store, encoder,
