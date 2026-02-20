@@ -201,6 +201,38 @@ class ActivationsStore:
         return x_in, y_target
 
 
+class RandomTokenActivationStore(ActivationsStore):
+    """Activation store that feeds uniformly sampled random tokens through the model.
+
+    Since the model can't memorize random data, any features a transcoder learns
+    must reflect real model mechanisms rather than dataset-specific patterns.
+
+    Each sequence starts with a BOS token, followed by tokens sampled uniformly
+    from the full vocabulary. No attention mask is needed (no padding).
+    """
+
+    def _setup_dataset(self):
+        """No dataset needed — just store the tokenizer."""
+        cfg = self.data_config
+        self.tokenizer = cfg.tokenizer
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
+    def get_batch_tokens(self) -> tuple[torch.Tensor, None]:
+        """Generate a batch of random token sequences, each starting with BOS."""
+        cfg = self.data_config
+        vocab_size = self.tokenizer.vocab_size
+        bos_token_id = self.tokenizer.bos_token_id
+
+        random_ids = torch.randint(
+            0, vocab_size, (cfg.model_batch_size, cfg.seq_len), device=cfg.device,
+        )
+        if bos_token_id is not None:
+            random_ids[:, 0] = bos_token_id
+
+        return random_ids, None
+
+
 class MultiLayerActivationsStore:
     """Activation store that hooks into multiple (input, output) module pairs.
 

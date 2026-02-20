@@ -17,8 +17,15 @@ def train_encoder(
     activation_store,
     cfg: EncoderConfig | CLTConfig,
     compute_loss_fn: ComputeLossFn | None = None,
+    eval_stores: dict[str, object] | None = None,
 ):
-    """Train any encoder (SAE, transcoder, or cross-layer transcoder)."""
+    """Train any encoder (SAE, transcoder, or cross-layer transcoder).
+
+    Args:
+        eval_stores: Optional dict of {name: activation_store} for additional
+            evaluation. Each store is evaluated at perf_log_freq and logged
+            with its name as a wandb suffix.
+    """
     num_batches = cfg.num_tokens // cfg.batch_size
     optimizer = torch.optim.Adam(encoder.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2))
     pbar = tqdm.trange(num_batches)
@@ -37,6 +44,10 @@ def train_encoder(
         if i % cfg.perf_log_freq == 0:
             log_perf(wandb_run, i, activation_store, encoder,
                      compute_loss_fn=compute_loss_fn)
+            if eval_stores:
+                for name, store in eval_stores.items():
+                    log_perf(wandb_run, i, store, encoder,
+                             suffix=name, compute_loss_fn=compute_loss_fn)
 
         if cfg.checkpoint_freq != "final" and i % cfg.checkpoint_freq == 0:
             save_checkpoint(encoder, cfg, i)
