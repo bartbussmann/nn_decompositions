@@ -258,8 +258,16 @@ def log_clt_performance(
 # Checkpointing
 # =============================================================================
 
+def _try_wandb(wandb_fn, *args, **kwargs):
+    """Call a wandb function, logging a warning instead of crashing on CommError."""
+    try:
+        return wandb_fn(*args, **kwargs)
+    except wandb.errors.CommError as e:
+        print(f"wandb communication error, skipping: {e}")
+
+
 def save_checkpoint(encoder, cfg: EncoderConfig | CLTConfig, step: int | str):
-    """Save encoder checkpoint locally."""
+    """Save encoder checkpoint locally and upload to wandb."""
     save_dir = f"checkpoints/{cfg.name}_{step}"
     os.makedirs(save_dir, exist_ok=True)
 
@@ -276,5 +284,9 @@ def save_checkpoint(encoder, cfg: EncoderConfig | CLTConfig, step: int | str):
     config_path = os.path.join(save_dir, "config.json")
     with open(config_path, "w") as f:
         json.dump(json_safe_cfg, f, indent=4)
+
+    if wandb.run is not None:
+        _try_wandb(wandb.save, encoder_path, base_path=save_dir, policy="now")
+        _try_wandb(wandb.save, config_path, base_path=save_dir, policy="now")
 
     print(f"Checkpoint saved at step {step}: {save_dir}")
