@@ -258,8 +258,13 @@ def log_clt_performance(
 # Checkpointing
 # =============================================================================
 
-def save_checkpoint(encoder, cfg: EncoderConfig | CLTConfig, step: int | str):
-    """Save encoder checkpoint locally."""
+def save_checkpoint(
+    encoder,
+    cfg: EncoderConfig | CLTConfig,
+    step: int | str,
+    wandb_run=None,
+):
+    """Save encoder checkpoint locally and optionally upload to wandb."""
     save_dir = f"checkpoints/{cfg.name}_{step}"
     os.makedirs(save_dir, exist_ok=True)
 
@@ -276,5 +281,15 @@ def save_checkpoint(encoder, cfg: EncoderConfig | CLTConfig, step: int | str):
     config_path = os.path.join(save_dir, "config.json")
     with open(config_path, "w") as f:
         json.dump(json_safe_cfg, f, indent=4)
+
+    if wandb_run is not None:
+        artifact = wandb.Artifact(
+            name=f"{cfg.name}_checkpoint_{step}",
+            type="model",
+            metadata={"step": step, "run_name": cfg.name},
+        )
+        artifact.add_file(encoder_path, name="encoder.pt")
+        artifact.add_file(config_path, name="config.json")
+        wandb_run.log_artifact(artifact)
 
     print(f"Checkpoint saved at step {step}: {save_dir}")

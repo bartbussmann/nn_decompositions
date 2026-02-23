@@ -39,7 +39,7 @@ def train_encoder(
                      compute_loss_fn=compute_loss_fn)
 
         if cfg.checkpoint_freq != "final" and i % cfg.checkpoint_freq == 0:
-            save_checkpoint(encoder, cfg, i)
+            save_checkpoint(encoder, cfg, i, wandb_run=wandb_run)
 
         loss = output["loss"]
         pbar.set_postfix({
@@ -54,7 +54,7 @@ def train_encoder(
         optimizer.step()
         optimizer.zero_grad()
 
-    save_checkpoint(encoder, cfg, "final")
+    save_checkpoint(encoder, cfg, "final", wandb_run=wandb_run)
 
 
 def train_encoder_group(
@@ -82,7 +82,7 @@ def train_encoder_group(
             log_wandb(output, i, wandb_run, suffix=cfg.encoder_type)
 
             if cfg.checkpoint_freq != "final" and i % cfg.checkpoint_freq == 0:
-                save_checkpoint(encoder, cfg, i)
+                save_checkpoint(encoder, cfg, i, wandb_run=wandb_run)
 
             loss = output["loss"]
             pbar.set_postfix({"Loss": f"{loss.item():.4f}", "L0": f"{output['l0_norm']:.4f}"})
@@ -114,4 +114,4 @@ def train_encoder_group(
             torch.cuda.empty_cache()
 
     for encoder, cfg in zip(encoders, cfgs):
-        save_checkpoint(encoder, cfg, "final")
+        save_checkpoint(encoder, cfg, "final", wandb_run=wandb_run)
