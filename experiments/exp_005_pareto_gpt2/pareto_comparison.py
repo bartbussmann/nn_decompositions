@@ -26,7 +26,7 @@ from datasets import load_dataset
 from transformers import AutoTokenizer, GPT2LMHeadModel
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from transcoder import BatchTopKTranscoder, JumpReLUTranscoder, TopKTranscoder, VanillaTranscoder
 from config import EncoderConfig
@@ -757,7 +757,7 @@ def main():
     parser.add_argument("--n_eval_batches", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--seq_len", type=int, default=256)
-    parser.add_argument("--save_path", type=str, default="experiments/pareto_comparison.png")
+    parser.add_argument("--save_path", type=str, default="experiments/exp_005_pareto_gpt2/output/pareto_comparison.png")
     args = parser.parse_args()
 
     # Load GPT-2

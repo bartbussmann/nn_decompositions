@@ -16,7 +16,7 @@ from simple_stories_train.models.llama_simple import LlamaSimple
 from transformers import AutoTokenizer
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from activation_store import ActivationsStore, DataConfig
 from transcoder import BatchTopKTranscoder, TopKTranscoder

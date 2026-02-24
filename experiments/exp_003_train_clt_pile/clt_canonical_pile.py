@@ -21,7 +21,7 @@ load_dotenv()
 import torch
 import torch.nn.functional as F
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 sys.path.insert(0, str(Path("/workspace/spd")))
 
 from transformers import AutoTokenizer
@@ -33,7 +33,7 @@ from training import train_encoder
 
 WANDB_MODEL_PATH = "wandb:goodfire/spd/t-32d1bb3b"
 LAYERS = [0, 1, 2, 3]
-TOP_K = 64
+TOP_K = 16
 DICT_SIZE = 4096
 
 

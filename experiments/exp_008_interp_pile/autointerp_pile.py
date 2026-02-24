@@ -34,7 +34,7 @@ from tabulate import tabulate
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 sys.path.insert(0, str(Path("/workspace/spd")))
 sys.path.insert(0, str(Path("/workspace/SAEBench")))
 
@@ -778,7 +778,7 @@ def main():
     parser.add_argument("--seq_len", type=int, default=128)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument(
-        "--save_path", type=str, default="experiments/autointerp_results.json"
+        "--save_path", type=str, default="experiments/exp_008_interp_pile/output/autointerp_results.json"
     )
     parser.add_argument("--skip_transcoder", action="store_true")
     parser.add_argument("--skip_spd_cfc", action="store_true")

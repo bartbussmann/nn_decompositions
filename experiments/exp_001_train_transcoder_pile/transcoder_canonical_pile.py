@@ -28,7 +28,7 @@ import torch
 import torch.nn.functional as F
 
 # Add project root and SPD codebase to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 sys.path.insert(0, str(Path("/workspace/spd")))
 
 from transformers import AutoTokenizer
@@ -95,6 +95,7 @@ def train_one_layer(layer_top_k_device):
             lr=3e-4,
             wandb_project="pile_transcoder",
             device=device,
+            checkpoint_freq=20000
         )
 
         data_config = DataConfig(

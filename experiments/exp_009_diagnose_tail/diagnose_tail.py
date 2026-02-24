@@ -15,7 +15,7 @@ import torch.nn.functional as F
 from datasets import load_dataset
 from transformers import AutoTokenizer, GPT2LMHeadModel
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from spd.models.component_model import ComponentModel
 from spd.models.components import make_mask_infos

@@ -26,7 +26,7 @@ import torch.nn.functional as F
 from datasets import load_dataset
 from tqdm import tqdm
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 sys.path.insert(0, str(Path("/workspace/spd")))
 
 from transcoder import BatchTopKTranscoder, JumpReLUTranscoder, TopKTranscoder, VanillaTranscoder
@@ -950,7 +950,7 @@ def main():
     parser.add_argument("--n_eval_batches", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--seq_len", type=int, default=512)
-    parser.add_argument("--save_path", type=str, default="experiments/pareto_pile.png")
+    parser.add_argument("--save_path", type=str, default="experiments/exp_006_pareto_pile/output/pareto_pile.png")
     args = parser.parse_args()
 
     # Load SPD model (includes the base LlamaSimpleMLP)
