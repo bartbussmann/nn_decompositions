@@ -1,156 +1,110 @@
 # NN Decompositions
 
-A research repository for neural network decomposition methods including Sparse Autoencoders (SAEs), Transcoders, and related techniques.
+A research repository for comparing neural network decomposition methods for mechanistic interpretability. Implements Sparse Autoencoders (SAEs), Transcoders, and Cross-Layer Transcoders (CLTs), and benchmarks them against Sparse Parameter Decomposition (SPD).
 
 ## Overview
 
-This repository provides implementations of various neural network decomposition approaches for mechanistic interpretability research. The goal is to decompose neural network activations and weights into interpretable components.
+The goal is to decompose transformer MLP computations into sparse, interpretable components and compare methods on reconstruction quality (MSE) vs. sparsity (L0) and downstream task performance (cross-entropy).
+
+The primary target model is a 4-layer **LlamaSimpleMLP** transformer (`n_embd=768`, GELU MLPs with `n_intermediate=3072`), trained on the Pile dataset.
 
 ## Installation
 
-Using [uv](https://docs.astral.sh/uv/) (recommended):
-
+**On RunPod** (recommended — handles Python 3.13, CUDA, and SPD):
 ```bash
-uv sync
+bash setup_env.sh
+source .venv/bin/activate
 ```
 
-Or with pip:
-
+**Manual:**
 ```bash
-pip install -e .
+pip install -e ".[dev,analysis]"
+pip install -e /path/to/spd  # sibling SPD repo
 ```
 
-## Current Implementations
+## Model Implementations
 
-### Encoder Architectures (`base.py`)
+### Transcoders (`transcoder.py`)
 
-Four encoder variants with unified `forward(x_in, y_target)` signature:
+Map MLP inputs to MLP outputs through a sparse bottleneck (input ≠ output):
 
-- **VanillaTranscoder**: Standard encoder with L1 regularization
-- **TopKTranscoder**: Keeps only the top-k activations per sample
-- **BatchTopKTranscoder**: Keeps top-k activations across the entire batch
-- **JumpReLUTranscoder**: Uses learnable thresholds with straight-through gradients
+- **VanillaTranscoder** — L1 regularization on latent activations
+- **TopKTranscoder** — keeps top-k activations per sample
+- **BatchTopKTranscoder** — keeps top-k activations across the entire batch
+- **JumpReLUTranscoder** — learnable per-feature thresholds with straight-through gradients
+
+### Cross-Layer Transcoder (`clt.py`)
+
+Per-layer encoders with **triangular decoders**: a feature activated at source layer `i` writes to MLP outputs at layers `i, i+1, ..., n-1`. This captures cross-layer structure that per-layer transcoders cannot.
 
 ### SAEs (`sae.py`)
 
-SAE wrappers that call `forward(x, x)` to reconstruct input:
-
-- `VanillaSAE`, `TopKSAE`, `BatchTopKSAE`, `JumpReLUSAE`
-
-### Transcoders
-
-Use base classes directly for transcoders (input ≠ output):
-
-```python
-from transcoder import TopKTranscoder
-from config import TranscoderConfig
-
-cfg = TranscoderConfig(
-    input_size=768,
-    output_size=768,
-    dict_size=6144,
-    input_site="resid_mid",
-    output_site="mlp_out",
-    ...
-)
-transcoder = TopKTranscoder(cfg)
-output = transcoder(x_in, y_target)
-```
-
-## Usage
-
-### Training an SAE
-
-```python
-from activation_store import ActivationsStore
-from config import SAEConfig
-from sae import TopKSAE
-from training import train_sae
-from transformer_lens import HookedTransformer
-
-cfg = SAEConfig(
-    encoder_type="topk",
-    act_size=768,
-    dict_size=768 * 16,
-    model_name="gpt2-small",
-    layer=8,
-    site="resid_pre",
-    top_k=32,
-)
-
-model = HookedTransformer.from_pretrained(cfg.model_name).to(cfg.device)
-sae = TopKSAE(cfg)
-activation_store = ActivationsStore(model, cfg)
-
-train_sae(sae, activation_store, model, cfg)
-```
-
-### Training a Transcoder
-
-```python
-from activation_store import TranscoderActivationsStore
-from transcoder import TopKTranscoder
-from config import TranscoderConfig
-from training import train_transcoder
-from transformer_lens import HookedTransformer
-
-cfg = TranscoderConfig(
-    encoder_type="topk",
-    input_size=768,
-    output_size=768,
-    dict_size=6144,
-    input_site="resid_mid",
-    output_site="mlp_out",
-    input_layer=8,
-    output_layer=8,
-    top_k=32,
-)
-
-model = HookedTransformer.from_pretrained(cfg.model_name).to(cfg.device)
-transcoder = TopKTranscoder(cfg)
-activation_store = TranscoderActivationsStore(model, cfg)
-
-train_transcoder(transcoder, activation_store, model, cfg)
-```
+Standard sparse autoencoders that reconstruct input activations (input = output). Same four variants: Vanilla, TopK, BatchTopK, JumpReLU.
 
 ## Configuration
 
-Configs are dataclasses with type safety and computed properties:
+Configs are dataclasses defined in `config.py`:
 
-### SAEConfig
+- **EncoderConfig** — base config for transcoders (input_size, output_size, dict_size, encoder_type, top_k, training params)
+- **SAEConfig** — extends EncoderConfig with `input_size == output_size` constraint
+- **CLTConfig** — adds `layers` (list of layer indices) for cross-layer structure
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `encoder_type` | `"topk"` | One of: vanilla, topk, batchtopk, jumprelu |
-| `act_size` | `768` | Activation dimension (input = output for SAE) |
-| `dict_size` | `12288` | Dictionary/latent dimension |
-| `top_k` | `32` | Number of active features (TopKTranscoder variants) |
-| `l1_coeff` | `0.0` | L1/sparsity regularization coefficient |
-| `site` | `"resid_pre"` | Hook point for activations |
-| `layer` | `8` | Layer to extract from |
+## Experiments
 
-### TranscoderConfig
+Each experiment lives in `experiments/exp_XXX_<name>/` with outputs in an `output/` subdirectory.
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `input_size` | — | Input activation dimension |
-| `output_size` | — | Output activation dimension |
-| `input_site` | `"resid_pre"` | Input hook point |
-| `output_site` | `"resid_post"` | Output hook point |
-| `input_layer` | `8` | Input layer |
-| `output_layer` | `8` | Output layer |
+### Training
+| ID | Description |
+|----|-------------|
+| 001 | Train BatchTopKTranscoders on all 4 layers (per-layer top_k matching SPD L0s) |
+| 002 | Train transcoders on SimpleStories dataset |
+| 003 | Train Cross-Layer Transcoder on all 4 layers |
+| 010 | Uniform top_k sweep [8, 16, 32, 64] across all layers |
+
+### Evaluation & Comparison
+| ID | Description |
+|----|-------------|
+| 005 | Pareto comparison on GPT-2 |
+| 006 | Single-layer Pareto comparison on Pile |
+| 007 | All-layers Pareto: replace all 4 MLPs simultaneously, L0 sweep, 3 x-axis variants |
+| 011 | Pareto from naturally-trained checkpoints (transcoders, CLTs, SPD thresholds, neuron baseline) |
+
+### Analysis
+| ID | Description |
+|----|-------------|
+| 008 | Automated interpretability, intruder detection, faithfulness |
+| 009 | Diagnose activation tail behavior |
+
+### Pareto plots (exp_007, exp_011)
+
+Compare methods on three x-axis definitions to account for structural differences:
+1. **Active components per module** — raw average L0
+2. **Active components per MLP reconstruction** — accounts for CLT's cross-layer writes and SPD's dual modules
+3. **Total active parameters** — actual parameter count using per-layer L0s
 
 ## Project Structure
 
 ```
 nn_decompositions/
-├── base.py              # Unified encoder architectures
-├── sae.py               # SAE wrappers
-├── config.py            # Dataclass configs (SAEConfig, TranscoderConfig)
-├── activation_store.py  # Activation collection from models
-├── training.py          # Training loops
-├── logs.py              # WandB logging and checkpointing
-└── main.py              # Example training script
+├── sae.py               # SAE implementations (4 variants)
+├── transcoder.py         # Transcoder implementations (4 variants)
+├── clt.py                # Cross-Layer Transcoder
+├── config.py             # EncoderConfig, SAEConfig, CLTConfig
+├── activation_store.py   # ActivationsStore + DataConfig
+├── training.py           # Training loop (train_encoder)
+├── logs.py               # WandB logging and checkpointing
+├── main.py               # Example training scripts
+├── setup_env.sh          # RunPod environment setup
+├── analysis/             # Activation collection and dashboards
+│   ├── collect_activations.py
+│   ├── collect_spd_activations.py
+│   └── feature_dashboard.py
+└── experiments/
+    ├── exp_001_train_transcoder_pile/
+    ├── exp_002_train_transcoder_ss/
+    ├── exp_003_train_clt_pile/
+    ├── ...
+    └── exp_011_pareto_trained_all_layers/
 ```
 
 ## References

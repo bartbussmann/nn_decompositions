@@ -11,10 +11,10 @@ Usage:
 import os
 import sys
 import traceback
+import uuid
 
 from dotenv import load_dotenv
 load_dotenv()
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 import multiprocessing as mp
 
@@ -56,9 +56,8 @@ def compute_loss_llama(model, tokenizer, input_ids, attention_mask):
     return F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1)).item()
 
 
-def train_one_layer(args_tuple):
+def train_one_layer(layer, top_k, device):
     """Train a single transcoder (for one layer + top_k combo). Runs in a separate process."""
-    layer, top_k, device = args_tuple
     try:
         wandb_dir = Path(f"wandb_layer{layer}_k{top_k}").resolve()
         wandb_dir.mkdir(parents=True, exist_ok=True)
@@ -86,7 +85,7 @@ def train_one_layer(args_tuple):
             batch_size=4096,
             num_tokens=int(5e8),
             lr=3e-4,
-            wandb_project="pile_transcoder_sweep",
+            wandb_project="pile_transcoder_sweep3",
             device=device,
             checkpoint_freq="final"
         )
@@ -113,9 +112,13 @@ def train_one_layer(args_tuple):
             output_size=output_size,
         )
 
+        # Include layer and short random suffix so wandb runs/artifacts don't collide
+        suffix = uuid.uuid4().hex[:6]
+        cfg.run_name = f"{cfg.dict_size}_{cfg.encoder_type}_k{top_k}_{cfg.lr}_L{layer}_{suffix}"
+
         transcoder = BatchTopKTranscoder(cfg)
 
-        print(f"[Layer {layer} | k={top_k} | {device}] Training transcoder: {cfg.name}")
+        print(f"[Layer {layer} | k={top_k} | {device}] Training transcoder: {cfg.run_name}")
         print(f"  Model: LlamaSimpleMLP (t-32d1bb3b)")
         print(f"  Layer: {layer}, top_k: {top_k}")
         print(f"  Dict size: {cfg.dict_size}")
@@ -123,11 +126,9 @@ def train_one_layer(args_tuple):
 
         train_encoder(transcoder, activation_store, cfg, compute_loss_fn=compute_loss_llama)
         print(f"[Layer {layer} | k={top_k}] Training complete.")
-        return (layer, top_k)
     except Exception as e:
         print(f"[Layer {layer} | k={top_k}] FAILED: {e}")
         traceback.print_exc()
-        raise
 
 
 def main():
@@ -139,36 +140,34 @@ def main():
     args = parser.parse_args()
 
     tasks = [(layer, k) for k in args.top_ks for layer in args.layers]
-    n_jobs = len(tasks)
-
     n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
-    devices = [
-        f"cuda:{i % max(1, n_gpus)}" if n_gpus else "cpu"
-        for i in range(n_jobs)
-    ]
-    task_args = [
-        (layer, top_k, device)
-        for (layer, top_k), device in zip(tasks, devices)
-    ]
 
-    print(f"Training {n_jobs} transcoders ({len(args.layers)} layers × {len(args.top_ks)} top_k values)")
+    print(f"Training {len(tasks)} transcoders ({len(args.layers)} layers × {len(args.top_ks)} top_k values)")
     print(f"  Layers: {args.layers}")
     print(f"  top_k values: {args.top_ks}")
     print(f"  GPUs available: {n_gpus}")
     print(f"  Max parallel workers: {args.max_workers}")
 
-    with ProcessPoolExecutor(max_workers=args.max_workers, mp_context=mp.get_context("spawn")) as executor:
-        futures = {
-            executor.submit(train_one_layer, ta): (ta[0], ta[1])
-            for ta in task_args
-        }
-        for future in as_completed(futures):
-            layer, top_k = futures[future]
-            try:
-                future.result()
-                print(f"[Layer {layer} | k={top_k}] Finished successfully.")
-            except Exception as e:
-                print(f"[Layer {layer} | k={top_k}] FAILED with exception: {e}")
+    ctx = mp.get_context("spawn")
+
+    # Process tasks in batches of max_workers.
+    # Each batch spawns fresh processes that fully die between batches,
+    # guaranteeing GPU memory is freed.
+    for batch_start in range(0, len(tasks), args.max_workers):
+        batch = tasks[batch_start : batch_start + args.max_workers]
+        procs = []
+        for i, (layer, k) in enumerate(batch):
+            device = f"cuda:{i % max(1, n_gpus)}" if n_gpus else "cpu"
+            p = ctx.Process(target=train_one_layer, args=(layer, k, device))
+            p.start()
+            procs.append((p, layer, k))
+
+        for p, layer, k in procs:
+            p.join()
+            if p.exitcode == 0:
+                print(f"[Layer {layer} | k={k}] Finished successfully.")
+            else:
+                print(f"[Layer {layer} | k={k}] FAILED (exit code {p.exitcode})")
 
 
 if __name__ == "__main__":

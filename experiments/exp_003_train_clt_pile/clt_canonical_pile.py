@@ -33,7 +33,7 @@ from training import train_encoder
 
 WANDB_MODEL_PATH = "wandb:goodfire/spd/t-32d1bb3b"
 LAYERS = [0, 1, 2, 3]
-TOP_K = 16
+TOP_K = 64
 DICT_SIZE = 4096
 
 

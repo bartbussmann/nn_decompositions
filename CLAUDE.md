@@ -4,54 +4,84 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-NN Decompositions is a research repository for neural network decomposition methods, currently focused on Sparse Autoencoders (SAEs) for mechanistic interpretability. The codebase trains SAEs on transformer activations to decompose them into interpretable features.
+NN Decompositions is a research repository for neural network decomposition methods for mechanistic interpretability. It implements SAEs, Transcoders, and Cross-Layer Transcoders (CLTs) to decompose transformer MLP activations into sparse, interpretable features. Experiments compare these methods against Sparse Parameter Decomposition (SPD) from the sibling `/workspace/spd` repo.
 
-**Available SAE types** (defined in `sae.py`):
+The primary target model is **LlamaSimpleMLP** (4-layer transformer, `n_embd=768`, `n_intermediate=3072`, GELU MLPs) loaded from `wandb:goodfire/spd/t-32d1bb3b`.
 
-- **VanillaSAE**: Standard sparse autoencoder with L1 regularization
-- **TopKSAE**: Keeps only the top-k activations per sample
-- **BatchTopKSAE**: Keeps top-k activations across the entire batch (more flexible sparsity)
-- **JumpReLUSAE**: Uses learnable thresholds with straight-through gradient estimation
+## Model Types
+
+**SAEs** (`sae.py`) — reconstruct input activations (input = output):
+- VanillaSAE, TopKSAE, BatchTopKSAE, JumpReLUSAE
+
+**Transcoders** (`transcoder.py`) — map MLP input to MLP output (input ≠ output):
+- VanillaTranscoder, TopKTranscoder, BatchTopKTranscoder, JumpReLUTranscoder
+
+**Cross-Layer Transcoder** (`clt.py`) — per-layer encoders with triangular decoders. Features at source layer `i` write to MLP outputs at layers `i` through `n-1`.
+
+## Core Files
+
+- `sae.py` — SAE implementations (BaseAutoencoder + 4 variants)
+- `transcoder.py` — Transcoder implementations (BaseTranscoder + 4 variants)
+- `clt.py` — CrossLayerTranscoder with per-layer encoders and triangular decoders
+- `config.py` — EncoderConfig, SAEConfig, CLTConfig dataclasses
+- `activation_store.py` — ActivationsStore + DataConfig for streaming activations
+- `training.py` — Training loop (`train_encoder`)
+- `logs.py` — WandB logging and checkpoint saving
+- `main.py` — Example training scripts
+
+## Experiments
+
+Each experiment lives in `experiments/exp_XXX_<name>/` with outputs in `output/`.
+
+| ID | Name | Description |
+|----|------|-------------|
+| 001 | train_transcoder_pile | Train BatchTopKTranscoders on LlamaSimpleMLP layers 0-3 (Pile dataset, per-layer top_k matching SPD) |
+| 002 | train_transcoder_ss | Train transcoders on SimpleStories |
+| 003 | train_clt_pile | Train CLT on LlamaSimpleMLP layers 0-3 (Pile dataset) |
+| 004 | train_spd_gpt2 | Train SPD on GPT-2 |
+| 005 | pareto_gpt2 | Pareto comparison on GPT-2 |
+| 006 | pareto_pile | Single-layer Pareto comparison on Pile |
+| 007 | pareto_pile_all_layers | All-layers Pareto: replace all 4 MLPs simultaneously, sweep L0, 3 x-axis variants |
+| 008 | interp_pile | Autointerp, intruder detection, faithfulness analysis |
+| 009 | diagnose_tail | Diagnose activation tail behavior |
+| 010 | train_transcoder_pile_sweep | Uniform top_k sweep [8,16,32,64] across all layers (mp.Process batches) |
+| 011 | pareto_trained_all_layers | Pareto from naturally-trained checkpoints only (transcoders from wandb, CLTs, SPD thresholds, neuron baseline) |
+
+## Key Patterns
+
+**All-layers patching**: Use `ExitStack` + factory functions to patch all 4 MLPs simultaneously, avoiding closure variable capture bugs:
+```python
+with ExitStack() as stack:
+    for layer_idx in LAYERS:
+        def _make_patched(tc_, size_):
+            def _patched(x): ...
+            return _patched
+        stack.enter_context(patched_forward(mlp, _make_patched(tc, size)))
+```
+
+**Parallel training**: Use `mp.Process` in batches (not ProcessPoolExecutor) to avoid cascade failures when a worker OOMs.
+
+**WandB artifacts**: Checkpoints contain `encoder.pt` + `config.json`. Override `cfg_dict["device"]` when loading since saved configs may reference training GPUs (e.g. `cuda:3`) that don't exist locally.
 
 ## Development Commands
 
-**Setup:**
+**Setup** (creates Python 3.13 venv on local disk for RunPod):
 ```bash
-pip install -r requirements.txt
+bash setup_env.sh
+source .venv/bin/activate
 ```
 
-**Running:**
+**Running experiments:**
 ```bash
-python main.py  # Run training experiments
+python experiments/exp_011_pareto_trained_all_layers/pareto_trained_all_layers.py
 ```
 
-## Architecture Overview
+## Dependencies
 
-**Core Files:**
-- `sae.py` - SAE model implementations (BaseAutoencoder + 4 variants)
-- `activation_store.py` - Streams activations from transformer models via TransformerLens
-- `training.py` - Training loop with optimizer setup
-- `config.py` - Configuration defaults and post-init processing
-- `logs.py` - WandB logging and checkpoint saving
-- `results.py` - Results analysis utilities
-- `main.py` - Example training scripts with hyperparameter sweeps
-
-**Key Data Flow:**
-
-1. Load a pretrained transformer via TransformerLens
-2. ActivationsStore collects activations from a specified hook point
-3. SAE trains to reconstruct activations with sparse latent representations
-4. Metrics logged to WandB: L0/L1 norms, reconstruction loss, dead features
-
-**Configuration:**
-
-Config is a dictionary with keys like:
-- `model_name` - TransformerLens model (e.g., "gpt2-small")
-- `layer`, `site` - Which activations to extract (e.g., layer 8, "resid_pre")
-- `dict_size` - SAE latent dimension (e.g., 768 * 16)
-- `top_k` - Active features for TopKTranscoder variants
-- `l1_coeff` - Sparsity penalty coefficient
-- `sae_type` - Which SAE variant to use
+- Requires Python 3.13 (for SPD compatibility)
+- PyTorch with CUDA 12.4
+- SPD repo at `/workspace/spd` (installed editable)
+- Key packages: torch, wandb, datasets, transformer-lens, einops, matplotlib
 
 ## GitHub
 
@@ -59,7 +89,6 @@ Config is a dictionary with keys like:
 - Only commit files with relevant changes, don't commit all files
 - Use branch names `refactor/X` or `feature/Y` or `fix/Z`
 - **Always commit after making code edits** - don't let changes accumulate
-- Often after committing you want to push the changes to the remote branch (not main). You can do this with `git push origin <branch_name>`
 
 ## Coding Guidelines
 
@@ -71,31 +100,9 @@ Core principles:
 - **Narrow types** - avoid `| None` unless null is semantically meaningful
 - **No try/except for control flow** - check preconditions explicitly, then trust them
 - **YAGNI** - don't add abstractions, config options, or flexibility for hypothetical futures
-
-```python
-# BAD - defensive, recovers silently, wide types
-def get_config(path: str) -> dict | None:
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except:
-        return None
-
-# GOOD - fail fast, narrow types, trust preconditions
-def get_config(path: Path) -> Config:
-    assert path.exists(), f"config not found: {path}"
-    with open(path) as f:
-        data = json.load(f)
-    return Config(**data)
-```
-
-## Software Engineering Principles
-
 - Assert your invariants. If you're afraid to assert, your program might already be broken
-- Never write: `if everythingIsOk: continueHappyPath()`. Instead do `assert everythingIsOk`
 - Write invariants into types as much as possible
 - Don't use bare dictionaries for structures with heterogeneous values
 - Keep I/O as high up as possible, make functions pure where possible
 - Delete unused code. If an argument is always the same value, inline it
-- Don't write try/catch blocks unless absolutely necessary
 - Comments hide sloppy code - prefer clear naming over comments

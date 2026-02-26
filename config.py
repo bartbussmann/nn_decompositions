@@ -46,6 +46,7 @@ class EncoderConfig:
     bandwidth: float = 0.001
 
     # Logging
+    run_name: str | None = None
     wandb_project: str = "encoders"
     perf_log_freq: int = 1000
     checkpoint_freq: int | Literal["final"] = "final"
@@ -53,6 +54,8 @@ class EncoderConfig:
 
     @property
     def name(self) -> str:
+        if self.run_name is not None:
+            return self.run_name
         base = f"{self.dict_size}_{self.encoder_type}"
         if self.encoder_type in ("topk", "batchtopk"):
             base += f"_k{self.top_k}"
