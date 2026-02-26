@@ -46,6 +46,9 @@ Each experiment lives in `experiments/exp_XXX_<name>/` with outputs in `output/`
 | 009 | diagnose_tail | Diagnose activation tail behavior |
 | 010 | train_transcoder_pile_sweep | Uniform top_k sweep [8,16,32,64] across all layers (mp.Process batches) |
 | 011 | pareto_trained_all_layers | Pareto from naturally-trained checkpoints only (transcoders from wandb, CLTs, SPD thresholds, neuron baseline) |
+| 012 | model_table | Comprehensive comparison table: per-layer dict size, alive features, dead %, L0, mean activation, CE, MSE, params |
+| 013 | steering_eval | Steering evaluation: generate steered text via feature directions, LLM-judge concept/fluency scores |
+| 014 | ablation_eval | Topic ablation: zero top-N AUROC features, measure selectivity (topic CE increase vs general CE increase) |
 
 ## Key Patterns
 

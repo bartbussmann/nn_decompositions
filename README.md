@@ -68,6 +68,9 @@ Each experiment lives in `experiments/exp_XXX_<name>/` with outputs in an `outpu
 | 006 | Single-layer Pareto comparison on Pile |
 | 007 | All-layers Pareto: replace all 4 MLPs simultaneously, L0 sweep, 3 x-axis variants |
 | 011 | Pareto from naturally-trained checkpoints (transcoders, CLTs, SPD thresholds, neuron baseline) |
+| 012 | Comprehensive model comparison table (dict size, alive features, dead %, L0, CE, MSE, params) |
+| 013 | Steering evaluation: LLM-judged concept/fluency scores across steering factors |
+| 014 | Topic ablation: zero AUROC-selected features, measure selectivity of topic suppression |
 
 ### Analysis
 | ID | Description |
@@ -104,7 +107,9 @@ nn_decompositions/
     ├── exp_002_train_transcoder_ss/
     ├── exp_003_train_clt_pile/
     ├── ...
-    └── exp_011_pareto_trained_all_layers/
+    ├── exp_011_pareto_trained_all_layers/
+    ├── exp_013_steering_eval/
+    └── exp_014_ablation_eval/
 ```
 
 ## References
