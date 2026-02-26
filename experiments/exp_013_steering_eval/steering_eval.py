@@ -215,11 +215,11 @@ class SteeringEvalConfig:
     # Experiment scope
     n_concepts: int = 10
     n_prompts: int = 5  # sentence starters per concept
-    steering_factors: list[float] = field(default_factory=lambda: [0.5, 1.0, 2.0, 4.0, 8.0])
+    steering_factors: list[float] = field(default_factory=lambda: [0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0])
     eval_layer: int = 3  # single layer for minimal experiment
 
     # AUROC feature selection
-    n_auroc_examples: int = 72  # per class (positive/negative)
+    n_auroc_examples: int = 1000  # per class (positive/negative)
     auroc_seq_len: int = 128
     auroc_batch_size: int = 32
 
@@ -399,9 +399,10 @@ def roc_auc_score(labels: np.ndarray, scores: np.ndarray) -> float:
 def make_concept_texts(concept: dict, n_per_class: int) -> tuple[list[str], list[str]]:
     """Generate positive and negative text samples for a concept.
 
-    Uses keyword-based sentence templates to create labeled examples.
+    Uses the same templates for both classes — the only difference is the keyword,
+    so AUROC selects features that respond to concept content, not template structure.
     """
-    templates_pos = [
+    templates = [
         "This text is about {kw}. It discusses various aspects of {kw} in detail.",
         "The topic of {kw} is explored here, covering recent developments.",
         "An in-depth look at {kw} and its impact on modern society.",
@@ -411,31 +412,20 @@ def make_concept_texts(concept: dict, n_per_class: int) -> tuple[list[str], list
         "The field of {kw} has evolved significantly over the years.",
         "Experts in {kw} have noted several important trends.",
     ]
-    templates_neg = [
-        "This text is about {kw}. It covers a wide range of details.",
-        "The topic of {kw} is discussed at length here.",
-        "An overview of {kw} and related subjects.",
-        "The area of {kw} encompasses many different aspects.",
-        "Recent developments in {kw} have attracted attention.",
-        "A comprehensive look at {kw} from multiple perspectives.",
-        "The subject of {kw} is both complex and fascinating.",
-        "{kw} remains an important area for further study.",
-    ]
 
     pos_keywords = concept["positive_keywords"]
     neg_keywords = concept["negative_keywords"]
-    rng = random.Random(hash(concept["id"]))
 
     positives = []
     for i in range(n_per_class):
         kw = pos_keywords[i % len(pos_keywords)]
-        template = templates_pos[i % len(templates_pos)]
+        template = templates[i % len(templates)]
         positives.append(template.format(kw=kw))
 
     negatives = []
     for i in range(n_per_class):
         kw = neg_keywords[i % len(neg_keywords)]
-        template = templates_neg[i % len(templates_neg)]
+        template = templates[i % len(templates)]
         negatives.append(template.format(kw=kw))
 
     return positives, negatives
