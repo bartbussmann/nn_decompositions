@@ -15,6 +15,9 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -673,6 +676,125 @@ def save_csv(all_stats: list[ModelStats], path: Path):
 
 
 # =============================================================================
+# Plotting
+# =============================================================================
+
+plt.rcParams.update({
+    "font.family": "serif",
+    "font.serif": ["Times New Roman", "DejaVu Serif"],
+    "mathtext.fontset": "dejavuserif",
+    "font.size": 10,
+    "axes.titlesize": 11,
+    "axes.labelsize": 10,
+    "xtick.labelsize": 9,
+    "ytick.labelsize": 9,
+    "legend.fontsize": 8,
+    "figure.dpi": 150,
+    "savefig.dpi": 300,
+    "savefig.bbox": "tight",
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+})
+
+METHOD_COLORS = {
+    "Transcoder": "#1f77b4",
+    "CLT": "#17becf",
+    "SPD": "#9467bd",
+}
+
+
+def _get_color(stats: ModelStats) -> str:
+    return METHOD_COLORS[stats.method]
+
+
+def _bar_plot(ax, all_stats: list[ModelStats], value_fn, ylabel: str, title: str,
+              log_scale: bool = False):
+    labels = [s.label for s in all_stats]
+    values = [value_fn(s) for s in all_stats]
+    colors = [_get_color(s) for s in all_stats]
+    x = np.arange(len(labels))
+
+    bars = ax.bar(x, values, color=colors, edgecolor="white", linewidth=0.5, width=0.7)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=35, ha="right", fontsize=8)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title, fontweight="bold", fontsize=11)
+    if log_scale:
+        ax.set_yscale("log")
+    ax.grid(axis="y", alpha=0.15, linewidth=0.5)
+
+
+def _grouped_bar_plot(ax, all_stats: list[ModelStats], value_fn, ylabel: str, title: str):
+    n_models = len(all_stats)
+    n_layers = len(LAYERS)
+    bar_width = 0.8 / n_models
+    x = np.arange(n_layers)
+
+    for i, s in enumerate(all_stats):
+        values = [value_fn(s.layer_stats[l]) for l in range(n_layers)]
+        offset = (i - n_models / 2 + 0.5) * bar_width
+        ax.bar(x + offset, values, bar_width, label=s.label,
+               color=_get_color(s), edgecolor="white", linewidth=0.3, alpha=0.85)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"Layer {l}" for l in LAYERS])
+    ax.set_ylabel(ylabel)
+    ax.set_title(title, fontweight="bold", fontsize=11)
+    ax.grid(axis="y", alpha=0.15, linewidth=0.5)
+
+
+def plot_comparison(all_stats: list[ModelStats], baselines: dict[str, float], save_path: Path):
+    fig, axes = plt.subplots(2, 3, figsize=(16, 9))
+
+    # (a) CE degradation
+    _bar_plot(axes[0, 0], all_stats,
+              lambda s: s.ce_degradation,
+              "CE degradation", "(a) Cross-entropy degradation",
+              log_scale=True)
+
+    # (b) MSE
+    _bar_plot(axes[0, 1], all_stats,
+              lambda s: s.mse,
+              "MSE", "(b) MLP reconstruction MSE",
+              log_scale=True)
+
+    # (c) Total parameters
+    _bar_plot(axes[0, 2], all_stats,
+              lambda s: s.total_params,
+              "Parameters", "(c) Total parameters",
+              log_scale=True)
+    axes[0, 2].yaxis.set_major_formatter(ticker.FuncFormatter(
+        lambda x, _: f"{x / 1e6:.0f}M" if x >= 1e6 else f"{x / 1e3:.0f}K"
+    ))
+
+    # (d) Per-layer L0
+    _grouped_bar_plot(axes[1, 0], all_stats,
+                      lambda ls: ls.l0,
+                      "L0", "(d) Per-layer L0")
+
+    # (e) Per-layer alive features
+    _grouped_bar_plot(axes[1, 1], all_stats,
+                      lambda ls: ls.alive,
+                      "Alive features", "(e) Per-layer alive features")
+
+    # (f) Per-layer dead %
+    _grouped_bar_plot(axes[1, 2], all_stats,
+                      lambda ls: ls.dead_pct * 100,
+                      "Dead features (%)", "(f) Per-layer dead features")
+
+    # Shared legend
+    handles, labels = axes[1, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper center", ncol=min(len(labels), 8),
+               frameon=True, fancybox=False, edgecolor="#cccccc", framealpha=0.95,
+               bbox_to_anchor=(0.5, 1.01), fontsize=9)
+
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig(save_path)
+    plt.close(fig)
+    print(f"Plot saved to {save_path}")
+
+
+# =============================================================================
 # Main
 # =============================================================================
 
@@ -770,6 +892,7 @@ def main():
     print_summary_table(all_stats)
     print_per_layer_table(all_stats)
     save_csv(all_stats, OUTPUT_DIR / "model_comparison.csv")
+    plot_comparison(all_stats, baselines, OUTPUT_DIR / "model_comparison.png")
 
 
 if __name__ == "__main__":
