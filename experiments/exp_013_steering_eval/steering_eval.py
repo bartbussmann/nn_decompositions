@@ -1,10 +1,15 @@
 """AxBench-style steering evaluation: Transcoders vs CLTs vs SPD.
 
 Compares three decomposition methods on steering performance:
-1. Feature selection via AUROC on AxBench concept examples
+1. Feature selection via AUROC on concept-labeled examples
 2. Steering via decoder-direction addition at multiple strengths
 3. LLM-judge scoring of concept presence and fluency
-4. Pareto frontier analysis (concept score vs instruct score)
+4. Pareto frontier analysis (concept score vs fluency score)
+
+The target model (LlamaSimpleMLP) is a small base LM, not instruction-tuned.
+Instead of instruction-following prompts, we use generic sentence starters and
+measure whether steering pushes the continuation toward the target concept.
+The fluency score judges coherence of the continuation, not instruction-following.
 
 Usage:
     python experiments/exp_013_steering_eval/steering_eval.py \
@@ -14,7 +19,7 @@ Usage:
 
     # Quick test with 2 concepts:
     python experiments/exp_013_steering_eval/steering_eval.py \
-        --api_key sk-... --n_concepts 2 --n_instructions 2
+        --api_key sk-... --n_concepts 2 --n_prompts 2
 """
 
 import argparse
@@ -172,23 +177,26 @@ CONCEPTS = [
     },
 ]
 
-# Generic instruction-following prompts (AlpacaEval-style).
-INSTRUCTIONS = [
-    "Write a short paragraph about something interesting.",
-    "Tell me something I might not know.",
-    "Explain a concept in simple terms.",
-    "Write a brief creative passage.",
-    "Describe something in detail.",
-    "Share an interesting fact and elaborate on it.",
-    "Write a few sentences about a topic of your choice.",
-    "Provide a thoughtful response to a general question.",
-    "Give me a short informative summary on any subject.",
-    "Write something that would be engaging to read.",
-    "Compose a brief essay on a topic you find interesting.",
-    "Tell me about something that happened recently.",
-    "Describe a process or system in a few sentences.",
-    "Write a short creative piece.",
-    "Explain why something works the way it does.",
+# Generic sentence starters for a base LM (concept-neutral).
+# These are partial sentences the model will continue. Steering should push
+# the continuation toward the target concept without the prompt itself being
+# concept-specific.
+PROMPTS = [
+    "The most interesting thing about this is that",
+    "In recent years, there has been a growing",
+    "It is widely known that the",
+    "One of the key factors in understanding",
+    "According to experts, the main",
+    "There are several important reasons why",
+    "The latest developments suggest that",
+    "Many people have started to notice that",
+    "A comprehensive review of the evidence shows",
+    "Perhaps the most significant aspect of",
+    "When we consider the broader implications,",
+    "The relationship between these factors is",
+    "New research has revealed that the",
+    "Throughout history, the role of",
+    "What makes this particularly notable is",
 ]
 
 
@@ -206,7 +214,7 @@ class SteeringEvalConfig:
 
     # Experiment scope
     n_concepts: int = 10
-    n_instructions: int = 5
+    n_prompts: int = 5  # sentence starters per concept
     steering_factors: list[float] = field(default_factory=lambda: [0.5, 1.0, 2.0, 4.0, 8.0])
     eval_layer: int = 3  # single layer for minimal experiment
 
@@ -672,7 +680,7 @@ def compute_avg_activation_norm(
 
 
 def generate_steered_text_transcoder(
-    base_model, transcoder, tokenizer, instruction: str,
+    base_model, transcoder, tokenizer, prompt_text: str,
     latent_idx: int, steering_factor: float, avg_act_norm: float,
     layer: int, max_new_tokens: int, temperature: float,
 ) -> str:
@@ -686,7 +694,7 @@ def generate_steered_text_transcoder(
         out = mlp.down_proj(h)
         return out + steering_vector.unsqueeze(0).unsqueeze(0).expand_as(out)
 
-    input_ids = tokenizer(instruction, return_tensors="pt")["input_ids"].to(DEVICE)
+    input_ids = tokenizer(prompt_text, return_tensors="pt")["input_ids"].to(DEVICE)
     generated = input_ids.clone()
 
     for _ in range(max_new_tokens):
@@ -706,7 +714,7 @@ def generate_steered_text_transcoder(
 
 
 def generate_steered_text_clt(
-    base_model, clt: CrossLayerTranscoder, tokenizer, instruction: str,
+    base_model, clt: CrossLayerTranscoder, tokenizer, prompt_text: str,
     source_layer_idx: int, latent_idx: int, steering_factor: float,
     avg_act_norm: float, max_new_tokens: int, temperature: float,
 ) -> str:
@@ -724,7 +732,7 @@ def generate_steered_text_clt(
         d_j = clt.W_dec[source_layer_idx][offset, latent_idx]  # (output_size,)
         steering_vectors[actual_target_layer] = steering_factor * avg_act_norm * d_j
 
-    input_ids = tokenizer(instruction, return_tensors="pt")["input_ids"].to(DEVICE)
+    input_ids = tokenizer(prompt_text, return_tensors="pt")["input_ids"].to(DEVICE)
     generated = input_ids.clone()
 
     for _ in range(max_new_tokens):
@@ -828,14 +836,14 @@ def compute_spd_effective_direction(
 
 
 def generate_steered_text_spd(
-    base_model, steering_direction: torch.Tensor, tokenizer, instruction: str,
+    base_model, steering_direction: torch.Tensor, tokenizer, prompt_text: str,
     steering_factor: float, direction_norm: float,
     layer: int, max_new_tokens: int, temperature: float,
 ) -> str:
     """Generate text with SPD steering using the effective direction (Option 2)."""
     steering_vector = steering_factor * direction_norm * steering_direction
 
-    input_ids = tokenizer(instruction, return_tensors="pt")["input_ids"].to(DEVICE)
+    input_ids = tokenizer(prompt_text, return_tensors="pt")["input_ids"].to(DEVICE)
     generated = input_ids.clone()
 
     for _ in range(max_new_tokens):
@@ -903,18 +911,23 @@ def judge_concept_score(
     return 0.0
 
 
-def judge_instruct_score(
-    client: OpenAI, model: str, instruction: str, text: str,
+def judge_fluency_score(
+    client: OpenAI, model: str, prompt_text: str, continuation: str,
 ) -> float:
-    """Score how well the text follows the instruction and maintains fluency (0-2 scale)."""
+    """Score how fluent and coherent the continuation is (0-2 scale).
+
+    This evaluates the quality of the generated text as a continuation of the
+    prompt, not instruction-following (the base model is not instruction-tuned).
+    """
     prompt = (
-        f"Given the instruction: '{instruction}'\n\n"
-        f"Rate how well this text follows the instruction and maintains coherent, "
-        f"fluent language on a 0-2 scale:\n"
-        f"0 = incoherent, nonsensical, or completely off-topic\n"
-        f"1 = somewhat coherent but has issues (repetition, poor grammar, partially follows instruction)\n"
-        f"2 = well-written, coherent, and follows the instruction\n\n"
-        f"Text: \"{text}\"\n\n"
+        f"The following text was generated by continuing the sentence starter "
+        f"'{prompt_text}'.\n\n"
+        f"Rate the fluency and coherence of this continuation on a 0-2 scale:\n"
+        f"0 = incoherent, nonsensical, repetitive, or degenerate text\n"
+        f"1 = somewhat coherent but has noticeable issues (repetition, grammar problems, "
+        f"topic drift, or awkward phrasing)\n"
+        f"2 = well-written, coherent, and reads as natural English prose\n\n"
+        f"Continuation: \"{continuation}\"\n\n"
         f"Respond with ONLY a single number (0, 1, or 2)."
     )
     for attempt in range(5):
@@ -944,9 +957,9 @@ def judge_instruct_score(
 
 
 def compute_pareto_frontier(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
-    """Compute the Pareto frontier (maximize both x=concept and y=instruct).
+    """Compute the Pareto frontier (maximize both x=concept and y=fluency).
 
-    Returns list of non-dominated (concept_score, instruct_score) points.
+    Returns list of non-dominated (concept_score, fluency_score) points.
     """
     if not points:
         return []
@@ -954,12 +967,12 @@ def compute_pareto_frontier(points: list[tuple[float, float]]) -> list[tuple[flo
     # Sort by concept score descending
     sorted_pts = sorted(points, key=lambda p: -p[0])
     frontier = []
-    max_instruct = -float("inf")
+    max_fluency = -float("inf")
 
-    for concept, instruct in sorted_pts:
-        if instruct >= max_instruct:
-            frontier.append((concept, instruct))
-            max_instruct = instruct
+    for concept, fluency in sorted_pts:
+        if fluency >= max_fluency:
+            frontier.append((concept, fluency))
+            max_fluency = fluency
 
     return sorted(frontier, key=lambda p: p[0])
 
@@ -976,11 +989,11 @@ def compute_auc_pareto(frontier: list[tuple[float, float]]) -> float:
     return auc
 
 
-def concept_score_at_instruct_threshold(
+def concept_score_at_fluency_threshold(
     points: list[tuple[float, float]], threshold: float = 1.5,
 ) -> float:
-    """Find the maximum concept score among points with instruct score >= threshold."""
-    eligible = [c for c, i in points if i >= threshold]
+    """Find the maximum concept score among points with fluency score >= threshold."""
+    eligible = [c for c, f in points if f >= threshold]
     return max(eligible) if eligible else 0.0
 
 
@@ -1019,7 +1032,7 @@ def plot_pareto_frontier(
     save_path: str,
     title: str = "Steering Pareto Frontier: Concept vs Fluency",
 ):
-    """Plot concept score vs instruct score with Pareto frontiers for each method."""
+    """Plot concept score vs fluency score with Pareto frontiers for each method."""
     fig, ax = plt.subplots(figsize=(7, 5))
 
     for method in ["Transcoder", "CLT", "SPD"]:
@@ -1038,7 +1051,7 @@ def plot_pareto_frontier(
             ax.plot(fx, fy, label=method, markeredgecolor="white", markeredgewidth=0.8, **style)
 
     ax.set_xlabel("Concept Score (normalized)")
-    ax.set_ylabel("Instruct Score")
+    ax.set_ylabel("Fluency Score")
     ax.set_title(title, fontsize=12, pad=10)
     ax.set_xlim(-0.05, 1.05)
     ax.set_ylim(-0.05, 2.05)
@@ -1120,7 +1133,7 @@ def main():
     parser.add_argument("--clt_project", type=str, default="mats-sprint/pile_clt")
     parser.add_argument("--spd_run", type=str, default="goodfire/spd/s-275c8f21")
     parser.add_argument("--n_concepts", type=int, default=10)
-    parser.add_argument("--n_instructions", type=int, default=5)
+    parser.add_argument("--n_prompts", type=int, default=5)
     parser.add_argument("--steering_factors", type=float, nargs="+", default=[0.5, 1.0, 2.0, 4.0, 8.0])
     parser.add_argument("--eval_layer", type=int, default=3)
     parser.add_argument("--max_new_tokens", type=int, default=128)
@@ -1139,7 +1152,7 @@ def main():
         clt_project=args.clt_project,
         spd_run=args.spd_run,
         n_concepts=args.n_concepts,
-        n_instructions=args.n_instructions,
+        n_prompts=args.n_prompts,
         steering_factors=args.steering_factors,
         eval_layer=args.eval_layer,
         max_new_tokens=args.max_new_tokens,
@@ -1156,7 +1169,7 @@ def main():
     torch.set_grad_enabled(False)
 
     concepts = CONCEPTS[:cfg.n_concepts]
-    instructions = INSTRUCTIONS[:cfg.n_instructions]
+    prompts = PROMPTS[:cfg.n_prompts]
 
     start_time = time.time()
 
@@ -1311,27 +1324,27 @@ def main():
     print("Step 2: Generating Steered Text")
     print("=" * 70)
 
-    # all_generations[concept_id][method] = list of {instruction, factor, text}
+    # all_generations[concept_id][method] = list of {prompt, factor, text}
     all_generations = {c["id"]: {"Transcoder": [], "CLT": [], "SPD": []} for c in concepts}
 
-    total_gens = cfg.n_concepts * 3 * len(cfg.steering_factors) * cfg.n_instructions
+    total_gens = cfg.n_concepts * 3 * len(cfg.steering_factors) * cfg.n_prompts
     pbar = tqdm(total=total_gens, desc="Generating steered text")
 
     for concept in concepts:
         concept_id = concept["id"]
 
         for factor in cfg.steering_factors:
-            for instruction in instructions:
+            for prompt_text in prompts:
                 # --- Transcoder ---
                 tc_sel = feature_selections[concept_id]["Transcoder"]
                 tc_info = steering_info[concept_id]["Transcoder"]
                 tc_text = generate_steered_text_transcoder(
-                    base_model, transcoder, tokenizer, instruction,
+                    base_model, transcoder, tokenizer, prompt_text,
                     tc_sel["latent_idx"], factor, tc_info["avg_act_norm"],
                     cfg.eval_layer, cfg.max_new_tokens, cfg.temperature,
                 )
                 all_generations[concept_id]["Transcoder"].append({
-                    "instruction": instruction,
+                    "prompt": prompt_text,
                     "factor": factor,
                     "text": tc_text,
                 })
@@ -1341,13 +1354,13 @@ def main():
                 clt_sel = feature_selections[concept_id]["CLT"]
                 clt_info = steering_info[concept_id]["CLT"]
                 clt_text = generate_steered_text_clt(
-                    base_model, clt, tokenizer, instruction,
+                    base_model, clt, tokenizer, prompt_text,
                     clt_sel["source_layer_idx"], clt_sel["latent_idx"],
                     factor, clt_info["avg_act_norm"],
                     cfg.max_new_tokens, cfg.temperature,
                 )
                 all_generations[concept_id]["CLT"].append({
-                    "instruction": instruction,
+                    "prompt": prompt_text,
                     "factor": factor,
                     "text": clt_text,
                 })
@@ -1356,12 +1369,12 @@ def main():
                 # --- SPD ---
                 spd_info = steering_info[concept_id]["SPD"]
                 spd_text = generate_steered_text_spd(
-                    base_model, spd_info["direction"], tokenizer, instruction,
+                    base_model, spd_info["direction"], tokenizer, prompt_text,
                     factor, spd_info["direction_norm"],
                     cfg.eval_layer, cfg.max_new_tokens, cfg.temperature,
                 )
                 all_generations[concept_id]["SPD"].append({
-                    "instruction": instruction,
+                    "prompt": prompt_text,
                     "factor": factor,
                     "text": spd_text,
                 })
@@ -1394,15 +1407,15 @@ def main():
                 concept_score = judge_concept_score(
                     client, cfg.openai_model, description, gen["text"],
                 )
-                instruct_score = judge_instruct_score(
-                    client, cfg.openai_model, gen["instruction"], gen["text"],
+                fluency_score = judge_fluency_score(
+                    client, cfg.openai_model, gen["prompt"], gen["text"],
                 )
                 all_scored[concept_id][method].append({
-                    "instruction": gen["instruction"],
+                    "prompt": gen["prompt"],
                     "factor": gen["factor"],
                     "text": gen["text"],
                     "concept_score": concept_score,
-                    "instruct_score": instruct_score,
+                    "fluency_score": fluency_score,
                 })
                 pbar.update(1)
 
@@ -1439,12 +1452,12 @@ def main():
     print("=" * 70)
 
     # Aggregate points per method (across all concepts and factors)
-    # Points: (concept_score_normalized, instruct_score)
+    # Points: (concept_score_normalized, fluency_score)
     method_points = {"Transcoder": [], "CLT": [], "SPD": []}
 
     # Also aggregate per (method, factor) for mean scores
     factor_scores = {
-        method: {f: {"concept": [], "instruct": []} for f in cfg.steering_factors}
+        method: {f: {"concept": [], "fluency": []} for f in cfg.steering_factors}
         for method in ["Transcoder", "CLT", "SPD"]
     }
 
@@ -1453,10 +1466,10 @@ def main():
         for method in ["Transcoder", "CLT", "SPD"]:
             for entry in all_scored[concept_id][method]:
                 cs_norm = entry["concept_score_normalized"]
-                is_score = entry["instruct_score"]
-                method_points[method].append((cs_norm, is_score))
+                fl_score = entry["fluency_score"]
+                method_points[method].append((cs_norm, fl_score))
                 factor_scores[method][entry["factor"]]["concept"].append(cs_norm)
-                factor_scores[method][entry["factor"]]["instruct"].append(is_score)
+                factor_scores[method][entry["factor"]]["fluency"].append(fl_score)
 
     # Compute mean per (method, factor) for Pareto frontier
     method_mean_points = {}
@@ -1464,9 +1477,9 @@ def main():
         pts = []
         for factor in cfg.steering_factors:
             cs_vals = factor_scores[method][factor]["concept"]
-            is_vals = factor_scores[method][factor]["instruct"]
-            if cs_vals and is_vals:
-                pts.append((np.mean(cs_vals), np.mean(is_vals)))
+            fl_vals = factor_scores[method][factor]["fluency"]
+            if cs_vals and fl_vals:
+                pts.append((np.mean(cs_vals), np.mean(fl_vals)))
         method_mean_points[method] = pts
 
     # Compute Pareto frontiers
@@ -1476,13 +1489,13 @@ def main():
 
     # Compute summary metrics
     print("\nSummary Metrics:")
-    print(f"{'Method':<15} {'AUC':>8} {'CS@IS>=1.5':>12} {'Avg AUROC':>10}")
+    print(f"{'Method':<15} {'AUC':>8} {'CS@FL>=1.5':>12} {'Avg AUROC':>10}")
     print("-" * 50)
 
     for method in ["Transcoder", "CLT", "SPD"]:
         frontier = method_frontiers[method]
         auc = compute_auc_pareto(frontier)
-        cs_at_thresh = concept_score_at_instruct_threshold(method_mean_points[method], 1.5)
+        cs_at_thresh = concept_score_at_fluency_threshold(method_mean_points[method], 1.5)
 
         # Average AUROC across concepts
         aurocs = [feature_selections[c["id"]][method]["auroc"] for c in concepts]
@@ -1525,10 +1538,10 @@ def main():
         style = METHOD_STYLES[method]
         factors = sorted(cfg.steering_factors)
         cs_means = [np.mean(factor_scores[method][f]["concept"]) for f in factors]
-        is_means = [np.mean(factor_scores[method][f]["instruct"]) for f in factors]
+        fl_means = [np.mean(factor_scores[method][f]["fluency"]) for f in factors]
 
         axes[0].plot(factors, cs_means, label=method, **style)
-        axes[1].plot(factors, is_means, label=method, **style)
+        axes[1].plot(factors, fl_means, label=method, **style)
 
     axes[0].set_xlabel("Steering Factor")
     axes[0].set_ylabel("Concept Score (normalized)")
@@ -1537,8 +1550,8 @@ def main():
     axes[0].grid(True, alpha=0.15)
 
     axes[1].set_xlabel("Steering Factor")
-    axes[1].set_ylabel("Instruct Score")
-    axes[1].set_title("Instruct Score vs Steering Factor")
+    axes[1].set_ylabel("Fluency Score")
+    axes[1].set_title("Fluency Score vs Steering Factor")
     axes[1].legend()
     axes[1].grid(True, alpha=0.15)
 
@@ -1556,7 +1569,7 @@ def main():
     results_data = {
         "config": {
             "n_concepts": cfg.n_concepts,
-            "n_instructions": cfg.n_instructions,
+            "n_prompts": cfg.n_prompts,
             "steering_factors": cfg.steering_factors,
             "eval_layer": cfg.eval_layer,
             "max_new_tokens": cfg.max_new_tokens,
@@ -1586,7 +1599,7 @@ def main():
             method: {
                 "frontier": method_frontiers[method],
                 "auc": compute_auc_pareto(method_frontiers[method]),
-                "concept_at_instruct_1.5": concept_score_at_instruct_threshold(
+                "concept_at_fluency_1.5": concept_score_at_fluency_threshold(
                     method_mean_points[method], 1.5
                 ),
                 "mean_points": method_mean_points[method],
@@ -1607,7 +1620,7 @@ def main():
     print("FINAL SUMMARY")
     print("=" * 70)
     print(f"Concepts evaluated: {cfg.n_concepts}")
-    print(f"Instructions per concept: {cfg.n_instructions}")
+    print(f"Prompts per concept: {cfg.n_prompts}")
     print(f"Steering factors: {cfg.steering_factors}")
     print(f"SPD steering method: {cfg.spd_steering_method}")
     print(f"Total time: {elapsed:.1f}s")
@@ -1627,15 +1640,15 @@ def main():
     print()
     print(f"{'Factor':<8}", end="")
     for method in ["Transcoder", "CLT", "SPD"]:
-        print(f" {method+' CS':>12} {method+' IS':>12}", end="")
+        print(f" {method+' CS':>12} {method+' FL':>12}", end="")
     print()
     print("-" * 80)
     for factor in cfg.steering_factors:
         print(f"{factor:<8.1f}", end="")
         for method in ["Transcoder", "CLT", "SPD"]:
             cs = np.mean(factor_scores[method][factor]["concept"]) if factor_scores[method][factor]["concept"] else 0
-            iss = np.mean(factor_scores[method][factor]["instruct"]) if factor_scores[method][factor]["instruct"] else 0
-            print(f" {cs:>12.3f} {iss:>12.3f}", end="")
+            fl = np.mean(factor_scores[method][factor]["fluency"]) if factor_scores[method][factor]["fluency"] else 0
+            print(f" {cs:>12.3f} {fl:>12.3f}", end="")
         print()
 
 
