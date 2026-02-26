@@ -68,6 +68,7 @@ Each experiment lives in `experiments/exp_XXX_<name>/` with outputs in an `outpu
 | 006 | Single-layer Pareto comparison on Pile |
 | 007 | All-layers Pareto: replace all 4 MLPs simultaneously, L0 sweep, 3 x-axis variants |
 | 011 | Pareto from naturally-trained checkpoints (transcoders, CLTs, SPD thresholds, neuron baseline) |
+| 012 | Comprehensive model comparison table (dict size, alive features, dead %, L0, CE, MSE, params) |
 
 ### Analysis
 | ID | Description |
