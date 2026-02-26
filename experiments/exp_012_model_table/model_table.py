@@ -544,26 +544,29 @@ def compute_spd_stats(
     threshold_label = f"CI>{threshold}" if threshold > 0 else "CI>0"
 
     # Build per-layer stats for each view: c_fc, down_proj, total
-    def _make_layer_stats(get_names_fn) -> list[LayerStats]:
+    def _make_layer_stats(get_names_fn, sum_l0: bool = False) -> list[LayerStats]:
         stats = []
         for l in LAYERS:
             names = get_names_fn(l)
             dict_size = sum(components_per_module[nm] for nm in names)
             alive = sum(int(ever_active[nm].sum().item()) for nm in names)
-            l0 = sum(l0_totals[nm] / n for nm in names) / len(names)
+            l0_raw = sum(l0_totals[nm] / n for nm in names)
+            l0 = l0_raw if sum_l0 else l0_raw / len(names)
             stats.append(LayerStats(
                 layer=l, dict_size=dict_size, alive=alive,
                 dead_pct=1.0 - alive / dict_size, l0=l0, mean_act=0.0,
             ))
         return stats
 
-    def _make_model_stats(suffix: str, names_for_layer, all_names: list[str]) -> ModelStats:
-        layer_stats = _make_layer_stats(names_for_layer)
+    def _make_model_stats(suffix: str, names_for_layer, all_names: list[str],
+                          sum_l0: bool = False) -> ModelStats:
+        layer_stats = _make_layer_stats(names_for_layer, sum_l0=sum_l0)
         params = sum(
             spd_model.components[nm].V.numel() + spd_model.components[nm].U.numel()
             for nm in all_names
         )
-        mean_l0 = sum(l0_totals[nm] / n for nm in all_names) / len(all_names)
+        l0_raw = sum(l0_totals[nm] / n for nm in all_names)
+        mean_l0 = l0_raw if sum_l0 else l0_raw / len(all_names)
         return ModelStats(
             method="SPD", label=f"SPD {suffix} ({threshold_label})",
             ce=ce, ce_degradation=ce - baseline_ce, mse=mse,
@@ -577,7 +580,7 @@ def compute_spd_stats(
     return [
         _make_model_stats("c_fc", lambda l: [f"h.{l}.mlp.c_fc"], cfc_names),
         _make_model_stats("down_proj", lambda l: [f"h.{l}.mlp.down_proj"], dp_names),
-        _make_model_stats("total", lambda l: [f"h.{l}.mlp.c_fc", f"h.{l}.mlp.down_proj"], module_names),
+        _make_model_stats("total", lambda l: [f"h.{l}.mlp.c_fc", f"h.{l}.mlp.down_proj"], module_names, sum_l0=True),
     ]
 
 
