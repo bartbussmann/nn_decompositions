@@ -698,15 +698,20 @@ plt.rcParams.update({
     "axes.spines.right": False,
 })
 
-METHOD_COLORS = {
+LABEL_COLORS = {
     "Transcoder": "#1f77b4",
     "CLT": "#17becf",
-    "SPD": "#9467bd",
+    "SPD c_fc": "#7b4ea3",
+    "SPD down_proj": "#b07cd8",
+    "SPD total": "#9467bd",
 }
 
 
 def _get_color(stats: ModelStats) -> str:
-    return METHOD_COLORS[stats.method]
+    for prefix, color in LABEL_COLORS.items():
+        if stats.label.startswith(prefix):
+            return color
+    return "#888888"
 
 
 def _bar_plot(ax, all_stats: list[ModelStats], value_fn, ylabel: str, title: str,
