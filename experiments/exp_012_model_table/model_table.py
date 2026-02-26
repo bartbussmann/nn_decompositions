@@ -505,8 +505,8 @@ def compute_spd_stats(
     module_names: list[str],
     baseline_ce: float,
     threshold: float,
-) -> ModelStats:
-    n_modules = len(module_names)
+) -> list[ModelStats]:
+    """Returns 3 ModelStats: c_fc only, down_proj only, and combined total."""
     components_per_module = {name: spd_model.module_to_c[name] for name in module_names}
 
     ever_active = {
@@ -525,14 +525,12 @@ def compute_spd_stats(
             mask = (ci_post > threshold).float()
             masks[mod_name] = mask
             l0_totals[mod_name] += mask.sum(-1).mean().item()
-            # A component is "ever active" if CI > threshold on any token
             ever_active[mod_name] |= (ci_post > threshold).any(dim=0).any(dim=0)
 
         mask_infos = make_mask_infos(masks)
         logits = spd_model(input_ids, mask_infos=mask_infos)
         total_ce += compute_ce_from_logits(logits, input_ids)
 
-        # MSE
         captured_orig = _capture_all_layer_mlp_outputs(spd_model, input_ids)
         captured_masked = _capture_all_layer_mlp_outputs(spd_model, input_ids, mask_infos=mask_infos)
         batch_mse = 0.0
@@ -543,40 +541,44 @@ def compute_spd_stats(
     n = len(batches)
     ce = total_ce / n
     mse = total_mse / n
-
-    # Total SPD component parameters
-    total_params = 0
-    for name in module_names:
-        comp = spd_model.components[name]
-        total_params += comp.V.numel() + comp.U.numel()
-
-    # Build per-layer stats (group c_fc and down_proj per layer)
-    layer_stats_list = []
-    for l in LAYERS:
-        cfc_name = f"h.{l}.mlp.c_fc"
-        dp_name = f"h.{l}.mlp.down_proj"
-        c_cfc = components_per_module[cfc_name]
-        c_dp = components_per_module[dp_name]
-        total_components = c_cfc + c_dp
-        alive_cfc = ever_active[cfc_name].sum().item()
-        alive_dp = ever_active[dp_name].sum().item()
-        alive = int(alive_cfc + alive_dp)
-        l0_cfc = l0_totals[cfc_name] / n
-        l0_dp = l0_totals[dp_name] / n
-        l0 = (l0_cfc + l0_dp) / 2
-        layer_stats_list.append(LayerStats(
-            layer=l, dict_size=total_components, alive=alive,
-            dead_pct=1.0 - alive / total_components, l0=l0, mean_act=0.0,
-        ))
-
     threshold_label = f"CI>{threshold}" if threshold > 0 else "CI>0"
-    mean_l0 = sum(l0_totals.values()) / n_modules
-    return ModelStats(
-        method="SPD", label=f"SPD ({threshold_label})",
-        ce=ce, ce_degradation=ce - baseline_ce, mse=mse,
-        mean_l0=mean_l0, total_params=total_params,
-        training_tokens=None, layer_stats=layer_stats_list,
-    )
+
+    # Build per-layer stats for each view: c_fc, down_proj, total
+    def _make_layer_stats(get_names_fn) -> list[LayerStats]:
+        stats = []
+        for l in LAYERS:
+            names = get_names_fn(l)
+            dict_size = sum(components_per_module[nm] for nm in names)
+            alive = sum(int(ever_active[nm].sum().item()) for nm in names)
+            l0 = sum(l0_totals[nm] / n for nm in names) / len(names)
+            stats.append(LayerStats(
+                layer=l, dict_size=dict_size, alive=alive,
+                dead_pct=1.0 - alive / dict_size, l0=l0, mean_act=0.0,
+            ))
+        return stats
+
+    def _make_model_stats(suffix: str, names_for_layer, all_names: list[str]) -> ModelStats:
+        layer_stats = _make_layer_stats(names_for_layer)
+        params = sum(
+            spd_model.components[nm].V.numel() + spd_model.components[nm].U.numel()
+            for nm in all_names
+        )
+        mean_l0 = sum(l0_totals[nm] / n for nm in all_names) / len(all_names)
+        return ModelStats(
+            method="SPD", label=f"SPD {suffix} ({threshold_label})",
+            ce=ce, ce_degradation=ce - baseline_ce, mse=mse,
+            mean_l0=mean_l0, total_params=params,
+            training_tokens=None, layer_stats=layer_stats,
+        )
+
+    cfc_names = [f"h.{l}.mlp.c_fc" for l in LAYERS]
+    dp_names = [f"h.{l}.mlp.down_proj" for l in LAYERS]
+
+    return [
+        _make_model_stats("c_fc", lambda l: [f"h.{l}.mlp.c_fc"], cfc_names),
+        _make_model_stats("down_proj", lambda l: [f"h.{l}.mlp.down_proj"], dp_names),
+        _make_model_stats("total", lambda l: [f"h.{l}.mlp.c_fc", f"h.{l}.mlp.down_proj"], module_names),
+    ]
 
 
 # =============================================================================
@@ -881,12 +883,13 @@ def main():
     for threshold in [0.5, 0.0]:
         label = f"CI>{threshold}" if threshold > 0 else "CI>0"
         print(f"\nComputing stats for SPD ({label})...")
-        stats = compute_spd_stats(
+        spd_stats_list = compute_spd_stats(
             spd_model, base_model, batches, mlp_activations,
             all_module_names, baseline_ce, threshold,
         )
-        all_stats.append(stats)
-        print(f"  CE={stats.ce:.4f}, MSE={stats.mse:.6f}, Mean L0={stats.mean_l0:.1f}")
+        for stats in spd_stats_list:
+            all_stats.append(stats)
+            print(f"  {stats.label}: CE={stats.ce:.4f}, MSE={stats.mse:.6f}, Mean L0={stats.mean_l0:.1f}")
 
     # Output
     print_summary_table(all_stats)
