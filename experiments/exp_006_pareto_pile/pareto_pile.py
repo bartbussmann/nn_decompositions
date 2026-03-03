@@ -29,8 +29,8 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 sys.path.insert(0, str(Path("/workspace/spd")))
 
-from transcoder import BatchTopKTranscoder, JumpReLUTranscoder, TopKTranscoder, VanillaTranscoder
-from config import EncoderConfig
+from nn_decompositions.transcoder import BatchTopKTranscoder, JumpReLUTranscoder, TopKTranscoder, VanillaTranscoder
+from nn_decompositions.config import EncoderConfig
 from spd.models.components import make_mask_infos
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"

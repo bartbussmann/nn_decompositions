@@ -28,8 +28,8 @@ from transformers import AutoTokenizer, GPT2LMHeadModel
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from transcoder import BatchTopKTranscoder, JumpReLUTranscoder, TopKTranscoder, VanillaTranscoder
-from config import EncoderConfig
+from nn_decompositions.transcoder import BatchTopKTranscoder, JumpReLUTranscoder, TopKTranscoder, VanillaTranscoder
+from nn_decompositions.config import EncoderConfig
 
 from spd.models.component_model import ComponentModel
 from spd.models.components import make_mask_infos

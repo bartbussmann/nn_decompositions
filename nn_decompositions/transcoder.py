@@ -3,7 +3,7 @@ import torch.autograd as autograd
 import torch.nn as nn
 import torch.nn.functional as F
 
-from config import EncoderConfig
+from nn_decompositions.config import EncoderConfig
 
 
 class SharedTranscoder(nn.Module):

@@ -20,14 +20,16 @@ The primary target model is **LlamaSimpleMLP** (4-layer transformer, `n_embd=768
 
 ## Core Files
 
-- `sae.py` — SAE implementations (BaseAutoencoder + 4 variants)
-- `transcoder.py` — Transcoder implementations (BaseTranscoder + 4 variants)
-- `clt.py` — CrossLayerTranscoder with per-layer encoders and triangular decoders
-- `config.py` — EncoderConfig, SAEConfig, CLTConfig dataclasses
-- `activation_store.py` — ActivationsStore + DataConfig for streaming activations
-- `training.py` — Training loop (`train_encoder`)
-- `logs.py` — WandB logging and checkpoint saving
-- `main.py` — Example training scripts
+All core source files live in the `nn_decompositions/` package directory:
+
+- `nn_decompositions/sae.py` — SAE implementations (BaseAutoencoder + 4 variants)
+- `nn_decompositions/transcoder.py` — Transcoder implementations (BaseTranscoder + 4 variants)
+- `nn_decompositions/clt.py` — CrossLayerTranscoder with per-layer encoders and triangular decoders
+- `nn_decompositions/config.py` — EncoderConfig, SAEConfig, CLTConfig dataclasses
+- `nn_decompositions/activation_store.py` — ActivationsStore + DataConfig for streaming activations
+- `nn_decompositions/training.py` — Training loop (`train_encoder`)
+- `nn_decompositions/logs.py` — WandB logging and checkpoint saving
+- `main.py` — Example training scripts (at repo root)
 
 ## Experiments
 

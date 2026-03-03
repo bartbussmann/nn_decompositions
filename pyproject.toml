@@ -36,14 +36,7 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-include = [
-    "base.py",
-    "sae.py",
-    "config.py",
-    "training.py",
-    "logs.py",
-    "activation_store.py",
-]
+packages = ["nn_decompositions"]
 
 [tool.ruff]
 line-length = 100

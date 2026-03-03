@@ -1,8 +1,8 @@
 import torch
 import tqdm
 
-from config import CLTConfig, EncoderConfig
-from logs import (
+from nn_decompositions.config import CLTConfig, EncoderConfig
+from nn_decompositions.logs import (
     ComputeLossFn,
     init_wandb,
     log_clt_performance,

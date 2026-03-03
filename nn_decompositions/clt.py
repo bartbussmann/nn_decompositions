@@ -17,8 +17,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from config import CLTConfig
-from transcoder import JumpReLUFunction, StepFunction
+from nn_decompositions.config import CLTConfig
+from nn_decompositions.transcoder import JumpReLUFunction, StepFunction
 
 class CrossLayerTranscoder(nn.Module):
     """Cross-layer transcoder with per-layer encoders and triangular decoders.

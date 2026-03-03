@@ -34,9 +34,9 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 sys.path.insert(0, str(Path("/workspace/spd")))
 
-from clt import CrossLayerTranscoder
-from config import CLTConfig, EncoderConfig
-from transcoder import BatchTopKTranscoder
+from nn_decompositions.clt import CrossLayerTranscoder
+from nn_decompositions.config import CLTConfig, EncoderConfig
+from nn_decompositions.transcoder import BatchTopKTranscoder
 from spd.models.components import make_mask_infos
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -538,7 +538,7 @@ def compute_all_spd_aurocs(
     concept: dict,
     cfg: AblationEvalConfig,
 ) -> list[tuple[str, int, float]]:
-    """Compute AUROC for every SPD component (c_fc and down_proj) across all layers.
+    """Compute AUROC for every SPD component using mean-pooled CI scores.
 
     Returns list of (module_name, component_idx, auroc) sorted descending.
     """
@@ -565,8 +565,8 @@ def compute_all_spd_aurocs(
 
         for mod_name in module_names:
             ci_scores = ci.lower_leaky[mod_name].clamp(0, 1)  # (B, S, C)
-            max_scores = ci_scores.max(dim=1).values  # (B, C)
-            scores_per_module[mod_name][i : i + len(batch_texts)] = max_scores.cpu().numpy()
+            mean_scores = ci_scores.mean(dim=1).cpu().numpy()  # (B, C)
+            scores_per_module[mod_name][i : i + len(batch_texts)] = mean_scores
 
     results = []
     for mod_name in module_names:
