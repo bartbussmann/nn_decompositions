@@ -45,6 +45,9 @@ class EncoderConfig:
     # JumpReLU specific
     bandwidth: float = 0.001
 
+    # End-to-end training (KL divergence on logits instead of local MSE)
+    e2e: bool = False
+
     # Logging
     run_name: str | None = None
     wandb_project: str = "encoders"
@@ -99,6 +102,9 @@ class CLTConfig:
 
     # JumpReLU specific
     bandwidth: float = 0.001
+
+    # End-to-end training (KL divergence on logits instead of local MSE)
+    e2e: bool = False
 
     # Logging
     wandb_project: str = "cross_layer_transcoders"

@@ -30,7 +30,8 @@ def init_wandb(cfg: EncoderConfig | CLTConfig):
 def get_encoder_metrics(output: dict) -> dict:
     """Extract metrics from encoder output as a dict."""
     metrics_to_log = [
-        "loss", "l2_loss", "l1_loss", "l0_norm", "l1_norm", "aux_loss", "num_dead_features"
+        "loss", "l2_loss", "kl_loss", "l1_loss", "l0_norm", "l1_norm", "aux_loss",
+        "num_dead_features",
     ]
     log_dict = {k: output[k].item() for k in metrics_to_log if k in output}
     log_dict["n_dead_in_batch"] = (output["feature_acts"].sum(0) == 0).sum().item()
@@ -57,7 +58,7 @@ def _compute_loss_hf(model, tokenizer, input_ids, attention_mask):
 
 
 @contextmanager
-def _patched_forward(module: nn.Module, patched_fn):
+def patched_forward(module: nn.Module, patched_fn):
     """Temporarily replace a module's forward method.
 
     This monkey-patches module.forward rather than adding a hook, avoiding
@@ -106,20 +107,20 @@ def get_performance_metrics(
 
     original_loss = loss(input_ids, attention_mask)
 
-    with _patched_forward(output_module, lambda *a, **kw: encoder_out):
+    with patched_forward(output_module, lambda *a, **kw: encoder_out):
         reconstr_loss = loss(input_ids, attention_mask)
 
     def zero_forward(*args, **kwargs):
         return torch.zeros_like(original_forward(*args, **kwargs))
 
-    with _patched_forward(output_module, zero_forward):
+    with patched_forward(output_module, zero_forward):
         zero_loss = loss(input_ids, attention_mask)
 
     def mean_forward(*args, **kwargs):
         out = original_forward(*args, **kwargs)
         return out.mean([0, 1]).expand_as(out)
 
-    with _patched_forward(output_module, mean_forward):
+    with patched_forward(output_module, mean_forward):
         mean_loss = loss(input_ids, attention_mask)
 
     return {
@@ -203,7 +204,7 @@ def get_clt_performance_metrics(
 
     with ExitStack() as stack:
         for mod, recon in zip(output_modules, reconstructions):
-            stack.enter_context(_patched_forward(mod, _make_const_fn(recon)))
+            stack.enter_context(patched_forward(mod, _make_const_fn(recon)))
         reconstr_loss = loss(input_ids, attention_mask)
 
     # Zero ablation: patch all MLPs with zeros
@@ -212,7 +213,7 @@ def get_clt_performance_metrics(
 
     with ExitStack() as stack:
         for mod, orig_fwd in zip(output_modules, original_forwards):
-            stack.enter_context(_patched_forward(mod, _make_zero_fn(orig_fwd)))
+            stack.enter_context(patched_forward(mod, _make_zero_fn(orig_fwd)))
         zero_loss = loss(input_ids, attention_mask)
 
     # Mean ablation: patch all MLPs with mean activation
@@ -224,7 +225,7 @@ def get_clt_performance_metrics(
 
     with ExitStack() as stack:
         for mod, orig_fwd in zip(output_modules, original_forwards):
-            stack.enter_context(_patched_forward(mod, _make_mean_fn(orig_fwd)))
+            stack.enter_context(patched_forward(mod, _make_mean_fn(orig_fwd)))
         mean_loss = loss(input_ids, attention_mask)
 
     return {
