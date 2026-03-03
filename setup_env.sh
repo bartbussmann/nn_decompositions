@@ -13,7 +13,7 @@ set -euo pipefail
 LOCAL_VENV="/root/nn_decompositions_venv"
 SYMLINK="/workspace/nn_decompositions/.venv"
 NN_DIR="/workspace/nn_decompositions"
-SPD_DIR="/workspace/spd"
+SPD_DIR="/workspace/bartbussmann_spd"
 
 # --------------------------------------------------------------------------
 # 1. Ensure Python 3.13 is available
@@ -25,7 +25,27 @@ else
     echo "Python 3.13 not found — installing via deadsnakes PPA..."
     apt-get update -qq
     apt-get install -y -qq software-properties-common
-    add-apt-repository -y ppa:deadsnakes/ppa
+
+    if ! add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null; then
+        echo "add-apt-repository failed (likely broken apt_pkg) — trying to fix..."
+        # Reinstall python3-apt and symlink the .so for the current python3
+        apt-get install -y -qq --reinstall python3-apt 2>/dev/null || true
+        SO_FILE=$(find /usr/lib/python3/dist-packages -name 'apt_pkg.cpython-*.so' 2>/dev/null | head -1)
+        if [ -n "$SO_FILE" ]; then
+            ln -sf "$SO_FILE" /usr/lib/python3/dist-packages/apt_pkg.so
+        fi
+
+        if ! add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null; then
+            echo "Still failing — adding deadsnakes PPA manually..."
+            CODENAME=$(. /etc/os-release && echo "${VERSION_CODENAME:-jammy}")
+            echo "deb http://ppa.launchpad.net/deadsnakes/ppa/ubuntu ${CODENAME} main" \
+                > /etc/apt/sources.list.d/deadsnakes-ppa.list
+            apt-get install -y -qq gpg
+            apt-key adv --keyserver keyserver.ubuntu.com \
+                --recv-keys F23C5A6CF475977595C89F51BA6932366A755776
+        fi
+    fi
+
     apt-get update -qq
     apt-get install -y -qq python3.13 python3.13-venv python3.13-dev
     PY=python3.13
@@ -92,13 +112,12 @@ import wandb, datasets, tqdm, matplotlib, einops, jaxtyping
 print('Core packages OK')
 import spd
 print('SPD OK')
-from transcoder import BatchTopKTranscoder
-from config import EncoderConfig, CLTConfig
-from clt import CrossLayerTranscoder
+from nn_decompositions.transcoder import BatchTopKTranscoder
+from nn_decompositions.config import EncoderConfig, CLTConfig
+from nn_decompositions.clt import CrossLayerTranscoder
 print('nn_decompositions core imports OK')
 from spd.models.components import make_mask_infos
-from analysis.collect_spd_activations import load_spd_model
-print('SPD + analysis imports OK')
+print('SPD imports OK')
 "
 
 echo ""

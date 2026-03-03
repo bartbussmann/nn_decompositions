@@ -26,10 +26,10 @@ sys.path.insert(0, str(Path("/workspace/spd")))
 
 from transformers import AutoTokenizer
 
-from activation_store import MultiLayerActivationsStore, DataConfig
-from clt import CrossLayerTranscoder
-from config import CLTConfig
-from training import train_encoder
+from nn_decompositions.activation_store import MultiLayerActivationsStore, DataConfig
+from nn_decompositions.clt import CrossLayerTranscoder
+from nn_decompositions.config import CLTConfig
+from nn_decompositions.training import train_encoder
 
 WANDB_MODEL_PATH = "wandb:goodfire/spd/t-32d1bb3b"
 LAYERS = [0, 1, 2, 3]

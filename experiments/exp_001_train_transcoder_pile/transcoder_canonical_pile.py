@@ -33,10 +33,10 @@ sys.path.insert(0, str(Path("/workspace/spd")))
 
 from transformers import AutoTokenizer
 
-from activation_store import ActivationsStore, DataConfig
-from transcoder import BatchTopKTranscoder
-from config import EncoderConfig
-from training import train_encoder
+from nn_decompositions.activation_store import ActivationsStore, DataConfig
+from nn_decompositions.transcoder import BatchTopKTranscoder
+from nn_decompositions.config import EncoderConfig
+from nn_decompositions.training import train_encoder
 
 # (layer_index, batchtopk / top_k) for each MLP
 LAYER_CONFIGS = [(0, 21), (1, 8), (2, 13), (3, 27)]

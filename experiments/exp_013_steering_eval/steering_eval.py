@@ -45,9 +45,9 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 sys.path.insert(0, str(Path("/workspace/spd")))
 
-from clt import CrossLayerTranscoder
-from config import CLTConfig, EncoderConfig
-from transcoder import BatchTopKTranscoder
+from nn_decompositions.clt import CrossLayerTranscoder
+from nn_decompositions.config import CLTConfig, EncoderConfig
+from nn_decompositions.transcoder import BatchTopKTranscoder
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 LAYERS = [0, 1, 2, 3]

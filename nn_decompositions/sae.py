@@ -4,8 +4,8 @@ SAE is a special case of transcoder where input = target.
 These thin wrappers call forward(x, x).
 """
 
-from transcoder import BatchTopKTranscoder, JumpReLUTranscoder, TopKTranscoder, VanillaTranscoder
-from config import SAEConfig
+from nn_decompositions.transcoder import BatchTopKTranscoder, JumpReLUTranscoder, TopKTranscoder, VanillaTranscoder
+from nn_decompositions.config import SAEConfig
 
 
 def _make_sae_class(base_class):

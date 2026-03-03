@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 sys.path.insert(0, str(Path("/workspace/spd")))
 sys.path.insert(0, str(Path("/workspace/SAEBench")))
 
-from transcoder import BatchTopKTranscoder, TopKTranscoder
+from nn_decompositions.transcoder import BatchTopKTranscoder, TopKTranscoder
 from sae_bench.sae_bench_utils.indexing_utils import (
     get_iw_sample_indices,
     get_k_largest_indices,

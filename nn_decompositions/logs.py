@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import wandb
 
-from config import CLTConfig, EncoderConfig
+from nn_decompositions.config import CLTConfig, EncoderConfig
 
 # (model, tokenizer, input_ids, attention_mask | None) -> float
 ComputeLossFn = Callable[[nn.Module, object, torch.Tensor, torch.Tensor | None], float]

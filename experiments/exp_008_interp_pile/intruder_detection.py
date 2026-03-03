@@ -47,7 +47,7 @@ from autointerp_pile import (
     load_transcoder,
     select_alive_latents,
 )
-from transcoder import BatchTopKTranscoder, TopKTranscoder
+from nn_decompositions.transcoder import BatchTopKTranscoder, TopKTranscoder
 
 
 # =============================================================================

@@ -4,10 +4,10 @@
 import torch
 from transformers import GPT2LMHeadModel, AutoTokenizer
 
-from activation_store import ActivationsStore, DataConfig
-from transcoder import BatchTopKTranscoder, TopKTranscoder
-from config import EncoderConfig
-from training import train_encoder_group, train_encoder
+from nn_decompositions.activation_store import ActivationsStore, DataConfig
+from nn_decompositions.transcoder import BatchTopKTranscoder, TopKTranscoder
+from nn_decompositions.config import EncoderConfig
+from nn_decompositions.training import train_encoder_group, train_encoder
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 

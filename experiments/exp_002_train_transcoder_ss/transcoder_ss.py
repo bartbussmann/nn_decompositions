@@ -18,10 +18,10 @@ from transformers import AutoTokenizer
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from activation_store import ActivationsStore, DataConfig
-from transcoder import BatchTopKTranscoder, TopKTranscoder
-from config import EncoderConfig
-from training import train_encoder
+from nn_decompositions.activation_store import ActivationsStore, DataConfig
+from nn_decompositions.transcoder import BatchTopKTranscoder, TopKTranscoder
+from nn_decompositions.config import EncoderConfig
+from nn_decompositions.training import train_encoder
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
