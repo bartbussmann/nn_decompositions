@@ -61,7 +61,7 @@ def main():
 
     from spd.pretrain.models.llama_simple_mlp import LlamaSimpleMLP
 
-    device = f"cuda:{torch.cuda.device_count() - 1}" if torch.cuda.is_available() else "cpu"
+    device = f"cuda:{torch.cuda.device_count() - 2}" if torch.cuda.is_available() else "cpu"
 
     print(f"Loading LlamaSimpleMLP from {WANDB_MODEL_PATH}...")
     model = LlamaSimpleMLP.from_pretrained(WANDB_MODEL_PATH)
@@ -89,11 +89,11 @@ def main():
         wandb_project="pile_clt_e2e_cascading",
         device=device,
         e2e=True,
-        e2e_cascading=True,
+        e2e_cascading=False,
     )
 
     data_config = DataConfig(
-        dataset_name="danbraunai/pile-uncopyrighted-tok",
+        dataset_name="danbraunai/pile-uncopyrighted-tok-shuffled",
         tokenizer=tokenizer,
         is_tokenized=True,
         token_column="input_ids",
@@ -123,7 +123,7 @@ def main():
     print(f"  Dict size: {args.dict_size}, Top-k: {args.top_k}")
     print(f"  Steps: {num_steps:,}")
     print(f"  model_batch_size: {args.model_batch_size}")
-    print(f"  Dataset: danbraunai/pile-uncopyrighted-tok")
+    print(f"  Dataset: danbraunai/pile-uncopyrighted-tok-shuffled")
 
     train_encoder(
         clt, activation_store, cfg,
