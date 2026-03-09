@@ -1,15 +1,14 @@
-"""Train a Cross-Layer Transcoder (CLT) end-to-end with cascading on LlamaSimpleMLP layers 0–3.
+"""Train independent per-layer transcoders with cascading e2e on LlamaSimpleMLP layers 0–3.
 
-Same setup as exp_003 but trained with e2e KL divergence on logits, with cascading
-enabled: each layer's reconstruction affects the residual stream before the next
-layer's encoder runs.
+Each layer's reconstruction modifies the residual stream before the next layer's
+encoder runs. All 4 transcoders are trained jointly via a single KL loss.
 
-Default model_batch_size is 16 (down from 64 in exp_003) to fit in ~8 GB GPU memory.
+Default model_batch_size is 16 (down from 64) to fit in ~8 GB GPU memory.
 Use --model_batch_size to adjust for your GPU.
 
 Usage:
-    python experiments/exp_016_train_clt_pile_e2e_cascading/clt_e2e_cascading_pile.py
-    python experiments/exp_016_train_clt_pile_e2e_cascading/clt_e2e_cascading_pile.py --model_batch_size 32
+    python experiments/exp_017_train_transcoder_cascading_e2e/transcoder_cascading_e2e_pile.py
+    python experiments/exp_017_train_transcoder_cascading_e2e/transcoder_cascading_e2e_pile.py --model_batch_size 32
 """
 
 import sys
@@ -27,10 +26,10 @@ sys.path.insert(0, str(Path("/workspace/spd")))
 from transformers import AutoTokenizer
 
 from nn_decompositions.activation_store import MultiLayerActivationsStore, DataConfig
-from nn_decompositions.clt import CrossLayerTranscoder
+from nn_decompositions.transcoder import BatchTopKTranscoder
 from nn_decompositions.utils import get_free_gpu
-from nn_decompositions.config import CLTConfig
-from nn_decompositions.training import train_encoder
+from nn_decompositions.config import EncoderConfig
+from nn_decompositions.training import train_encoder_cascading
 
 WANDB_MODEL_PATH = "wandb:goodfire/spd/t-32d1bb3b"
 LAYERS = [0, 1, 2, 3]
@@ -54,7 +53,7 @@ def get_logits_llama(model, input_ids, attention_mask):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Train CLT e2e cascading")
+    parser = argparse.ArgumentParser(description="Train transcoders cascading e2e")
     parser.add_argument("--model_batch_size", type=int, default=16)
     parser.add_argument("--top_k", type=int, default=TOP_K)
     parser.add_argument("--dict_size", type=int, default=DICT_SIZE)
@@ -76,22 +75,26 @@ def main():
     input_modules = [model.h[layer].rms_2 for layer in LAYERS]
     output_modules = [model.h[layer].mlp for layer in LAYERS]
 
-    cfg = CLTConfig(
-        layers=LAYERS,
-        input_size=d_model,
-        output_size=d_model,
-        dict_size=args.dict_size,
-        encoder_type="batchtopk",
-        top_k=args.top_k,
-        l1_coeff=0.0,
-        batch_size=4096,
-        num_tokens=int(5e8),
-        lr=3e-4,
-        wandb_project="pile_clt_e2e_cascading",
-        device=device,
-        e2e=True,
-        e2e_cascading=False,
-    )
+    cfgs = []
+    encoders = []
+    for layer in LAYERS:
+        cfg = EncoderConfig(
+            input_size=d_model,
+            output_size=d_model,
+            dict_size=args.dict_size,
+            encoder_type="batchtopk",
+            top_k=args.top_k,
+            l1_coeff=0.0,
+            batch_size=4096,
+            num_tokens=int(5e8),
+            lr=3e-4,
+            wandb_project="pile_transcoder_cascading_e2e",
+            device=device,
+            e2e=True,
+            run_name=f"cascading_L{LAYERS[0]}-{LAYERS[-1]}_k{args.top_k}_{args.dict_size}",
+        )
+        cfgs.append(cfg)
+        encoders.append(BatchTopKTranscoder(cfg))
 
     data_config = DataConfig(
         dataset_name="danbraunai/pile-uncopyrighted-tok-shuffled",
@@ -100,7 +103,7 @@ def main():
         token_column="input_ids",
         seq_len=seq_len,
         model_batch_size=args.model_batch_size,
-        train_batch_size=cfg.batch_size,
+        train_batch_size=cfgs[0].batch_size,
         num_batches_in_buffer=10,
         buffer_on_cpu=False,
         device=device,
@@ -115,10 +118,8 @@ def main():
         output_size=d_model,
     )
 
-    clt = CrossLayerTranscoder(cfg)
-
-    num_steps = cfg.num_tokens // (args.model_batch_size * seq_len)
-    print(f"Training CLT (e2e cascading): {cfg.name}")
+    num_steps = cfgs[0].num_tokens // (args.model_batch_size * seq_len)
+    print(f"Training transcoders (cascading e2e): {cfgs[0].name}")
     print(f"  Model: LlamaSimpleMLP (t-32d1bb3b)")
     print(f"  Layers: {LAYERS}")
     print(f"  Dict size: {args.dict_size}, Top-k: {args.top_k}")
@@ -126,8 +127,8 @@ def main():
     print(f"  model_batch_size: {args.model_batch_size}")
     print(f"  Dataset: danbraunai/pile-uncopyrighted-tok-shuffled")
 
-    train_encoder(
-        clt, activation_store, cfg,
+    train_encoder_cascading(
+        encoders, activation_store, cfgs,
         compute_loss_fn=compute_loss_llama,
         get_logits_fn=get_logits_llama,
     )

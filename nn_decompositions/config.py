@@ -111,6 +111,7 @@ class CLTConfig:
 
     # Logging
     wandb_project: str = "cross_layer_transcoders"
+    run_name: str | None = None
     perf_log_freq: int = 1000
     checkpoint_freq: int | Literal["final"] = "final"
     n_eval_seqs: int = 8
@@ -121,6 +122,8 @@ class CLTConfig:
 
     @property
     def name(self) -> str:
+        if self.run_name is not None:
+            return self.run_name
         layer_str = f"L{self.layers[0]}-{self.layers[-1]}"
         base = f"clt_{layer_str}_{self.dict_size}_{self.encoder_type}"
         if self.encoder_type in ("topk", "batchtopk"):

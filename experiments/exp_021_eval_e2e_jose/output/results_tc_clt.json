@@ -1,0 +1,168 @@
+{
+  "baseline_ce": 2.9075079679489138,
+  "results": [
+    {
+      "type": "tc",
+      "mode": "cascading",
+      "top_k": 8,
+      "l0": 8.0,
+      "ce_cascading": 3.4349204778671263,
+      "ce_parallel": 4.573751020431518,
+      "ce_single": 4.477188163995743
+    },
+    {
+      "type": "tc",
+      "mode": "cascading",
+      "top_k": 16,
+      "l0": 16.0,
+      "ce_cascading": 3.345253109931946,
+      "ce_parallel": 4.773235273361206,
+      "ce_single": 4.796459889411926
+    },
+    {
+      "type": "tc",
+      "mode": "cascading",
+      "top_k": 32,
+      "l0": 32.0,
+      "ce_cascading": 3.276322770118713,
+      "ce_parallel": 4.968127346038818,
+      "ce_single": 5.021457654237747
+    },
+    {
+      "type": "tc",
+      "mode": "cascading",
+      "top_k": 64,
+      "l0": 64.0,
+      "ce_cascading": 3.2308607578277586,
+      "ce_parallel": 5.234495735168457,
+      "ce_single": 5.36198365688324
+    },
+    {
+      "type": "tc",
+      "mode": "parallel",
+      "top_k": 8,
+      "l0": 8.0,
+      "ce_cascading": 5.781652307510376,
+      "ce_parallel": 3.2229999780654905,
+      "ce_single": 4.18878191113472
+    },
+    {
+      "type": "tc",
+      "mode": "parallel",
+      "top_k": 16,
+      "l0": 16.0,
+      "ce_cascading": 5.820025110244751,
+      "ce_parallel": 3.1488995790481566,
+      "ce_single": 4.186194127798081
+    },
+    {
+      "type": "tc",
+      "mode": "parallel",
+      "top_k": 32,
+      "l0": 32.0,
+      "ce_cascading": 6.0184650897979735,
+      "ce_parallel": 3.0984586238861085,
+      "ce_single": 4.2249185860157015
+    },
+    {
+      "type": "tc",
+      "mode": "parallel",
+      "top_k": 64,
+      "l0": 63.87215576171875,
+      "ce_cascading": 6.41098985671997,
+      "ce_parallel": 3.0468611240386965,
+      "ce_single": 4.35446200966835
+    },
+    {
+      "type": "tc",
+      "mode": "independent",
+      "top_k": 8,
+      "l0": 8.0,
+      "ce_cascading": 3.892124366760254,
+      "ce_parallel": 3.6542552709579468,
+      "ce_single": 3.1045275270938872
+    },
+    {
+      "type": "tc",
+      "mode": "independent",
+      "top_k": 16,
+      "l0": 16.0,
+      "ce_cascading": 3.6746880292892454,
+      "ce_parallel": 3.501611089706421,
+      "ce_single": 3.0671286940574647
+    },
+    {
+      "type": "tc",
+      "mode": "independent",
+      "top_k": 32,
+      "l0": 32.0,
+      "ce_cascading": 3.5104625463485717,
+      "ce_parallel": 3.3817887544631957,
+      "ce_single": 3.0397854149341583
+    },
+    {
+      "type": "clt",
+      "mode": "cascading",
+      "top_k": 8,
+      "l0": 8.0,
+      "ce_cascading": 3.361316180229187,
+      "ce_parallel": 4.473251295089722,
+      "ce_single": 4.560115623474121
+    },
+    {
+      "type": "clt",
+      "mode": "cascading",
+      "top_k": 16,
+      "l0": 16.0,
+      "ce_cascading": 3.2792682886123656,
+      "ce_parallel": 4.572833681106568,
+      "ce_single": 4.742343026399612
+    },
+    {
+      "type": "clt",
+      "mode": "cascading",
+      "top_k": 32,
+      "l0": 32.0,
+      "ce_cascading": 3.232355523109436,
+      "ce_parallel": 4.511887693405152,
+      "ce_single": 4.984939730167389
+    },
+    {
+      "type": "clt",
+      "mode": "parallel",
+      "top_k": 8,
+      "l0": 8.0,
+      "ce_cascading": 5.602067184448242,
+      "ce_parallel": 3.205121660232544,
+      "ce_single": 4.357782232761383
+    },
+    {
+      "type": "clt",
+      "mode": "parallel",
+      "top_k": 16,
+      "l0": 16.0,
+      "ce_cascading": 5.707666730880737,
+      "ce_parallel": 3.1367596864700316,
+      "ce_single": 4.349272286891937
+    },
+    {
+      "type": "clt",
+      "mode": "parallel",
+      "top_k": 32,
+      "l0": 32.0,
+      "ce_cascading": 5.789373683929443,
+      "ce_parallel": 3.0867509603500367,
+      "ce_single": 4.323645722866058
+    },
+    {
+      "type": "clt",
+      "mode": "parallel",
+      "top_k": 64,
+      "l0": 56.152880859375,
+      "ce_cascading": 6.337862539291382,
+      "ce_parallel": 3.048793649673462,
+      "ce_single": 4.478616696596146
+    }
+  ],
+  "spd_results": []
+}

@@ -53,6 +53,8 @@ Each experiment lives in `experiments/exp_XXX_<name>/` with outputs in `output/`
 | 014 | ablation_eval | Topic ablation: zero top-N AUROC features, measure selectivity (topic CE increase vs general CE increase) |
 | 015 | train_transcoder_pile_sweep_e2e | Same as exp_010 but trained end-to-end with KL divergence on logits |
 | 016 | train_clt_pile_e2e_cascading | Train CLT e2e with cascading (each layer's reconstruction feeds into the next) |
+| 017 | train_transcoder_cascading_e2e | Train independent per-layer transcoders with cascading e2e (joint KL loss) |
+| 018 | e2e_sweep | GPU-queued sweep: transcoders + CLTs × cascading/parallel × k=16/32/64 (12 jobs) |
 
 ## Key Patterns
 

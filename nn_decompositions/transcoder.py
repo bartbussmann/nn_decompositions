@@ -90,6 +90,8 @@ class SharedTranscoder(nn.Module):
         self, y_target: torch.Tensor, y_pred: torch.Tensor, acts: torch.Tensor
     ) -> torch.Tensor:
         """Auxiliary loss to revive dead features (used by TopKTranscoder variants)."""
+        if self.cfg.e2e:
+            return torch.tensor(0, dtype=y_target.dtype, device=y_target.device)
         dead_features = self.num_batches_not_active >= self.cfg.n_batches_to_dead
         if dead_features.sum() > 0:
             residual = y_target.float() - y_pred.float()
