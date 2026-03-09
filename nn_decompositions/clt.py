@@ -222,6 +222,8 @@ class CrossLayerTranscoder(nn.Module):
 
         if self.cfg.encoder_type in ("topk", "batchtopk"):
             l1_loss = self.cfg.l1_coeff * acts_cat.float().abs().sum(-1).mean()
+            if self.cfg.e2e:
+                return {"l1_loss": l1_loss}
             aux_loss = self._get_auxiliary_loss(all_dense, targets, reconstructions)
             return {"l1_loss": l1_loss, "aux_loss": aux_loss}
 

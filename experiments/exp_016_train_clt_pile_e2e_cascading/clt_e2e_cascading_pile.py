@@ -1,15 +1,15 @@
-"""Train a Cross-Layer Transcoder (CLT) on LlamaSimpleMLP layers 0–3.
+"""Train a Cross-Layer Transcoder (CLT) end-to-end with cascading on LlamaSimpleMLP layers 0–3.
 
-Each layer's encoder reads from its own pre-MLP residual stream, and each
-feature writes to MLP outputs at its own layer and all subsequent layers.
+Same setup as exp_003 but trained with e2e KL divergence on logits, with cascading
+enabled: each layer's reconstruction affects the residual stream before the next
+layer's encoder runs.
 
-Matches transcoder_canonical_pile.py setup:
-- Same base model (wandb:goodfire/spd/t-32d1bb3b)
-- Same dataset (danbraunai/pile-uncopyrighted-tok, pre-tokenized, streaming)
-- Same sequence length (512) and model batch size (64 sequences)
+Default model_batch_size is 16 (down from 64 in exp_003) to fit in ~8 GB GPU memory.
+Use --model_batch_size to adjust for your GPU.
 
 Usage:
-    python experiments/clt_canonical_pile.py
+    python experiments/exp_016_train_clt_pile_e2e_cascading/clt_e2e_cascading_pile.py
+    python experiments/exp_016_train_clt_pile_e2e_cascading/clt_e2e_cascading_pile.py --model_batch_size 32
 """
 
 import sys
@@ -46,7 +46,20 @@ def compute_loss_llama(model, tokenizer, input_ids, attention_mask):
     return F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1)).item()
 
 
+def get_logits_llama(model, input_ids, attention_mask):
+    """Extract logits from LlamaSimpleMLP forward pass."""
+    logits, _ = model(input_ids)
+    return logits
+
+
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Train CLT e2e cascading")
+    parser.add_argument("--model_batch_size", type=int, default=16)
+    parser.add_argument("--top_k", type=int, default=TOP_K)
+    parser.add_argument("--dict_size", type=int, default=DICT_SIZE)
+    args = parser.parse_args()
+
     from spd.pretrain.models.llama_simple_mlp import LlamaSimpleMLP
 
     device = get_free_gpu()
@@ -58,6 +71,7 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
     d_model = model.config.n_embd
+    seq_len = 512
 
     input_modules = [model.h[layer].rms_2 for layer in LAYERS]
     output_modules = [model.h[layer].mlp for layer in LAYERS]
@@ -66,24 +80,26 @@ def main():
         layers=LAYERS,
         input_size=d_model,
         output_size=d_model,
-        dict_size=DICT_SIZE,
+        dict_size=args.dict_size,
         encoder_type="batchtopk",
-        top_k=TOP_K,
+        top_k=args.top_k,
         l1_coeff=0.0,
         batch_size=4096,
         num_tokens=int(5e8),
         lr=3e-4,
-        wandb_project="pile_clt",
+        wandb_project="pile_clt_e2e_cascading",
         device=device,
+        e2e=True,
+        e2e_cascading=False,
     )
 
     data_config = DataConfig(
-        dataset_name="danbraunai/pile-uncopyrighted-tok",
+        dataset_name="danbraunai/pile-uncopyrighted-tok-shuffled",
         tokenizer=tokenizer,
         is_tokenized=True,
         token_column="input_ids",
-        seq_len=512,
-        model_batch_size=64,
+        seq_len=seq_len,
+        model_batch_size=args.model_batch_size,
         train_batch_size=cfg.batch_size,
         num_batches_in_buffer=10,
         buffer_on_cpu=False,
@@ -101,14 +117,20 @@ def main():
 
     clt = CrossLayerTranscoder(cfg)
 
-    print(f"Training CLT: {cfg.name}")
+    num_steps = cfg.num_tokens // (args.model_batch_size * seq_len)
+    print(f"Training CLT (e2e cascading): {cfg.name}")
     print(f"  Model: LlamaSimpleMLP (t-32d1bb3b)")
     print(f"  Layers: {LAYERS}")
-    print(f"  Dict size: {DICT_SIZE}, Top-k: {TOP_K}")
-    print(f"  Steps: {cfg.num_tokens // cfg.batch_size:,}")
-    print(f"  Dataset: danbraunai/pile-uncopyrighted-tok")
+    print(f"  Dict size: {args.dict_size}, Top-k: {args.top_k}")
+    print(f"  Steps: {num_steps:,}")
+    print(f"  model_batch_size: {args.model_batch_size}")
+    print(f"  Dataset: danbraunai/pile-uncopyrighted-tok-shuffled")
 
-    train_encoder(clt, activation_store, cfg, compute_loss_fn=compute_loss_llama)
+    train_encoder(
+        clt, activation_store, cfg,
+        compute_loss_fn=compute_loss_llama,
+        get_logits_fn=get_logits_llama,
+    )
     print("Training complete.")
 
 
