@@ -10,6 +10,7 @@ from nn_decompositions.config import CLTConfig, EncoderConfig
 from nn_decompositions.logs import (
     ComputeLossFn,
     init_wandb,
+    log_cascading_performance,
     log_clt_performance,
     log_encoder_performance,
     log_wandb,
@@ -160,6 +161,167 @@ def _e2e_step_clt_cascading(clt, activation_store, get_logits_fn: GetLogitsFn) -
     return output
 
 
+def _e2e_step_cascading_independent(
+    encoders: list,
+    activation_store,
+    get_logits_fn: GetLogitsFn,
+    encode_output: bool = False,
+) -> dict:
+    """Single end-to-end cascading step for independent per-layer encoders.
+
+    Like _e2e_step_clt_cascading but with independent encoders instead of a CLT.
+    Sparsity losses come from clean activations (separate encoder.forward calls).
+
+    Args:
+        encode_output: If True (for SAEs), the hook encodes the module output
+            instead of the input. Transcoders encode inp[0] (MLP input -> output),
+            SAEs encode _output (reconstruct the module's own output).
+    """
+    cfg = encoders[0].cfg
+    model = activation_store.model
+    input_ids, attention_mask = activation_store.get_batch_tokens()
+
+    # Clean forward: get target logits + capture clean activations
+    with torch.no_grad():
+        clean_logits = get_logits_fn(model, input_ids, attention_mask)
+    input_acts_list = list(activation_store._input_acts)
+    output_acts_list = list(activation_store._output_acts)
+
+    # Sparsity losses from clean activations (each encoder independently)
+    sparsity_loss = torch.tensor(0.0, device=cfg.device)
+    last_enc_out = None
+    for enc, inp, out in zip(encoders, input_acts_list, output_acts_list):
+        last_enc_out = enc(inp.reshape(-1, cfg.input_size), out.reshape(-1, cfg.output_size))
+        sparsity_loss = sparsity_loss + (last_enc_out["loss"] - last_enc_out["l2_loss"])
+
+    # Cascading patched forward: each hook encodes + decodes on the fly
+    def _make_cascading_hook(layer_idx: int):
+        def _hook(_module: nn.Module, inp: tuple, _output: torch.Tensor):
+            encoder_input = _output if encode_output else inp[0]
+            flat = encoder_input.reshape(-1, cfg.input_size)
+            acts = encoders[layer_idx].encode(flat)
+            recon = encoders[layer_idx].decode(acts)
+            return recon.reshape(encoder_input.shape)
+        return _hook
+
+    hooks = []
+    for layer_idx in range(len(encoders)):
+        h = activation_store.output_modules[layer_idx].register_forward_hook(
+            _make_cascading_hook(layer_idx)
+        )
+        hooks.append(h)
+
+    reconstr_logits = get_logits_fn(model, input_ids, attention_mask)
+
+    for h in hooks:
+        h.remove()
+
+    kl_loss = _masked_kl(clean_logits, reconstr_logits, attention_mask)
+
+    return {**last_enc_out, "loss": kl_loss + sparsity_loss, "kl_loss": kl_loss}
+
+
+def _e2e_step_parallel_independent(
+    encoders: list,
+    activation_store,
+    get_logits_fn: GetLogitsFn,
+) -> dict:
+    """Single end-to-end parallel step for independent per-layer transcoders.
+
+    Like _e2e_step_cascading_independent but non-cascading: all layers encode
+    from clean activations and all MLPs are patched simultaneously.
+    """
+    cfg = encoders[0].cfg
+    model = activation_store.model
+    input_ids, attention_mask = activation_store.get_batch_tokens()
+
+    with torch.no_grad():
+        clean_logits = get_logits_fn(model, input_ids, attention_mask)
+    input_acts_list = list(activation_store._input_acts)
+    output_acts_list = list(activation_store._output_acts)
+
+    # Sparsity losses + reconstructions from clean activations
+    sparsity_loss = torch.tensor(0.0, device=cfg.device)
+    reconstructions = []
+    last_enc_out = None
+    for enc, inp, out in zip(encoders, input_acts_list, output_acts_list):
+        last_enc_out = enc(inp.reshape(-1, cfg.input_size), out.reshape(-1, cfg.output_size))
+        sparsity_loss = sparsity_loss + (last_enc_out["loss"] - last_enc_out["l2_loss"])
+        reconstructions.append(last_enc_out["output"].reshape(out.shape))
+
+    # Patch all MLPs simultaneously
+    def _make_const_fn(tensor):
+        return lambda *a, **kw: tensor
+
+    with ExitStack() as stack:
+        for mod, recon in zip(activation_store.output_modules, reconstructions):
+            stack.enter_context(patched_forward(mod, _make_const_fn(recon)))
+        reconstr_logits = get_logits_fn(model, input_ids, attention_mask)
+
+    kl_loss = _masked_kl(clean_logits, reconstr_logits, attention_mask)
+
+    return {**last_enc_out, "loss": kl_loss + sparsity_loss, "kl_loss": kl_loss}
+
+
+def _e2e_step_independent(
+    encoders: list,
+    activation_store,
+    get_logits_fn: GetLogitsFn,
+    optimizers: list[torch.optim.Optimizer],
+    cfgs: list[EncoderConfig],
+) -> dict:
+    """Per-layer independent e2e steps with sequential backward to save memory.
+
+    Each layer gets its own KL loss (only its MLP replaced). Backward and
+    optimizer step happen per-layer so only one computation graph is alive
+    at a time.
+
+    Returns aggregated metrics (no loss tensor — backward already done).
+    """
+    cfg = encoders[0].cfg
+    model = activation_store.model
+    input_ids, attention_mask = activation_store.get_batch_tokens()
+
+    with torch.no_grad():
+        clean_logits = get_logits_fn(model, input_ids, attention_mask)
+    input_acts_list = list(activation_store._input_acts)
+    output_acts_list = list(activation_store._output_acts)
+
+    total_kl = 0.0
+    total_loss = 0.0
+    for layer_idx, (enc, inp, out, opt, layer_cfg) in enumerate(
+        zip(encoders, input_acts_list, output_acts_list, optimizers, cfgs)
+    ):
+        enc_out = enc(inp.reshape(-1, cfg.input_size), out.reshape(-1, cfg.output_size))
+        reconstruction = enc_out["output"].reshape(out.shape)
+
+        def _patched_fn(*a, _r=reconstruction, **kw):
+            return _r
+
+        with patched_forward(activation_store.output_modules[layer_idx], _patched_fn):
+            reconstr_logits = get_logits_fn(model, input_ids, attention_mask)
+
+        kl_loss = _masked_kl(clean_logits, reconstr_logits, attention_mask)
+        sparsity_loss = enc_out["loss"] - enc_out["l2_loss"]
+        loss = kl_loss + sparsity_loss
+
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(enc.parameters(), layer_cfg.max_grad_norm)
+        enc.make_decoder_weights_and_grad_unit_norm()
+        opt.step()
+        opt.zero_grad()
+
+        total_kl += kl_loss.item()
+        total_loss += loss.item()
+
+    # Return metrics only (backward already done)
+    return {
+        **enc_out,
+        "kl_loss": total_kl / len(encoders),
+        "loss": total_loss / len(encoders),
+    }
+
+
 def train_encoder(
     encoder,
     activation_store,
@@ -285,3 +447,126 @@ def train_encoder_group(
 
     for encoder, cfg in zip(encoders, cfgs):
         save_checkpoint(encoder, cfg, "final", wandb_run=wandb_run)
+
+
+def train_encoder_multilayer_local(
+    encoders: list,
+    activation_store,
+    cfgs: list[EncoderConfig],
+    compute_loss_fn: ComputeLossFn | None = None,
+):
+    """Train multiple encoders on a MultiLayerActivationsStore with local MSE loss.
+
+    Each encoder trains on its own layer's activations from the same buffer.
+    """
+    num_batches = cfgs[0].num_tokens // cfgs[0].batch_size
+    optimizers = [
+        torch.optim.Adam(enc.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2))
+        for enc, cfg in zip(encoders, cfgs)
+    ]
+    pbar = tqdm.trange(num_batches)
+    wandb_run = init_wandb(cfgs[0])
+
+    for i in pbar:
+        x_in_list, y_target_list = activation_store.next_batch()
+
+        avg_loss = 0.0
+        avg_l0 = 0.0
+        for layer_idx, (encoder, cfg, optimizer) in enumerate(zip(encoders, cfgs, optimizers)):
+            output = encoder(x_in_list[layer_idx], y_target_list[layer_idx])
+
+            loss = output["loss"]
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(encoder.parameters(), cfg.max_grad_norm)
+            encoder.make_decoder_weights_and_grad_unit_norm()
+            optimizer.step()
+            optimizer.zero_grad()
+
+            avg_loss += loss.item()
+            avg_l0 += output["l0_norm"]
+
+        n = len(encoders)
+        output["loss"] = avg_loss / n
+        output["l0_norm"] = avg_l0 / n
+        log_wandb(output, i, wandb_run)
+        pbar.set_postfix({"Loss": f"{avg_loss / n:.4f}", "L0": f"{avg_l0 / n:.1f}"})
+
+        if i % cfgs[0].perf_log_freq == 0:
+            log_cascading_performance(
+                wandb_run, i, activation_store, encoders,
+                compute_loss_fn=compute_loss_fn,
+            )
+
+    for layer_idx, (encoder, cfg) in enumerate(zip(encoders, cfgs)):
+        save_checkpoint(encoder, cfg, f"layer{layer_idx}_final", wandb_run=wandb_run)
+
+
+def train_encoder_cascading(
+    encoders: list,
+    activation_store,
+    cfgs: list[EncoderConfig],
+    compute_loss_fn: ComputeLossFn | None = None,
+    get_logits_fn: GetLogitsFn | None = None,
+    mode: str = "cascading",
+    encode_output: bool = False,
+):
+    """Train independent per-layer encoders jointly with e2e KL loss.
+
+    mode:
+        "cascading"   — each layer's reconstruction feeds into the next layer's encoder
+        "parallel"    — all layers encode from clean activations, patch all MLPs at once
+        "independent" — each layer trained with its own KL loss (only its MLP replaced),
+                        sequential backward to save memory
+
+    encode_output: If True (for SAEs), cascading hooks encode the module output instead
+        of the input. Has no effect on parallel/independent modes (they use clean acts).
+    """
+    assert mode in ("cascading", "parallel", "independent")
+    assert get_logits_fn is not None, "get_logits_fn required for e2e training"
+    dc = activation_store.data_config
+    num_batches = cfgs[0].num_tokens // (dc.model_batch_size * dc.seq_len)
+
+    optimizers = [
+        torch.optim.Adam(enc.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2))
+        for enc, cfg in zip(encoders, cfgs)
+    ]
+    pbar = tqdm.trange(num_batches)
+    wandb_run = init_wandb(cfgs[0])
+
+    for i in pbar:
+        if mode == "independent":
+            output = _e2e_step_independent(
+                encoders, activation_store, get_logits_fn, optimizers, cfgs,
+            )
+        else:
+            if mode == "cascading":
+                output = _e2e_step_cascading_independent(
+                    encoders, activation_store, get_logits_fn, encode_output=encode_output,
+                )
+            else:
+                output = _e2e_step_parallel_independent(encoders, activation_store, get_logits_fn)
+
+        log_wandb(output, i, wandb_run)
+
+        if i % cfgs[0].perf_log_freq == 0:
+            log_cascading_performance(
+                wandb_run, i, activation_store, encoders,
+                compute_loss_fn=compute_loss_fn,
+            )
+
+        if mode != "independent":
+            # independent mode already did backward+step inside _e2e_step_independent
+            loss = output["loss"]
+            loss.backward()
+            for enc, cfg, opt in zip(encoders, cfgs, optimizers):
+                torch.nn.utils.clip_grad_norm_(enc.parameters(), cfg.max_grad_norm)
+                enc.make_decoder_weights_and_grad_unit_norm()
+                opt.step()
+                opt.zero_grad()
+
+        kl_val = output["kl_loss"] if isinstance(output["kl_loss"], float) else output["kl_loss"].item()
+        loss_val = output["loss"] if isinstance(output["loss"], float) else output["loss"].item()
+        pbar.set_postfix({"Loss": f"{loss_val:.4f}", "KL": f"{kl_val:.4f}"})
+
+    for layer_idx, (enc, cfg) in enumerate(zip(encoders, cfgs)):
+        save_checkpoint(enc, cfg, f"layer{layer_idx}_final", wandb_run=wandb_run)

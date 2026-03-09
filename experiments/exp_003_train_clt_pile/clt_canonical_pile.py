@@ -28,6 +28,7 @@ from transformers import AutoTokenizer
 
 from nn_decompositions.activation_store import MultiLayerActivationsStore, DataConfig
 from nn_decompositions.clt import CrossLayerTranscoder
+from nn_decompositions.utils import get_free_gpu
 from nn_decompositions.config import CLTConfig
 from nn_decompositions.training import train_encoder
 
@@ -48,7 +49,7 @@ def compute_loss_llama(model, tokenizer, input_ids, attention_mask):
 def main():
     from spd.pretrain.models.llama_simple_mlp import LlamaSimpleMLP
 
-    device = f"cuda:{torch.cuda.device_count() - 1}" if torch.cuda.is_available() else "cpu"
+    device = get_free_gpu()
 
     print(f"Loading LlamaSimpleMLP from {WANDB_MODEL_PATH}...")
     model = LlamaSimpleMLP.from_pretrained(WANDB_MODEL_PATH)
