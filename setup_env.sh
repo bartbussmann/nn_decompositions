@@ -13,7 +13,8 @@ set -euo pipefail
 LOCAL_VENV="/root/nn_decompositions_venv"
 SYMLINK="/workspace/nn_decompositions/.venv"
 NN_DIR="/workspace/nn_decompositions"
-SPD_DIR="/workspace/bartbussmann_spd"
+SPD_DIR="/workspace/spd"
+SPD_BRANCH="snapshot/launch-20260225_151714"  # branch used to train s-55ea3f9b (jose baseline)
 
 # --------------------------------------------------------------------------
 # 1. Ensure Python 3.13 is available
@@ -83,7 +84,17 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 # --------------------------------------------------------------------------
 # 4. Install SPD (editable, with all its deps)
 # --------------------------------------------------------------------------
-echo "Installing SPD (editable)..."
+echo "Installing SPD (editable) from branch $SPD_BRANCH..."
+if [ ! -d "$SPD_DIR" ]; then
+    echo "Cloning SPD repo..."
+    git clone --branch "$SPD_BRANCH" https://github.com/goodfire-ai/spd.git "$SPD_DIR"
+else
+    echo "SPD repo exists, checking out $SPD_BRANCH..."
+    cd "$SPD_DIR"
+    git fetch origin "$SPD_BRANCH"
+    git checkout "$SPD_BRANCH"
+    cd "$NN_DIR"
+fi
 pip install -e "$SPD_DIR"
 
 # --------------------------------------------------------------------------
@@ -99,7 +110,18 @@ echo "Installing extra experiment dependencies..."
 pip install openai tabulate pyyaml
 
 # --------------------------------------------------------------------------
-# 7. Verify
+# 7. Install Claude Code
+# --------------------------------------------------------------------------
+echo "Installing Node.js and npm via NodeSource..."
+curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+apt-get install -y -qq nodejs
+echo "Installed node $(node --version), npm $(npm --version)"
+
+echo "Installing Claude Code..."
+npm install -g @anthropic-ai/claude-code
+
+# --------------------------------------------------------------------------
+# 8. Verify
 # --------------------------------------------------------------------------
 echo ""
 echo "============================================================"
