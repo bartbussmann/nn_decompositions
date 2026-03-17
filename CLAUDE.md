@@ -59,6 +59,7 @@ Each experiment lives in `experiments/exp_XXX_<name>/` with outputs in `output/`
 | 033 | e2e_sweep_jose_32k | E2E training sweep on jose's target model with 32k dict size |
 | 035 | pareto_jose | Pareto from jose's trained checkpoints (pile_local_sweep_jose), jose SPD (s-55ea3f9b), neuron baseline |
 | 036 | pareto_jose_32k | Same as exp_035 but with 32k dict_size models (pile_local_sweep_jose_32k) |
+| 037 | pareto_jose_per_layer | Per-layer Pareto: replace one MLP at a time, 2x2 grid (layers 0-3) |
 
 ## Key Patterns
 
