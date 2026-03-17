@@ -56,10 +56,19 @@ def download_wandb_artifact(project: str, artifact_name: str, dest: Path) -> Pat
     return dest
 
 
+def _checkpoint_prefix(project: str) -> str:
+    """Derive a short prefix from the wandb project name for cache isolation."""
+    name = project.split("/")[-1]
+    if "32k" in name:
+        return "jose32k"
+    return "jose"
+
+
 def download_transcoders(project: str) -> dict[int, dict[int, Path]]:
     """Returns {top_k: {layer: path}}."""
     api = wandb.Api()
     runs = api.runs(project)
+    prefix = _checkpoint_prefix(project)
     tc_paths: dict[int, dict[int, Path]] = {}
     for run in runs:
         if run.state != "finished":
@@ -77,12 +86,12 @@ def download_transcoders(project: str) -> dict[int, dict[int, Path]]:
                 if f"layer{layer_idx}_final" in aname:
                     layer_arts[layer_idx] = a
                     break
-        assert set(layer_arts.keys()) == set(LAYERS), (
-            f"Expected all layers in run {name}, got {set(layer_arts.keys())}"
-        )
+        if set(layer_arts.keys()) != set(LAYERS):
+            print(f"  Skipping {name}: only got layers {set(layer_arts.keys())}")
+            continue
         layer_paths = {}
         for layer_idx in LAYERS:
-            dest = Path(f"checkpoints/jose_tc_{name}_layer{layer_idx}")
+            dest = Path(f"checkpoints/{prefix}_tc_{name}_layer{layer_idx}")
             download_wandb_artifact(project, layer_arts[layer_idx].name, dest)
             layer_paths[layer_idx] = dest
         tc_paths[top_k] = layer_paths
@@ -93,6 +102,7 @@ def download_clts(project: str) -> list[tuple[int, Path]]:
     """Returns [(top_k, path), ...]."""
     api = wandb.Api()
     runs = api.runs(project)
+    prefix = _checkpoint_prefix(project)
     clt_paths = []
     for run in runs:
         if run.state != "finished":
@@ -105,7 +115,7 @@ def download_clts(project: str) -> list[tuple[int, Path]]:
         arts = [a for a in run.logged_artifacts() if a.type == "model"]
         final_arts = [a for a in arts if "final" in a.name]
         assert len(final_arts) == 1
-        dest = Path(f"checkpoints/jose_clt_{name}")
+        dest = Path(f"checkpoints/{prefix}_clt_{name}")
         download_wandb_artifact(project, final_arts[0].name, dest)
         clt_paths.append((top_k, dest))
     clt_paths.sort(key=lambda x: x[0])
