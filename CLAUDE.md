@@ -58,6 +58,7 @@ Each experiment lives in `experiments/exp_XXX_<name>/` with outputs in `output/`
 | 032 | local_sweep_jose | Local MSE training sweep on jose's target model (t-9d2b8f02): TCs + CLTs × k=8/16/32/64 |
 | 033 | e2e_sweep_jose_32k | E2E training sweep on jose's target model with 32k dict size |
 | 035 | pareto_jose | Pareto from jose's trained checkpoints (pile_local_sweep_jose), jose SPD (s-55ea3f9b), neuron baseline |
+| 036 | pareto_jose_32k | Same as exp_035 but with 32k dict_size models (pile_local_sweep_jose_32k) |
 
 ## Key Patterns
 
