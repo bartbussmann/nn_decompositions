@@ -584,6 +584,12 @@ def _plot_on_ax(ax, points, baselines, x_key, y_key):
         ax.axhline(zero_abl_deg, color="#d62728", linestyle=":",
                     linewidth=1.0, alpha=0.5, label="Zero ablation", zorder=1)
         ax.set_yscale("log")
+        ax.yaxis.set_major_locator(ticker.FixedLocator(
+            [0.1, 0.15, 0.2, 0.3, 0.5, 0.7, 1.0, 1.5, 2.0, 3.0, 5.0, 7.0, 10.0]
+        ))
+        ax.yaxis.set_major_formatter(ticker.FuncFormatter(
+            lambda y, _: f"{y:g}"
+        ))
 
     ax.set_xscale("log", base=2)
     ax.xaxis.set_major_formatter(ticker.FuncFormatter(
@@ -801,7 +807,7 @@ def main():
 
     for x_key, xlabel, suffix in axis_configs:
         for y_key, ylabel, metric_suffix in [
-            ("ce", "Cross-entropy degradation", ""),
+            ("ce", "CE degradation (\u0394 from baseline)", ""),
             ("mse", "MLP reconstruction MSE", "_mse"),
         ]:
             save = args.save_path.replace(".png", f"{suffix}{metric_suffix}.png")
@@ -817,7 +823,7 @@ def main():
     # Combined 3-subplot figures (one for CE, one for MSE)
     plot_pareto_combined(
         all_points, baselines, axis_configs,
-        y_key="ce", ylabel="Cross-entropy degradation",
+        y_key="ce", ylabel="CE degradation (\u0394 from baseline)",
         save_path=args.save_path.replace(".png", "_combined_ce.png"),
     )
     plot_pareto_combined(
