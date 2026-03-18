@@ -224,7 +224,7 @@ def load_transcoder(checkpoint_dir: str):
 def _transcoder_batchtopk_recon(tc, x_in, k):
     use_pre_enc_bias = tc.cfg.pre_enc_bias and tc.input_size == tc.output_size
     x_enc = x_in - tc.b_dec if use_pre_enc_bias else x_in
-    acts = F.relu(x_enc @ tc.W_enc)
+    acts = F.relu(x_enc @ tc.W_enc + tc.b_enc)
     n_keep = k * acts.shape[0]
     if n_keep < acts.numel():
         topk = torch.topk(acts.flatten(), n_keep, dim=-1)

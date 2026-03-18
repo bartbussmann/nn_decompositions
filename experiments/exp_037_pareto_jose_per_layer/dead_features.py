@@ -117,7 +117,7 @@ def count_dead_features_tc(tc, mlp_inputs: list[torch.Tensor]) -> tuple[int, int
     ever_active = torch.zeros(tc.cfg.dict_size, dtype=torch.bool, device=DEVICE)
     for x_in in mlp_inputs:
         x_enc = x_in - tc.b_dec if use_pre_enc_bias else x_in
-        pre_acts = F.relu(x_enc @ tc.W_enc)
+        pre_acts = F.relu(x_enc @ tc.W_enc + tc.b_enc)
         ever_active |= (pre_acts > 0).any(dim=0)
     n_dead = tc.cfg.dict_size - ever_active.sum().item()
     return n_dead, tc.cfg.dict_size

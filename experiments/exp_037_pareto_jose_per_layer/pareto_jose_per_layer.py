@@ -254,7 +254,7 @@ def _pre_activations(tc, x_in):
     """Compute pre-topk activations (ReLU output before sparsification)."""
     use_pre_enc_bias = tc.cfg.pre_enc_bias and tc.input_size == tc.output_size
     x_enc = x_in - tc.b_dec if use_pre_enc_bias else x_in
-    return F.relu(x_enc @ tc.W_enc)
+    return F.relu(x_enc @ tc.W_enc + tc.b_enc)
 
 
 def _transcoder_batchtopk_recon(tc, x_in, k):

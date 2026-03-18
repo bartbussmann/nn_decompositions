@@ -47,7 +47,7 @@ def load_transcoder(checkpoint_dir: str):
 def _transcoder_batchtopk_recon(tc, x_in, k):
     use_pre_enc_bias = tc.cfg.pre_enc_bias and tc.input_size == tc.output_size
     x_enc = x_in - tc.b_dec if use_pre_enc_bias else x_in
-    acts = F.relu(x_enc @ tc.W_enc)
+    acts = F.relu(x_enc @ tc.W_enc + tc.b_enc)
     n_keep = k * acts.shape[0]
     if n_keep < acts.numel():
         topk = torch.topk(acts.flatten(), n_keep, dim=-1)
@@ -117,7 +117,7 @@ def diagnose_transcoder(tc, layer_idx: int, mlp_activations, top_ks: list[int]):
     # Pre-encode (before top-k): get all pre-activation values
     use_pre_enc_bias = tc.cfg.pre_enc_bias and tc.input_size == tc.output_size
     x_enc = all_mlp_in - tc.b_dec if use_pre_enc_bias else all_mlp_in
-    pre_acts = F.relu(x_enc @ tc.W_enc)  # (n_tokens, dict_size)
+    pre_acts = F.relu(x_enc @ tc.W_enc + tc.b_enc)  # (n_tokens, dict_size)
 
     # Feature activation stats (before any top-k)
     ever_active = (pre_acts > 0).any(dim=0)  # (dict_size,)
