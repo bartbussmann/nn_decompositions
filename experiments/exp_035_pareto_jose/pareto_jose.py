@@ -249,17 +249,6 @@ def load_transcoder(checkpoint_dir: str):
     return encoder
 
 
-def _transcoder_batchtopk_recon(tc, x_in, k):
-    use_pre_enc_bias = tc.cfg.pre_enc_bias and tc.input_size == tc.output_size
-    x_enc = x_in - tc.b_dec if use_pre_enc_bias else x_in
-    acts = F.relu(x_enc @ tc.W_enc + tc.b_enc)
-    n_keep = k * acts.shape[0]
-    if n_keep < acts.numel():
-        topk = torch.topk(acts.flatten(), n_keep, dim=-1)
-        acts = torch.zeros_like(acts.flatten()).scatter(-1, topk.indices, topk.values).reshape(acts.shape)
-    return acts, acts @ tc.W_dec + tc.b_dec
-
-
 @torch.no_grad()
 def eval_transcoder_batchtopk(
     base_model, transcoders: dict[int, nn.Module], batches, mlp_activations,
@@ -274,17 +263,16 @@ def eval_transcoder_batchtopk(
             for layer_idx in LAYERS:
                 mlp = base_model.h[layer_idx].mlp
                 tc = transcoders[layer_idx]
-                input_size = tc.cfg.input_size
-                layer_k = tc.cfg.top_k
 
-                def _make_patched(tc_, input_size_, k_):
+                def _make_patched(tc_):
                     def _patched(hidden_states):
-                        flat = hidden_states.reshape(-1, input_size_)
-                        _, recon = _transcoder_batchtopk_recon(tc_, flat, k_)
+                        flat = hidden_states.reshape(-1, tc_.cfg.input_size)
+                        acts = tc_.encode(flat)
+                        recon = tc_.decode(acts)
                         return recon.reshape(hidden_states.shape)
                     return _patched
 
-                stack.enter_context(patched_forward(mlp, _make_patched(tc, input_size, layer_k)))
+                stack.enter_context(patched_forward(mlp, _make_patched(tc)))
             total_ce += compute_ce_loss(base_model, input_ids)
 
         # L0 and MSE
@@ -292,7 +280,8 @@ def eval_transcoder_batchtopk(
         for layer_idx in LAYERS:
             tc = transcoders[layer_idx]
             mlp_in, mlp_out = mlp_activations[layer_idx][batch_idx]
-            acts, recon = _transcoder_batchtopk_recon(tc, mlp_in, tc.cfg.top_k)
+            acts = tc.encode(mlp_in)
+            recon = tc.decode(acts)
             layer_l0_totals[layer_idx] += (acts > 0).float().sum(-1).mean().item()
             batch_mse += F.mse_loss(recon, mlp_out).item()
         total_mse += batch_mse / len(LAYERS)

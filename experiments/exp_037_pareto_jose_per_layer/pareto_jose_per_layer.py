@@ -250,45 +250,14 @@ def load_clt(checkpoint_dir: str):
 # =============================================================================
 
 
-def _pre_activations(tc, x_in):
-    """Compute pre-topk activations (ReLU output before sparsification)."""
-    use_pre_enc_bias = tc.cfg.pre_enc_bias and tc.input_size == tc.output_size
-    x_enc = x_in - tc.b_dec if use_pre_enc_bias else x_in
-    return F.relu(x_enc @ tc.W_enc + tc.b_enc)
-
-
-def _transcoder_batchtopk_recon(tc, x_in, k):
-    acts = _pre_activations(tc, x_in)
-    n_keep = k * acts.shape[0]
-    if n_keep < acts.numel():
-        topk = torch.topk(acts.flatten(), n_keep, dim=-1)
-        acts = torch.zeros_like(acts.flatten()).scatter(-1, topk.indices, topk.values).reshape(acts.shape)
-    return acts, acts @ tc.W_dec + tc.b_dec
-
-
-def _transcoder_jumprelu_recon(tc, x_in, threshold):
-    acts = _pre_activations(tc, x_in)
-    acts = acts * (acts > threshold).float()
-    return acts, acts @ tc.W_dec + tc.b_dec
-
-
 @torch.no_grad()
 def estimate_threshold(tc, mlp_inputs):
     """Estimate θ = E[min positive activation per example] over calibration batches."""
-    k = tc.cfg.top_k
     min_positives = []
     for x_in in mlp_inputs:
-        acts = _pre_activations(tc, x_in)
-        n_keep = k * acts.shape[0]
-        if n_keep < acts.numel():
-            topk = torch.topk(acts.flatten(), n_keep, dim=-1)
-            sparse = torch.zeros_like(acts.flatten()).scatter(
-                -1, topk.indices, topk.values
-            ).reshape(acts.shape)
-        else:
-            sparse = acts
-        for j in range(sparse.shape[0]):
-            pos = sparse[j][sparse[j] > 0]
+        acts = tc.encode(x_in)
+        for j in range(acts.shape[0]):
+            pos = acts[j][acts[j] > 0]
             if len(pos) > 0:
                 min_positives.append(pos.min().item())
     return sum(min_positives) / len(min_positives)
@@ -301,35 +270,33 @@ def eval_transcoder_single_layer(
 ) -> dict:
     """Evaluate a single transcoder on one layer. Returns {l0, ce, mse}."""
     total_ce, total_mse, total_l0 = 0.0, 0.0, 0.0
-    k = tc.cfg.top_k
 
     for batch_idx, input_ids in enumerate(batches):
         mlp = base_model.h[layer_idx].mlp
 
-        if inference == "jumprelu":
-            def _make_patched(tc_, input_size_, th_):
-                def _patched(hidden_states):
-                    flat = hidden_states.reshape(-1, input_size_)
-                    _, recon = _transcoder_jumprelu_recon(tc_, flat, th_)
-                    return recon.reshape(hidden_states.shape)
-                return _patched
-            with patched_forward(mlp, _make_patched(tc, tc.cfg.input_size, threshold)):
-                total_ce += compute_ce_loss(base_model, input_ids)
-        else:
-            def _make_patched(tc_, input_size_, k_):
-                def _patched(hidden_states):
-                    flat = hidden_states.reshape(-1, input_size_)
-                    _, recon = _transcoder_batchtopk_recon(tc_, flat, k_)
-                    return recon.reshape(hidden_states.shape)
-                return _patched
-            with patched_forward(mlp, _make_patched(tc, tc.cfg.input_size, k)):
-                total_ce += compute_ce_loss(base_model, input_ids)
+        def _make_patched(tc_, th_):
+            def _patched(hidden_states):
+                flat = hidden_states.reshape(-1, tc_.cfg.input_size)
+                if th_ is not None:
+                    acts, dense = tc_.encode(flat, return_dense=True)
+                    acts = dense * (dense > th_).float()
+                else:
+                    acts = tc_.encode(flat)
+                recon = tc_.decode(acts)
+                return recon.reshape(hidden_states.shape)
+            return _patched
+
+        th = threshold if inference == "jumprelu" else None
+        with patched_forward(mlp, _make_patched(tc, th)):
+            total_ce += compute_ce_loss(base_model, input_ids)
 
         mlp_in, mlp_out = mlp_activations[layer_idx][batch_idx]
         if inference == "jumprelu":
-            acts, recon = _transcoder_jumprelu_recon(tc, mlp_in, threshold)
+            _, dense = tc.encode(mlp_in, return_dense=True)
+            acts = dense * (dense > threshold).float()
         else:
-            acts, recon = _transcoder_batchtopk_recon(tc, mlp_in, k)
+            acts = tc.encode(mlp_in)
+        recon = tc.decode(acts)
         total_l0 += (acts > 0).float().sum(-1).mean().item()
         total_mse += F.mse_loss(recon, mlp_out).item()
 
