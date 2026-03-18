@@ -61,6 +61,7 @@ Each experiment lives in `experiments/exp_XXX_<name>/` with outputs in `output/`
 | 036 | pareto_jose_32k | Same as exp_035 but with 32k dict_size models (pile_local_sweep_jose_32k) |
 | 037 | pareto_jose_per_layer | Per-layer Pareto: replace one MLP at a time, 2x2 grid (layers 0-3) |
 | 038 | retrain_tc_jose | Retrain 4k TCs on jose's model with per-layer wandb logging (loss, L0, dead features per layer) |
+| 039 | multiseed_jose | Multi-seed TC training (5 seeds × 2 modes: local_mse + e2e_independent, k=16, 4k dict) for stability analysis |
 
 ## Key Patterns
 
