@@ -40,7 +40,7 @@ SEQ_LEN = 512
 DATASET = "danbraunai/pile-uncopyrighted-tok-shuffled"
 
 ALL_SEEDS = [0, 1, 2, 3, 4]
-ALL_MODES = ["local_mse", "e2e_independent"]
+ALL_MODES = ["local_mse", "e2e_independent", "clt_local_mse"]
 
 
 @dataclass
@@ -75,9 +75,11 @@ def train_one(job: Job, device: str, model_cache_path: str):
         from transformers import AutoTokenizer
 
         from nn_decompositions.activation_store import MultiLayerActivationsStore, DataConfig
-        from nn_decompositions.config import EncoderConfig
+        from nn_decompositions.config import CLTConfig, EncoderConfig
+        from nn_decompositions.clt import CrossLayerTranscoder
         from nn_decompositions.transcoder import BatchTopKTranscoder
         from nn_decompositions.training import (
+            train_encoder,
             train_encoder_multilayer_local,
             train_encoder_cascading,
         )
@@ -122,44 +124,70 @@ def train_one(job: Job, device: str, model_cache_path: str):
             output_size=d_model,
         )
 
-        cfgs = []
-        encoders = []
-        for layer in LAYERS:
-            # Each layer gets a distinct seed derived from the job seed
-            layer_seed = job.seed * 100 + layer
-            cfg = EncoderConfig(
+        if job.mode == "clt_local_mse":
+            cfg = CLTConfig(
+                layers=LAYERS,
                 input_size=d_model,
                 output_size=d_model,
                 dict_size=DICT_SIZE,
                 encoder_type="batchtopk",
                 top_k=TOP_K,
-                seed=layer_seed,
+                seed=job.seed,
                 l1_coeff=0.0,
                 batch_size=4096,
                 num_tokens=NUM_TOKENS,
                 lr=LR,
                 wandb_project=WANDB_PROJECT,
-                device=device,
-                e2e=job.mode == "e2e_independent",
                 run_name=job.name,
+                device=device,
+                e2e=False,
             )
-            cfgs.append(cfg)
-            encoders.append(BatchTopKTranscoder(cfg))
+            clt = CrossLayerTranscoder(cfg)
 
-        if job.mode == "local_mse":
-            print(f"[{job.name}] Training transcoders (local MSE, seed={job.seed})...")
-            train_encoder_multilayer_local(
-                encoders, activation_store, cfgs,
+            print(f"[{job.name}] Training CLT (local MSE, seed={job.seed})...")
+            train_encoder(
+                clt, activation_store, cfg,
                 compute_loss_fn=compute_loss_llama,
             )
         else:
-            print(f"[{job.name}] Training transcoders (e2e independent, seed={job.seed})...")
-            train_encoder_cascading(
-                encoders, activation_store, cfgs,
-                compute_loss_fn=compute_loss_llama,
-                get_logits_fn=get_logits_llama,
-                mode="independent",
-            )
+            cfgs = []
+            encoders = []
+            for layer in LAYERS:
+                # Each layer gets a distinct seed derived from the job seed
+                layer_seed = job.seed * 100 + layer
+                cfg = EncoderConfig(
+                    input_size=d_model,
+                    output_size=d_model,
+                    dict_size=DICT_SIZE,
+                    encoder_type="batchtopk",
+                    top_k=TOP_K,
+                    seed=layer_seed,
+                    l1_coeff=0.0,
+                    batch_size=4096,
+                    num_tokens=NUM_TOKENS,
+                    lr=LR,
+                    wandb_project=WANDB_PROJECT,
+                    device=device,
+                    e2e=job.mode == "e2e_independent",
+                    run_name=job.name,
+                )
+                cfgs.append(cfg)
+                encoders.append(BatchTopKTranscoder(cfg))
+
+            if job.mode == "local_mse":
+                print(f"[{job.name}] Training transcoders (local MSE, seed={job.seed})...")
+                train_encoder_multilayer_local(
+                    encoders, activation_store, cfgs,
+                    compute_loss_fn=compute_loss_llama,
+                )
+            else:
+                print(f"[{job.name}] Training transcoders (e2e independent, seed={job.seed})...")
+                train_encoder_cascading(
+                    encoders, activation_store, cfgs,
+                    compute_loss_fn=compute_loss_llama,
+                    get_logits_fn=get_logits_llama,
+                    mode="independent",
+                )
 
         print(f"[{job.name}] DONE")
     except Exception as e:
@@ -180,16 +208,15 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="Multi-seed TC training for stability analysis")
     parser.add_argument("--seeds", type=int, nargs="+", default=ALL_SEEDS)
-    parser.add_argument("--modes", type=str, nargs="+", default=ALL_MODES,
-                        choices=ALL_MODES)
+    parser.add_argument("--modes", type=str, nargs="+", default=ALL_MODES)
     parser.add_argument("--min_free_gb", type=float, default=12.0)
     args = parser.parse_args()
 
-    jobs = [
-        Job(name=f"tc_{mode}_k{TOP_K}_seed{seed}", mode=mode, seed=seed)
-        for mode in args.modes
-        for seed in args.seeds
-    ]
+    jobs = []
+    for mode in args.modes:
+        for seed in args.seeds:
+            prefix = "clt" if mode.startswith("clt_") else "tc"
+            jobs.append(Job(name=f"{prefix}_{mode}_k{TOP_K}_seed{seed}", mode=mode, seed=seed))
 
     n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
     min_free_bytes = args.min_free_gb * 1e9
