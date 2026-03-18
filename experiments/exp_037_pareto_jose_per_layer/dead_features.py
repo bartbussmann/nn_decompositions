@@ -113,12 +113,10 @@ def get_mlp_activations(model, batches):
 @torch.no_grad()
 def count_dead_features_tc(tc, mlp_inputs: list[torch.Tensor]) -> tuple[int, int]:
     """Returns (n_dead, dict_size)."""
-    use_pre_enc_bias = tc.cfg.pre_enc_bias and tc.input_size == tc.output_size
     ever_active = torch.zeros(tc.cfg.dict_size, dtype=torch.bool, device=DEVICE)
     for x_in in mlp_inputs:
-        x_enc = x_in - tc.b_dec if use_pre_enc_bias else x_in
-        pre_acts = F.relu(x_enc @ tc.W_enc + tc.b_enc)
-        ever_active |= (pre_acts > 0).any(dim=0)
+        _, dense = tc.encode(x_in, return_dense=True)
+        ever_active |= (dense > 0).any(dim=0)
     n_dead = tc.cfg.dict_size - ever_active.sum().item()
     return n_dead, tc.cfg.dict_size
 

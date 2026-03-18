@@ -125,7 +125,7 @@ def collect_tc_binary(tc, base_model, batches) -> torch.Tensor:
 
         use_pre_enc_bias = tc.cfg.pre_enc_bias and tc.cfg.input_size == tc.cfg.output_size
         x_enc = flat - tc.b_dec if use_pre_enc_bias else flat
-        acts = F.relu(x_enc @ tc.W_enc)  # (n_tokens, dict_size)
+        acts = F.relu(x_enc @ tc.W_enc + tc.b_enc)  # (n_tokens, dict_size)
 
         binary = (acts > 0)
         fire_counts += binary.float().sum(dim=0)

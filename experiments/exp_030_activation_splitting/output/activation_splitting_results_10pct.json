@@ -1,0 +1,173 @@
+{
+  "threshold": 0.1,
+  "layer": 2,
+  "n_positions": 163840,
+  "n_alive": {
+    "\u03b2=0": 2234,
+    "\u03b2=0.5 (baseline)": 1741,
+    "\u03b2=1.0 (2\u00d7)": 1659,
+    "\u03b2=2.0 (4\u00d7)": 1412
+  },
+  "pairs": {
+    "\u03b2=0 -> \u03b2=0": {
+      "n_from": 2234,
+      "mean": 181.11280214861236,
+      "max": 468,
+      "n_zero": 0,
+      "n_one": 0,
+      "n_multi": 2234,
+      "pct_split": 100.0,
+      "pct_uncovered": 0.0
+    },
+    "\u03b2=0 -> \u03b2=0.5 (baseline)": {
+      "n_from": 2234,
+      "mean": 28.174574753804833,
+      "max": 88,
+      "n_zero": 0,
+      "n_one": 0,
+      "n_multi": 2234,
+      "pct_split": 100.0,
+      "pct_uncovered": 0.0
+    },
+    "\u03b2=0 -> \u03b2=1.0 (2\u00d7)": {
+      "n_from": 2234,
+      "mean": 18.31154879140555,
+      "max": 70,
+      "n_zero": 0,
+      "n_one": 1,
+      "n_multi": 2233,
+      "pct_split": 99.95523724261415,
+      "pct_uncovered": 0.0
+    },
+    "\u03b2=0 -> \u03b2=2.0 (4\u00d7)": {
+      "n_from": 2234,
+      "mean": 10.777529095792302,
+      "max": 40,
+      "n_zero": 2,
+      "n_one": 10,
+      "n_multi": 2222,
+      "pct_split": 99.46284691136974,
+      "pct_uncovered": 0.08952551477170993
+    },
+    "\u03b2=0.5 (baseline) -> \u03b2=0": {
+      "n_from": 1741,
+      "mean": 177.5255600229753,
+      "max": 442,
+      "n_zero": 0,
+      "n_one": 0,
+      "n_multi": 1741,
+      "pct_split": 100.0,
+      "pct_uncovered": 0.0
+    },
+    "\u03b2=0.5 (baseline) -> \u03b2=0.5 (baseline)": {
+      "n_from": 1741,
+      "mean": 30.990235496840896,
+      "max": 109,
+      "n_zero": 0,
+      "n_one": 1,
+      "n_multi": 1740,
+      "pct_split": 99.94256174612292,
+      "pct_uncovered": 0.0
+    },
+    "\u03b2=0.5 (baseline) -> \u03b2=1.0 (2\u00d7)": {
+      "n_from": 1741,
+      "mean": 20.982768523836874,
+      "max": 72,
+      "n_zero": 0,
+      "n_one": 0,
+      "n_multi": 1741,
+      "pct_split": 100.0,
+      "pct_uncovered": 0.0
+    },
+    "\u03b2=0.5 (baseline) -> \u03b2=2.0 (4\u00d7)": {
+      "n_from": 1741,
+      "mean": 12.77599080987938,
+      "max": 60,
+      "n_zero": 1,
+      "n_one": 9,
+      "n_multi": 1731,
+      "pct_split": 99.42561746122918,
+      "pct_uncovered": 0.05743825387708214
+    },
+    "\u03b2=1.0 (2\u00d7) -> \u03b2=0": {
+      "n_from": 1659,
+      "mean": 168.13803496081977,
+      "max": 427,
+      "n_zero": 0,
+      "n_one": 0,
+      "n_multi": 1659,
+      "pct_split": 100.0,
+      "pct_uncovered": 0.0
+    },
+    "\u03b2=1.0 (2\u00d7) -> \u03b2=0.5 (baseline)": {
+      "n_from": 1659,
+      "mean": 29.734177215189874,
+      "max": 93,
+      "n_zero": 0,
+      "n_one": 0,
+      "n_multi": 1659,
+      "pct_split": 100.0,
+      "pct_uncovered": 0.0
+    },
+    "\u03b2=1.0 (2\u00d7) -> \u03b2=1.0 (2\u00d7)": {
+      "n_from": 1659,
+      "mean": 22.24291742013261,
+      "max": 124,
+      "n_zero": 0,
+      "n_one": 2,
+      "n_multi": 1657,
+      "pct_split": 99.8794454490657,
+      "pct_uncovered": 0.0
+    },
+    "\u03b2=1.0 (2\u00d7) -> \u03b2=2.0 (4\u00d7)": {
+      "n_from": 1659,
+      "mean": 13.591922845087401,
+      "max": 85,
+      "n_zero": 2,
+      "n_one": 3,
+      "n_multi": 1654,
+      "pct_split": 99.69861362266425,
+      "pct_uncovered": 0.12055455093429777
+    },
+    "\u03b2=2.0 (4\u00d7) -> \u03b2=0": {
+      "n_from": 1412,
+      "mean": 159.00354107648724,
+      "max": 416,
+      "n_zero": 0,
+      "n_one": 0,
+      "n_multi": 1412,
+      "pct_split": 100.0,
+      "pct_uncovered": 0.0
+    },
+    "\u03b2=2.0 (4\u00d7) -> \u03b2=0.5 (baseline)": {
+      "n_from": 1412,
+      "mean": 28.438385269121813,
+      "max": 89,
+      "n_zero": 0,
+      "n_one": 0,
+      "n_multi": 1412,
+      "pct_split": 100.0,
+      "pct_uncovered": 0.0
+    },
+    "\u03b2=2.0 (4\u00d7) -> \u03b2=1.0 (2\u00d7)": {
+      "n_from": 1412,
+      "mean": 20.945467422096318,
+      "max": 107,
+      "n_zero": 0,
+      "n_one": 0,
+      "n_multi": 1412,
+      "pct_split": 100.0,
+      "pct_uncovered": 0.0
+    },
+    "\u03b2=2.0 (4\u00d7) -> \u03b2=2.0 (4\u00d7)": {
+      "n_from": 1412,
+      "mean": 13.669263456090652,
+      "max": 93,
+      "n_zero": 1,
+      "n_one": 6,
+      "n_multi": 1405,
+      "pct_split": 99.5042492917847,
+      "pct_uncovered": 0.0708215297450425
+    }
+  }
+}

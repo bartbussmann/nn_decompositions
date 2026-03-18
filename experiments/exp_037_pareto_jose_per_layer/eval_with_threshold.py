@@ -47,51 +47,28 @@ def load_transcoder(checkpoint_dir: str):
     return encoder
 
 
-def _pre_activations(tc, x_in):
-    """Compute pre-topk activations (ReLU output before sparsification)."""
-    use_pre_enc_bias = tc.cfg.pre_enc_bias and tc.input_size == tc.output_size
-    x_enc = x_in - tc.b_dec if use_pre_enc_bias else x_in
-    return F.relu(x_enc @ tc.W_enc + tc.b_enc)
-
-
-def _batchtopk_recon(tc, x_in, k):
-    """Standard BatchTopK reconstruction."""
-    acts = _pre_activations(tc, x_in)
-    n_keep = k * acts.shape[0]
-    if n_keep < acts.numel():
-        topk = torch.topk(acts.flatten(), n_keep, dim=-1)
-        acts = torch.zeros_like(acts.flatten()).scatter(-1, topk.indices, topk.values).reshape(acts.shape)
-    return acts, acts @ tc.W_dec + tc.b_dec
+def _batchtopk_recon(tc, x_in):
+    """Standard BatchTopK reconstruction using the model's encode/decode."""
+    acts = tc.encode(x_in)
+    return acts, tc.decode(acts)
 
 
 def _jumprelu_recon(tc, x_in, threshold):
     """JumpReLU reconstruction: zero out activations below threshold."""
-    acts = _pre_activations(tc, x_in)
-    acts = acts * (acts > threshold).float()
-    return acts, acts @ tc.W_dec + tc.b_dec
+    _, dense = tc.encode(x_in, return_dense=True)
+    acts = dense * (dense > threshold).float()
+    return acts, tc.decode(acts)
 
 
 @torch.no_grad()
-def estimate_threshold(tc, mlp_inputs, n_calibration_batches: int = 10, batch_size: int = 4096):
+def estimate_threshold(tc, mlp_inputs, n_calibration_batches: int = 10):
     """Estimate θ = E[min positive activation per example] over calibration data."""
     min_positives = []
-    k = tc.cfg.top_k
 
     for i in range(min(n_calibration_batches, len(mlp_inputs))):
         x_in = mlp_inputs[i]
-        acts = _pre_activations(tc, x_in)
+        sparse_acts = tc.encode(x_in)
 
-        # BatchTopK to get the activated values
-        n_keep = k * acts.shape[0]
-        if n_keep < acts.numel():
-            topk = torch.topk(acts.flatten(), n_keep, dim=-1)
-            sparse_acts = torch.zeros_like(acts.flatten()).scatter(
-                -1, topk.indices, topk.values
-            ).reshape(acts.shape)
-        else:
-            sparse_acts = acts
-
-        # For each example, find the minimum positive activation
         for j in range(sparse_acts.shape[0]):
             row = sparse_acts[j]
             positives = row[row > 0]
@@ -178,7 +155,7 @@ def eval_single_layer(base_model, tc, layer_idx, batches, mlp_activations, mode,
         mlp_in, mlp_out = mlp_activations[layer_idx][batch_idx]
 
         if mode == "batchtopk":
-            acts, recon_flat = _batchtopk_recon(tc, mlp_in, k)
+            acts, recon_flat = _batchtopk_recon(tc, mlp_in)
         else:
             acts, recon_flat = _jumprelu_recon(tc, mlp_in, threshold)
 

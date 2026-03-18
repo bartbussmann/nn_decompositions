@@ -1,0 +1,177 @@
+{
+  "baseline_ce": 2.8229597568511964,
+  "results": [
+    {
+      "type": "tc",
+      "mode": "cascading",
+      "top_k": 16,
+      "l0": 16.0,
+      "ce_cascading": 3.2518746852874756,
+      "ce_parallel": 5.09837064743042,
+      "ce_single": 5.054970318078994
+    },
+    {
+      "type": "tc",
+      "mode": "cascading",
+      "top_k": 32,
+      "l0": 32.0,
+      "ce_cascading": 3.1871684789657593,
+      "ce_parallel": 5.078836297988891,
+      "ce_single": 5.224159634113311
+    },
+    {
+      "type": "tc",
+      "mode": "cascading",
+      "top_k": 64,
+      "l0": 64.0,
+      "ce_cascading": 3.175719165802002,
+      "ce_parallel": 6.735528230667114,
+      "ce_single": 8.539561009407043
+    },
+    {
+      "type": "tc",
+      "mode": "independent",
+      "top_k": 16,
+      "l0": 16.0,
+      "ce_cascading": 3.587289237976074,
+      "ce_parallel": 3.3779361248016357,
+      "ce_single": 2.9766283988952633
+    },
+    {
+      "type": "tc",
+      "mode": "independent",
+      "top_k": 32,
+      "l0": 32.0,
+      "ce_cascading": 3.433731698989868,
+      "ce_parallel": 3.2839855909347535,
+      "ce_single": 2.9521472156047817
+    },
+    {
+      "type": "tc",
+      "mode": "independent",
+      "top_k": 64,
+      "l0": 63.908209228515624,
+      "ce_cascading": 3.33950936794281,
+      "ce_parallel": 3.2025158166885377,
+      "ce_single": 2.933609676361084
+    },
+    {
+      "type": "tc",
+      "mode": "parallel",
+      "top_k": 16,
+      "l0": 16.0,
+      "ce_cascading": 5.901265811920166,
+      "ce_parallel": 3.0610760927200316,
+      "ce_single": 4.13734536767006
+    },
+    {
+      "type": "tc",
+      "mode": "parallel",
+      "top_k": 32,
+      "l0": 32.0,
+      "ce_cascading": 5.994945240020752,
+      "ce_parallel": 3.0056082248687743,
+      "ce_single": 4.13246551156044
+    },
+    {
+      "type": "tc",
+      "mode": "parallel",
+      "top_k": 64,
+      "l0": 63.46783447265625,
+      "ce_cascading": 6.37756118774414,
+      "ce_parallel": 2.9606974363327025,
+      "ce_single": 4.236217105388642
+    },
+    {
+      "type": "clt",
+      "mode": "cascading",
+      "top_k": 16,
+      "l0": 16.0,
+      "ce_cascading": 3.1900827407836916,
+      "ce_parallel": 4.381312823295593,
+      "ce_single": 4.6138942599296575
+    },
+    {
+      "type": "clt",
+      "mode": "cascading",
+      "top_k": 32,
+      "l0": 32.0,
+      "ce_cascading": 3.1411380529403687,
+      "ce_parallel": 4.3432823657989506,
+      "ce_single": 4.866013693809509
+    },
+    {
+      "type": "clt",
+      "mode": "cascading",
+      "top_k": 64,
+      "l0": 63.96171264648437,
+      "ce_cascading": 3.10384259223938,
+      "ce_parallel": 4.135502815246582,
+      "ce_single": 5.117739033699036
+    },
+    {
+      "type": "clt",
+      "mode": "parallel",
+      "top_k": 16,
+      "l0": 16.0,
+      "ce_cascading": 5.7040527820587155,
+      "ce_parallel": 3.0414098501205444,
+      "ce_single": 4.255232703685761
+    },
+    {
+      "type": "clt",
+      "mode": "parallel",
+      "top_k": 32,
+      "l0": 31.885479736328126,
+      "ce_cascading": 5.839436864852905,
+      "ce_parallel": 2.9920923709869385,
+      "ce_single": 4.258124840259551
+    },
+    {
+      "type": "clt",
+      "mode": "parallel",
+      "top_k": 64,
+      "l0": 55.47314453125,
+      "ce_cascading": 6.436655855178833,
+      "ce_parallel": 2.9533674716949463,
+      "ce_single": 4.382673925161361
+    }
+  ],
+  "spd_results": [
+    {
+      "type": "spd",
+      "mode": "CI>0.5",
+      "threshold": 0.5,
+      "l0": 9.430947875976562,
+      "ce_all": 3.6819023847579957,
+      "ce_single": 3.2608030676841735
+    },
+    {
+      "type": "spd",
+      "mode": "CI>0.0",
+      "threshold": 0.0,
+      "l0": 16.52880859375,
+      "ce_all": 3.261903762817383,
+      "ce_single": 3.1225096702575685
+    }
+  ],
+  "jose_results": [
+    {
+      "type": "jose",
+      "mode": "CI>0.5",
+      "threshold": 0.5,
+      "l0": 9.35367431640625,
+      "ce_all": 3.726710557937622,
+      "ce_single": 3.452995926141739
+    },
+    {
+      "type": "jose",
+      "mode": "CI>0.0",
+      "threshold": 0.0,
+      "l0": 14.459979248046874,
+      "ce_all": 3.4367632150650023,
+      "ce_single": 3.3354046463966367
+    }
+  ],
+  "jose_baseline_ce": 2.825957679748535
+}
