@@ -125,13 +125,15 @@ def train_one(job: Job, device: str, model_cache_path: str):
         cfgs = []
         encoders = []
         for layer in LAYERS:
+            # Each layer gets a distinct seed derived from the job seed
+            layer_seed = job.seed * 100 + layer
             cfg = EncoderConfig(
                 input_size=d_model,
                 output_size=d_model,
                 dict_size=DICT_SIZE,
                 encoder_type="batchtopk",
                 top_k=TOP_K,
-                seed=job.seed,
+                seed=layer_seed,
                 l1_coeff=0.0,
                 batch_size=4096,
                 num_tokens=NUM_TOKENS,
