@@ -216,8 +216,8 @@ def main():
     args = parser.parse_args()
 
     jobs = []
-    for mode in args.modes:
-        for seed in args.seeds:
+    for seed in args.seeds:
+        for mode in args.modes:
             jobs.append(Job(name=f"{mode}_k{TOP_K}_seed{seed}", mode=mode, seed=seed))
 
     n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
