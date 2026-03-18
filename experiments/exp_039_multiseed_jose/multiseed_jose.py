@@ -40,7 +40,7 @@ SEQ_LEN = 512
 DATASET = "danbraunai/pile-uncopyrighted-tok-shuffled"
 
 ALL_SEEDS = [0, 1, 2, 3, 4]
-ALL_MODES = ["local_mse", "e2e_independent", "clt_local_mse"]
+ALL_MODES = ["local_mse", "e2e_independent", "clt_local_mse", "clt_e2e_parallel"]
 
 
 @dataclass
@@ -124,7 +124,8 @@ def train_one(job: Job, device: str, model_cache_path: str):
             output_size=d_model,
         )
 
-        if job.mode == "clt_local_mse":
+        if job.mode in ("clt_local_mse", "clt_e2e_parallel"):
+            is_e2e = job.mode == "clt_e2e_parallel"
             cfg = CLTConfig(
                 layers=LAYERS,
                 input_size=d_model,
@@ -140,14 +141,16 @@ def train_one(job: Job, device: str, model_cache_path: str):
                 wandb_project=WANDB_PROJECT,
                 run_name=job.name,
                 device=device,
-                e2e=False,
+                e2e=is_e2e,
             )
             clt = CrossLayerTranscoder(cfg)
 
-            print(f"[{job.name}] Training CLT (local MSE, seed={job.seed})...")
+            label = "e2e parallel" if is_e2e else "local MSE"
+            print(f"[{job.name}] Training CLT ({label}, seed={job.seed})...")
             train_encoder(
                 clt, activation_store, cfg,
                 compute_loss_fn=compute_loss_llama,
+                get_logits_fn=get_logits_llama if is_e2e else None,
             )
         else:
             cfgs = []
