@@ -215,8 +215,7 @@ def main():
     jobs = []
     for mode in args.modes:
         for seed in args.seeds:
-            prefix = "clt" if mode.startswith("clt_") else "tc"
-            jobs.append(Job(name=f"{prefix}_{mode}_k{TOP_K}_seed{seed}", mode=mode, seed=seed))
+            jobs.append(Job(name=f"{mode}_k{TOP_K}_seed{seed}", mode=mode, seed=seed))
 
     n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
     min_free_bytes = args.min_free_gb * 1e9
