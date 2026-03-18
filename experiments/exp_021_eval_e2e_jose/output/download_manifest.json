@@ -1,0 +1,79 @@
+{
+  "tc": {
+    "cascading_8": {
+      "0": "checkpoints/jose/tc_cascading_k8_tc_cascading_k8_checkpoint_layer0_final",
+      "1": "checkpoints/jose/tc_cascading_k8_tc_cascading_k8_checkpoint_layer1_final",
+      "2": "checkpoints/jose/tc_cascading_k8_tc_cascading_k8_checkpoint_layer2_final",
+      "3": "checkpoints/jose/tc_cascading_k8_tc_cascading_k8_checkpoint_layer3_final"
+    },
+    "independent_16": {
+      "0": "checkpoints/jose/tc_independent_k16_tc_independent_k16_checkpoint_layer0_final",
+      "1": "checkpoints/jose/tc_independent_k16_tc_independent_k16_checkpoint_layer1_final",
+      "2": "checkpoints/jose/tc_independent_k16_tc_independent_k16_checkpoint_layer2_final",
+      "3": "checkpoints/jose/tc_independent_k16_tc_independent_k16_checkpoint_layer3_final"
+    },
+    "independent_8": {
+      "0": "checkpoints/jose/tc_independent_k8_tc_independent_k8_checkpoint_layer0_final",
+      "1": "checkpoints/jose/tc_independent_k8_tc_independent_k8_checkpoint_layer1_final",
+      "3": "checkpoints/jose/tc_independent_k8_tc_independent_k8_checkpoint_layer3_final",
+      "2": "checkpoints/jose/tc_independent_k8_tc_independent_k8_checkpoint_layer2_final"
+    },
+    "parallel_8": {
+      "0": "checkpoints/jose/tc_parallel_k8_tc_parallel_k8_checkpoint_layer0_final",
+      "1": "checkpoints/jose/tc_parallel_k8_tc_parallel_k8_checkpoint_layer1_final",
+      "3": "checkpoints/jose/tc_parallel_k8_tc_parallel_k8_checkpoint_layer3_final",
+      "2": "checkpoints/jose/tc_parallel_k8_tc_parallel_k8_checkpoint_layer2_final"
+    },
+    "parallel_16": {
+      "0": "checkpoints/jose/tc_parallel_k16_tc_parallel_k16_checkpoint_layer0_final",
+      "1": "checkpoints/jose/tc_parallel_k16_tc_parallel_k16_checkpoint_layer1_final",
+      "3": "checkpoints/jose/tc_parallel_k16_tc_parallel_k16_checkpoint_layer3_final",
+      "2": "checkpoints/jose/tc_parallel_k16_tc_parallel_k16_checkpoint_layer2_final"
+    },
+    "cascading_16": {
+      "0": "checkpoints/jose/tc_cascading_k16_tc_cascading_k16_checkpoint_layer0_final",
+      "1": "checkpoints/jose/tc_cascading_k16_tc_cascading_k16_checkpoint_layer1_final",
+      "2": "checkpoints/jose/tc_cascading_k16_tc_cascading_k16_checkpoint_layer2_final",
+      "3": "checkpoints/jose/tc_cascading_k16_tc_cascading_k16_checkpoint_layer3_final"
+    },
+    "independent_32": {
+      "0": "checkpoints/jose/tc_independent_k32_tc_independent_k32_checkpoint_layer0_final",
+      "1": "checkpoints/jose/tc_independent_k32_tc_independent_k32_checkpoint_layer1_final",
+      "2": "checkpoints/jose/tc_independent_k32_tc_independent_k32_checkpoint_layer2_final",
+      "3": "checkpoints/jose/tc_independent_k32_tc_independent_k32_checkpoint_layer3_final"
+    },
+    "parallel_32": {
+      "0": "checkpoints/jose/tc_parallel_k32_tc_parallel_k32_checkpoint_layer0_final",
+      "1": "checkpoints/jose/tc_parallel_k32_tc_parallel_k32_checkpoint_layer1_final",
+      "2": "checkpoints/jose/tc_parallel_k32_tc_parallel_k32_checkpoint_layer2_final",
+      "3": "checkpoints/jose/tc_parallel_k32_tc_parallel_k32_checkpoint_layer3_final"
+    },
+    "cascading_32": {
+      "0": "checkpoints/jose/tc_cascading_k32_tc_cascading_k32_checkpoint_layer0_final",
+      "1": "checkpoints/jose/tc_cascading_k32_tc_cascading_k32_checkpoint_layer1_final",
+      "2": "checkpoints/jose/tc_cascading_k32_tc_cascading_k32_checkpoint_layer2_final",
+      "3": "checkpoints/jose/tc_cascading_k32_tc_cascading_k32_checkpoint_layer3_final"
+    },
+    "parallel_64": {
+      "0": "checkpoints/jose/tc_parallel_k64_tc_parallel_k64_checkpoint_layer0_final",
+      "1": "checkpoints/jose/tc_parallel_k64_tc_parallel_k64_checkpoint_layer1_final",
+      "2": "checkpoints/jose/tc_parallel_k64_tc_parallel_k64_checkpoint_layer2_final",
+      "3": "checkpoints/jose/tc_parallel_k64_tc_parallel_k64_checkpoint_layer3_final"
+    },
+    "cascading_64": {
+      "0": "checkpoints/jose/tc_cascading_k64_tc_cascading_k64_checkpoint_layer0_final",
+      "1": "checkpoints/jose/tc_cascading_k64_tc_cascading_k64_checkpoint_layer1_final",
+      "2": "checkpoints/jose/tc_cascading_k64_tc_cascading_k64_checkpoint_layer2_final",
+      "3": "checkpoints/jose/tc_cascading_k64_tc_cascading_k64_checkpoint_layer3_final"
+    }
+  },
+  "clt": {
+    "cascading_8": "checkpoints/jose/clt_cascading_k8_final",
+    "parallel_8": "checkpoints/jose/clt_parallel_k8_final",
+    "parallel_16": "checkpoints/jose/clt_parallel_k16_final",
+    "cascading_16": "checkpoints/jose/clt_cascading_k16_final",
+    "parallel_32": "checkpoints/jose/clt_parallel_k32_final",
+    "cascading_32": "checkpoints/jose/clt_cascading_k32_final",
+    "parallel_64": "checkpoints/jose/clt_parallel_k64_final"
+  }
+}

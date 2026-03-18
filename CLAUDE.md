@@ -55,6 +55,12 @@ Each experiment lives in `experiments/exp_XXX_<name>/` with outputs in `output/`
 | 016 | train_clt_pile_e2e_cascading | Train CLT e2e with cascading (each layer's reconstruction feeds into the next) |
 | 017 | train_transcoder_cascading_e2e | Train independent per-layer transcoders with cascading e2e (joint KL loss) |
 | 018 | e2e_sweep | GPU-queued sweep: transcoders + CLTs × cascading/parallel × k=16/32/64 (12 jobs) |
+| 032 | local_sweep_jose | Local MSE training sweep on jose's target model (t-9d2b8f02): TCs + CLTs × k=8/16/32/64 |
+| 033 | e2e_sweep_jose_32k | E2E training sweep on jose's target model with 32k dict size |
+| 035 | pareto_jose | Pareto from jose's trained checkpoints (pile_local_sweep_jose), jose SPD (s-55ea3f9b), neuron baseline |
+| 036 | pareto_jose_32k | Same as exp_035 but with 32k dict_size models (pile_local_sweep_jose_32k) |
+| 037 | pareto_jose_per_layer | Per-layer Pareto: replace one MLP at a time, 2x2 grid (layers 0-3) |
+| 038 | retrain_tc_jose | Retrain 4k TCs on jose's model with per-layer wandb logging (loss, L0, dead features per layer) |
 
 ## Key Patterns
 

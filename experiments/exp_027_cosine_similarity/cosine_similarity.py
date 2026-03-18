@@ -118,7 +118,7 @@ def get_tc_directions_alive(tc, base_model, batches) -> tuple[torch.Tensor, np.n
 
         use_pre_enc_bias = tc.cfg.pre_enc_bias and tc.cfg.input_size == tc.cfg.output_size
         x_enc = flat - tc.b_dec if use_pre_enc_bias else flat
-        acts = F.relu(x_enc @ tc.W_enc)
+        acts = F.relu(x_enc @ tc.W_enc + tc.b_enc)
 
         fire_counts += (acts > 0).float().sum(dim=0)
         total_positions += flat.shape[0]

@@ -459,7 +459,7 @@ def compute_all_transcoder_aurocs(
             flat = mlp_in.reshape(-1, tc.cfg.input_size)
             use_pre_enc_bias = tc.cfg.pre_enc_bias and tc.input_size == tc.output_size
             x_enc = flat - tc.b_dec if use_pre_enc_bias else flat
-            acts = F.relu(x_enc @ tc.W_enc)  # (B*S, dict_size)
+            acts = F.relu(x_enc @ tc.W_enc + tc.b_enc)  # (B*S, dict_size)
             acts_2d = acts.reshape(mlp_in.shape[0], mlp_in.shape[1], -1)  # (B, S, dict_size)
             max_acts = acts_2d.max(dim=1).values  # (B, dict_size)
             scores_per_layer[layer_idx][i : i + len(batch_texts)] = max_acts.cpu().numpy()
@@ -669,7 +669,7 @@ def collect_topic_batches(
 def _transcoder_batchtopk_recon(tc, x_in, k):
     use_pre_enc_bias = tc.cfg.pre_enc_bias and tc.input_size == tc.output_size
     x_enc = x_in - tc.b_dec if use_pre_enc_bias else x_in
-    acts = F.relu(x_enc @ tc.W_enc)
+    acts = F.relu(x_enc @ tc.W_enc + tc.b_enc)
     n_keep = k * acts.shape[0]
     if n_keep < acts.numel():
         topk = torch.topk(acts.flatten(), n_keep, dim=-1)
