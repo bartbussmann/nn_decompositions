@@ -1,17 +1,16 @@
 """Interactive Gradio dashboard for SPD-SAE feature interaction.
 
-Loads pre-computed data from collect_dashboard_data.py and displays:
-- Pair selection by layer and rank
-- Conditional probability stats
-- Side-by-side top activating examples with all activating tokens highlighted
+Browse by SPD component: select a layer and component, see its top 10 associated
+SAE features ranked by combined lift, with side-by-side activating examples.
 
 Usage:
     python experiments/exp_042_spd_sae_interaction/dashboard_app.py
-    python experiments/exp_042_spd_sae_interaction/dashboard_app.py --port 7861
+    python experiments/exp_042_spd_sae_interaction/dashboard_app.py --share
 """
 
 import argparse
 import json
+from collections import defaultdict
 from pathlib import Path
 
 import gradio as gr
@@ -19,15 +18,26 @@ import gradio as gr
 DATA_PATH = Path("experiments/exp_042_spd_sae_interaction/output/dashboard_data.json")
 
 
-def load_data():
-    with open(DATA_PATH) as f:
+def load_and_index(data_path: Path):
+    """Load data and build index: {layer: {spd_idx: [pairs sorted by lift]}}."""
+    with open(data_path) as f:
         raw = json.load(f)
-    return {int(k): v for k, v in raw.items()}
+    data = {int(k): v for k, v in raw.items()}
+
+    index = {}
+    for layer_idx, pairs in data.items():
+        by_spd = defaultdict(list)
+        for pair in pairs:
+            by_spd[pair["spd_global_idx"]].append(pair)
+        # Sort each SPD component's pairs by combined lift descending
+        for spd_idx in by_spd:
+            by_spd[spd_idx].sort(key=lambda p: -p["combined_lift"])
+        index[layer_idx] = dict(by_spd)
+
+    return data, index
 
 
 def format_highlighted_sequence(tokens: list[str], activations: list[float], max_tokens: int = 80) -> str:
-    """Format a token sequence as HTML with activation-based highlighting."""
-    # Find the peak position and show a window around it
     peak_pos = max(range(len(activations)), key=lambda i: activations[i])
     start = max(0, peak_pos - max_tokens // 2)
     end = min(len(tokens), start + max_tokens)
@@ -35,7 +45,6 @@ def format_highlighted_sequence(tokens: list[str], activations: list[float], max
 
     tokens = tokens[start:end]
     acts = activations[start:end]
-
     max_act = max(acts) if max(acts) > 0 else 1.0
 
     parts = []
@@ -43,10 +52,7 @@ def format_highlighted_sequence(tokens: list[str], activations: list[float], max
         escaped = tok.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         if act > 0:
             intensity = min(act / max_act, 1.0)
-            # Yellow-orange gradient
-            r = 255
-            g = int(255 - intensity * 100)
-            b = int(200 - intensity * 200)
+            r, g, b = 255, int(255 - intensity * 100), int(200 - intensity * 200)
             a = 0.3 + 0.7 * intensity
             weight = "bold" if intensity > 0.5 else "normal"
             parts.append(
@@ -55,22 +61,25 @@ def format_highlighted_sequence(tokens: list[str], activations: list[float], max
             )
         else:
             parts.append(f'<span style="color:#888">{escaped}</span>')
-
     return "".join(parts)
 
 
-def render_pair(data, layer_idx, pair_idx):
-    layers = sorted(data.keys())
-    if layer_idx not in data:
-        return "No data for this layer", "", "", ""
+def render_examples(examples: list[dict], color: str, max_examples: int = 10) -> str:
+    html = '<div style="font-family:monospace;font-size:12px;line-height:1.8">'
+    for i, ex in enumerate(examples[:max_examples]):
+        seq_html = format_highlighted_sequence(ex["tokens"], ex["activations"])
+        html += (
+            f'<div style="margin:6px 0;padding:6px 8px;background:#fafafa;'
+            f'border-radius:4px;border-left:3px solid {color}">'
+            f'<span style="color:#999;font-size:10px">#{i+1} (max={ex["max_activation"]:.3f})</span>'
+            f'<br>{seq_html}</div>'
+        )
+    html += '</div>'
+    return html
 
-    pairs = data[layer_idx]
-    if pair_idx >= len(pairs):
-        return "Pair index out of range", "", "", ""
 
-    pair = pairs[pair_idx]
-
-    # Stats
+def render_pair_detail(pair: dict) -> tuple[str, str, str]:
+    """Render stats + SPD examples + SAE examples for one pair."""
     stats_html = f"""
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:12px 0">
         <div style="background:#f7fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px">
@@ -96,88 +105,123 @@ def render_pair(data, layer_idx, pair_idx):
         Combined lift: <b style="font-size:18px;color:#6b21a8">{pair['combined_lift']:.1f}x</b>
     </div>
     """
-
-    # SPD examples
-    spd_examples_html = '<div style="font-family:monospace;font-size:12px;line-height:1.8">'
-    for i, ex in enumerate(pair["spd_examples"][:10]):
-        seq_html = format_highlighted_sequence(ex["tokens"], ex["activations"])
-        spd_examples_html += f'<div style="margin:6px 0;padding:6px 8px;background:#fafafa;border-radius:4px;border-left:3px solid #2b6cb0"><span style="color:#999;font-size:10px">#{i+1} (max={ex["max_activation"]:.3f})</span><br>{seq_html}</div>'
-    spd_examples_html += '</div>'
-
-    # SAE examples
-    sae_examples_html = '<div style="font-family:monospace;font-size:12px;line-height:1.8">'
-    for i, ex in enumerate(pair["sae_examples"][:10]):
-        seq_html = format_highlighted_sequence(ex["tokens"], ex["activations"])
-        sae_examples_html += f'<div style="margin:6px 0;padding:6px 8px;background:#fafafa;border-radius:4px;border-left:3px solid #c05621"><span style="color:#999;font-size:10px">#{i+1} (max={ex["max_activation"]:.3f})</span><br>{seq_html}</div>'
-    sae_examples_html += '</div>'
-
-    title = f"Layer {layer_idx} — Pair #{pair_idx+1}: SPD c_fc[{pair['spd_global_idx']}] ↔ SAE[{pair['sae_global_idx']}]"
-
-    return title, stats_html, spd_examples_html, sae_examples_html
+    spd_html = render_examples(pair["spd_examples"], "#2b6cb0")
+    sae_html = render_examples(pair["sae_examples"], "#c05621")
+    return stats_html, spd_html, sae_html
 
 
-def build_app(data):
+def build_app(data, index):
     layers = sorted(data.keys())
 
-    def get_pair_choices(layer_idx):
-        pairs = data.get(layer_idx, [])
+    def get_spd_choices(layer_idx):
+        spd_components = sorted(index.get(layer_idx, {}).keys())
+        choices = []
+        for spd_idx in spd_components:
+            pairs = index[layer_idx][spd_idx]
+            top_lift = pairs[0]["combined_lift"]
+            fire_rate = pairs[0]["spd_fire_rate"]
+            choices.append(f"c_fc[{spd_idx}] (fire={fire_rate:.4f}, top_lift={top_lift:.1f}x, {len(pairs)} SAE matches)")
+        return choices
+
+    def get_sae_choices(layer_idx, spd_idx):
+        pairs = index.get(layer_idx, {}).get(spd_idx, [])
         return [
-            f"#{i+1}: SPD[{p['spd_global_idx']}] ↔ SAE[{p['sae_global_idx']}] (lift={p['combined_lift']:.1f}x)"
-            for i, p in enumerate(pairs)
+            f"SAE[{p['sae_global_idx']}] (lift={p['combined_lift']:.1f}x, "
+            f"P(SPD|SAE)={p['p_spd_given_sae']:.3f}, P(SAE|SPD)={p['p_sae_given_spd']:.3f})"
+            for p in pairs[:10]
         ]
+
+    def parse_spd_idx(spd_str):
+        # "c_fc[123] (...)" -> 123
+        return int(spd_str.split("[")[1].split("]")[0])
+
+    def parse_sae_rank(sae_str):
+        # "SAE[456] (...)" -> find rank in the list
+        sae_idx = int(sae_str.split("[")[1].split("]")[0])
+        return sae_idx
 
     def on_layer_change(layer_str):
         layer_idx = int(layer_str.split()[-1])
-        choices = get_pair_choices(layer_idx)
-        return gr.update(choices=choices, value=choices[0] if choices else None)
+        spd_choices = get_spd_choices(layer_idx)
+        sae_choices = get_sae_choices(layer_idx, parse_spd_idx(spd_choices[0])) if spd_choices else []
+        return (
+            gr.update(choices=spd_choices, value=spd_choices[0] if spd_choices else None),
+            gr.update(choices=sae_choices, value=sae_choices[0] if sae_choices else None),
+        )
 
-    def on_pair_select(layer_str, pair_str):
-        if not pair_str:
-            return "", "", "", ""
+    def on_spd_change(layer_str, spd_str):
+        if not spd_str:
+            return gr.update(choices=[], value=None), "", "", ""
         layer_idx = int(layer_str.split()[-1])
-        pair_idx = int(pair_str.split(":")[0].strip("#")) - 1
-        return render_pair(data, layer_idx, pair_idx)
+        spd_idx = parse_spd_idx(spd_str)
+        sae_choices = get_sae_choices(layer_idx, spd_idx)
+        # Auto-select first SAE and render
+        if sae_choices:
+            pair = index[layer_idx][spd_idx][0]
+            stats, spd_ex, sae_ex = render_pair_detail(pair)
+            return gr.update(choices=sae_choices, value=sae_choices[0]), stats, spd_ex, sae_ex
+        return gr.update(choices=[], value=None), "", "", ""
+
+    def on_sae_change(layer_str, spd_str, sae_str):
+        if not spd_str or not sae_str:
+            return "", "", ""
+        layer_idx = int(layer_str.split()[-1])
+        spd_idx = parse_spd_idx(spd_str)
+        sae_idx = parse_sae_rank(sae_str)
+        # Find the pair
+        for pair in index.get(layer_idx, {}).get(spd_idx, []):
+            if pair["sae_global_idx"] == sae_idx:
+                return render_pair_detail(pair)
+        return "", "", ""
 
     with gr.Blocks(title="SPD-SAE Interaction Dashboard") as app:
         gr.Markdown("# SPD Component — SAE Feature Interaction Dashboard")
-        gr.Markdown("Explore how SPD components relate to residual stream SAE features. "
-                    "Pairs ranked by combined lift (geometric mean of conditional probability ratios).")
+        gr.Markdown(
+            "Select a **layer** and **SPD component** to see its top associated SAE features. "
+            "Then select an **SAE feature** to compare activating examples side by side."
+        )
 
         with gr.Row():
-            layer_dropdown = gr.Dropdown(
+            layer_dd = gr.Dropdown(
                 choices=[f"Layer {l}" for l in layers],
                 value=f"Layer {layers[0]}",
-                label="Layer",
-                scale=1,
+                label="Layer", scale=1,
             )
-            pair_dropdown = gr.Dropdown(
-                choices=get_pair_choices(layers[0]),
-                value=get_pair_choices(layers[0])[0] if get_pair_choices(layers[0]) else None,
-                label="Pair",
-                scale=3,
+            spd_dd = gr.Dropdown(
+                choices=get_spd_choices(layers[0]),
+                value=get_spd_choices(layers[0])[0] if get_spd_choices(layers[0]) else None,
+                label="SPD Component", scale=2,
+            )
+            sae_dd = gr.Dropdown(
+                choices=get_sae_choices(
+                    layers[0],
+                    parse_spd_idx(get_spd_choices(layers[0])[0]) if get_spd_choices(layers[0]) else -1,
+                ),
+                value=None,
+                label="SAE Feature (top 10 by lift)", scale=3,
             )
 
-        title_md = gr.Markdown("", elem_classes=["pair-title"])
-        stats_html = gr.HTML("")
+        stats_out = gr.HTML("")
 
         with gr.Row():
             with gr.Column():
                 gr.Markdown("### SPD Component — Top Activating Sequences")
-                spd_html = gr.HTML("")
+                spd_out = gr.HTML("")
             with gr.Column():
                 gr.Markdown("### SAE Feature — Top Activating Sequences")
-                sae_html = gr.HTML("")
+                sae_out = gr.HTML("")
 
-        layer_dropdown.change(on_layer_change, [layer_dropdown], [pair_dropdown])
-        pair_dropdown.change(on_pair_select, [layer_dropdown, pair_dropdown],
-                             [title_md, stats_html, spd_html, sae_html])
+        layer_dd.change(on_layer_change, [layer_dd], [spd_dd, sae_dd])
+        spd_dd.change(on_spd_change, [layer_dd, spd_dd], [sae_dd, stats_out, spd_out, sae_out])
+        sae_dd.change(on_sae_change, [layer_dd, spd_dd, sae_dd], [stats_out, spd_out, sae_out])
 
         # Initial render
-        app.load(
-            on_pair_select,
-            [layer_dropdown, pair_dropdown],
-            [title_md, stats_html, spd_html, sae_html],
-        )
+        init_spd_choices = get_spd_choices(layers[0])
+        if init_spd_choices:
+            init_spd_idx = parse_spd_idx(init_spd_choices[0])
+            init_sae_choices = get_sae_choices(layers[0], init_spd_idx)
+            if init_sae_choices:
+                sae_dd.value = init_sae_choices[0]
 
     return app
 
@@ -191,12 +235,13 @@ def main():
 
     data_path = Path(args.data)
     print(f"Loading data from {data_path}...")
-    with open(data_path) as f:
-        raw = json.load(f)
-    data = {int(k): v for k, v in raw.items()}
-    print(f"Loaded {sum(len(v) for v in data.values())} pairs across {len(data)} layers")
+    data, index = load_and_index(data_path)
+    for layer_idx in sorted(data.keys()):
+        n_spd = len(index[layer_idx])
+        n_pairs = sum(len(v) for v in index[layer_idx].values())
+        print(f"  Layer {layer_idx}: {n_spd} SPD components, {n_pairs} pairs")
 
-    app = build_app(data)
+    app = build_app(data, index)
     app.launch(server_name="0.0.0.0", server_port=args.port, share=args.share)
 
 
