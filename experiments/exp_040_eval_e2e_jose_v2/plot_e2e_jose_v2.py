@@ -39,20 +39,16 @@ MODEL_STYLES = {
     "tc_cascading":    dict(marker="o", color="#2b6cb0", linewidth=1.8, markersize=6, linestyle="-"),
     "tc_parallel":     dict(marker="s", color="#c05621", linewidth=1.8, markersize=6, linestyle="-"),
     "tc_independent":  dict(marker="^", color="#2f855a", linewidth=1.8, markersize=6, linestyle="-"),
-    "tc_local_mse":    dict(marker="v", color="#b83280", linewidth=1.8, markersize=6, linestyle="-"),
     "clt_cascading":   dict(marker="o", color="#2b6cb0", linewidth=1.8, markersize=6, linestyle="--"),
     "clt_parallel":    dict(marker="s", color="#c05621", linewidth=1.8, markersize=6, linestyle="--"),
-    "clt_local_mse":   dict(marker="v", color="#b83280", linewidth=1.8, markersize=6, linestyle="--"),
 }
 
 LABEL_MAP = {
     "tc_cascading": "TC cascading",
     "tc_parallel": "TC parallel",
     "tc_independent": "TC independent",
-    "tc_local_mse": "TC local MSE",
     "clt_cascading": "CLT cascading",
     "clt_parallel": "CLT parallel",
-    "clt_local_mse": "CLT local MSE",
 }
 
 EVAL_MODES = [
@@ -63,8 +59,8 @@ EVAL_MODES = [
 
 MATCHED_MODELS = {
     "ce_cascading": {"tc_cascading", "clt_cascading"},
-    "ce_parallel":  {"tc_parallel", "clt_parallel", "tc_local_mse", "clt_local_mse"},
-    "ce_single":    {"tc_independent", "tc_local_mse", "clt_local_mse"},
+    "ce_parallel":  {"tc_parallel", "clt_parallel"},
+    "ce_single":    {"tc_independent"},
 }
 
 SPD_COLOR = "#6b21a8"
@@ -153,8 +149,8 @@ def plot_three_panel(baseline_ce, results, spd_results, save_path, title_suffix=
         for h, l in zip(*ax.get_legend_handles_labels()):
             seen.add(l)
 
-    for model_name in ["tc_cascading", "tc_parallel", "tc_independent", "tc_local_mse",
-                       "clt_cascading", "clt_parallel", "clt_local_mse"]:
+    for model_name in ["tc_cascading", "tc_parallel", "tc_independent",
+                       "clt_cascading", "clt_parallel"]:
         if LABEL_MAP[model_name] not in seen:
             continue
         s = MODEL_STYLES[model_name]
