@@ -27,3 +27,5 @@ wandb/
 # OS
 .DS_Store
 Thumbs.db
+experiments/exp_042_spd_sae_interaction/output/dashboard_data_v2.json
+experiments/exp_042_spd_sae_interaction/output/dashboard_data.json

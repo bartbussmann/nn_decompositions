@@ -1,15 +1,13 @@
 """Collect data for the interactive SPD-SAE dashboard.
 
-Saves per-layer data to a .pt file containing:
-- Top pairs ranked by combined lift
-- Top activating examples with full-sequence activation values
-- Conditional probability statistics
+For every SPD MLP component (c_fc + down_proj, all layers), finds the top 10
+SAE features with highest combined lift across ALL residual stream SAE layers.
 
-Excludes features/components with firing rate > 0.9.
+Saves data as JSON for the Gradio dashboard.
 
 Usage:
     python experiments/exp_042_spd_sae_interaction/collect_dashboard_data.py
-    python experiments/exp_042_spd_sae_interaction/collect_dashboard_data.py --layers 1 --n_batches 100
+    python experiments/exp_042_spd_sae_interaction/collect_dashboard_data.py --n_batches 100
 """
 
 import argparse
@@ -22,7 +20,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import torch
-import wandb
 from datasets import load_dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer
@@ -42,6 +39,7 @@ BATCH_SIZE = 8
 SEQ_LEN = 512
 TOP_K_EXAMPLES = 20
 MAX_FIRE_RATE = 0.9
+TOP_SAE_PER_COMPONENT = 10
 
 
 def load_sae(checkpoint_dir: Path) -> BatchTopKTranscoder:
@@ -58,18 +56,39 @@ def load_sae(checkpoint_dir: Path) -> BatchTopKTranscoder:
 
 
 @torch.no_grad()
-def collect_layer_data(
-    spd_model, sae, base_model, tokenizer, layer_idx: int, n_batches: int,
-    top_n_pairs: int = 50,
-):
-    cfc_name = f"h.{layer_idx}.mlp.c_fc"
-    n_cfc = spd_model.module_to_c[cfc_name]
-    sae_dict = sae.cfg.dict_size
+def collect_all_data(spd_model, saes: dict[int, BatchTopKTranscoder], base_model, tokenizer, n_batches: int):
+    """Collect co-activation data for ALL SPD components vs ALL SAE features."""
+
+    # Enumerate all SPD MLP modules
+    spd_modules = []
+    for layer in LAYERS:
+        for mod_type in ["c_fc", "down_proj"]:
+            mod_name = f"h.{layer}.mlp.{mod_type}"
+            if mod_name in spd_model.module_to_c:
+                spd_modules.append((layer, mod_type, mod_name))
+
+    # Build flat SPD component index: (module_name, component_local_idx) -> flat_idx
+    spd_flat = []  # list of (layer, mod_type, mod_name, local_idx)
+    spd_offsets = {}  # mod_name -> start offset in flat index
+    for layer, mod_type, mod_name in spd_modules:
+        spd_offsets[mod_name] = len(spd_flat)
+        n_c = spd_model.module_to_c[mod_name]
+        for c in range(n_c):
+            spd_flat.append((layer, mod_type, mod_name, c))
+    n_spd_total = len(spd_flat)
+
+    # SAE flat index: (sae_layer, feature_idx) -> flat_idx
+    sae_dict = saes[LAYERS[0]].cfg.dict_size
+    n_sae_total = len(LAYERS) * sae_dict
+    # sae flat idx = sae_layer_idx * sae_dict + feature_idx
+
+    print(f"  Total SPD components: {n_spd_total}")
+    print(f"  Total SAE features: {n_sae_total} ({len(LAYERS)} layers x {sae_dict})")
 
     # Pass 1: firing rates
-    print(f"  Pass 1: firing rates...")
-    spd_fire_count = torch.zeros(n_cfc, device="cpu")
-    sae_fire_count = torch.zeros(sae_dict, device="cpu")
+    print(f"  Pass 1: firing rates over {n_batches} batches...")
+    spd_fire_count = torch.zeros(n_spd_total, dtype=torch.float64)
+    sae_fire_count = torch.zeros(n_sae_total, dtype=torch.float64)
     n_tokens_total = 0
 
     dataset = load_dataset("danbraunai/pile-uncopyrighted-tok", split="train", streaming=True)
@@ -87,144 +106,164 @@ def collect_layer_data(
             batch_ids.append(ids[:SEQ_LEN])
         input_ids = torch.stack(batch_ids).to(DEVICE)
         all_input_ids.append(input_ids)
+        B, S = input_ids.shape
+        n_tokens_total += B * S
 
-        bs = input_ids.shape[0] * input_ids.shape[1]
-        n_tokens_total += bs
-
+        # SPD
         out = spd_model(input_ids, cache_type="input")
         ci = spd_model.calc_causal_importances(out.cache, sampling="continuous")
-        ci_cfc = ci.lower_leaky[cfc_name].reshape(-1, n_cfc)
-        spd_fire_count += (ci_cfc > 0).float().sum(dim=0).cpu()
+        for layer, mod_type, mod_name in spd_modules:
+            ci_vals = ci.lower_leaky[mod_name].reshape(-1, spd_model.module_to_c[mod_name])
+            offset = spd_offsets[mod_name]
+            n_c = ci_vals.shape[1]
+            spd_fire_count[offset:offset + n_c] += (ci_vals > 0).float().sum(dim=0).cpu().double()
 
+        # SAE (all layers)
         captured = {}
-        def _make_hook(li):
-            def _hook(_mod, _inp, out):
-                captured[li] = out.detach()
-            return _hook
-        h = base_model.h[layer_idx].register_forward_hook(_make_hook(layer_idx))
+        hooks = []
+        for l in LAYERS:
+            def _make_hook(li):
+                def _hook(_mod, _inp, out):
+                    captured[li] = out.detach()
+                return _hook
+            hooks.append(base_model.h[l].register_forward_hook(_make_hook(l)))
         base_model(input_ids)
-        h.remove()
-        resid = captured[layer_idx].reshape(-1, 768)
-        sae_acts = sae.encode(resid).float()
-        sae_fire_count += (sae_acts > 0).float().sum(dim=0).cpu()
+        for h in hooks:
+            h.remove()
 
-    spd_fire_rate = spd_fire_count / n_tokens_total
-    sae_fire_rate = sae_fire_count / n_tokens_total
+        for li, l in enumerate(LAYERS):
+            resid = captured[l].reshape(-1, 768)
+            acts = saes[l].encode(resid).float()
+            sae_offset = li * sae_dict
+            sae_fire_count[sae_offset:sae_offset + sae_dict] += (acts > 0).float().sum(dim=0).cpu().double()
 
-    # Filter: exclude features with fire rate > MAX_FIRE_RATE
-    spd_mask = spd_fire_rate <= MAX_FIRE_RATE
-    sae_mask = sae_fire_rate <= MAX_FIRE_RATE
-    print(f"  Filtered: {spd_mask.sum()}/{n_cfc} SPD, {sae_mask.sum()}/{sae_dict} SAE (fire rate <= {MAX_FIRE_RATE})")
+    spd_fire_rate = (spd_fire_count / n_tokens_total).float()
+    sae_fire_rate = (sae_fire_count / n_tokens_total).float()
 
-    # Select top by fire rate among the filtered
-    spd_rates_filtered = spd_fire_rate.clone()
-    spd_rates_filtered[~spd_mask] = -1
-    sae_rates_filtered = sae_fire_rate.clone()
-    sae_rates_filtered[~sae_mask] = -1
+    # Filter by fire rate
+    spd_valid = spd_fire_rate <= MAX_FIRE_RATE
+    sae_valid = sae_fire_rate <= MAX_FIRE_RATE
+    print(f"  Valid: {spd_valid.sum()}/{n_spd_total} SPD, {sae_valid.sum()}/{n_sae_total} SAE")
 
-    top_spd_indices = spd_rates_filtered.topk(min(200, spd_mask.sum().item())).indices
-    top_sae_indices = sae_rates_filtered.topk(min(200, sae_mask.sum().item())).indices
-    n_spd = len(top_spd_indices)
-    n_sae = len(top_sae_indices)
+    # Select top SPD components by fire rate (among valid)
+    spd_rates_masked = spd_fire_rate.clone()
+    spd_rates_masked[~spd_valid] = -1
+    n_top_spd = min(500, spd_valid.sum().item())
+    top_spd_flat = spd_rates_masked.topk(n_top_spd).indices  # flat indices
 
-    print(f"  Pass 2: co-occurrences + examples ({n_spd} SPD x {n_sae} SAE)...")
+    # Select top SAE features by fire rate (among valid)
+    sae_rates_masked = sae_fire_rate.clone()
+    sae_rates_masked[~sae_valid] = -1
+    n_top_sae = min(500, sae_valid.sum().item())
+    top_sae_flat = sae_rates_masked.topk(n_top_sae).indices
 
-    # Co-occurrence counts
-    both_active = torch.zeros(n_spd, n_sae, dtype=torch.float64)
-    spd_on_sae_off = torch.zeros(n_spd, n_sae, dtype=torch.float64)
-    spd_off_sae_on = torch.zeros(n_spd, n_sae, dtype=torch.float64)
-    neither = torch.zeros(n_spd, n_sae, dtype=torch.float64)
+    print(f"  Using {n_top_spd} SPD x {n_top_sae} SAE for co-occurrence...")
 
-    # Top activating examples: store full sequence activations
-    # heap entry: (max_act_in_seq, global_token_idx, token_ids_list, act_values_list)
-    spd_top = {i: [] for i in range(n_spd)}
-    sae_top = {i: [] for i in range(n_sae)}
+    # Pass 2: co-occurrence + examples
+    print(f"  Pass 2: co-occurrences + top examples...")
+    both = torch.zeros(n_top_spd, n_top_sae, dtype=torch.float64)
+    spd_on_sae_off = torch.zeros(n_top_spd, n_top_sae, dtype=torch.float64)
+    spd_off_sae_on = torch.zeros(n_top_spd, n_top_sae, dtype=torch.float64)
+    neither = torch.zeros(n_top_spd, n_top_sae, dtype=torch.float64)
+
+    spd_top_examples = {i: [] for i in range(n_top_spd)}
+    sae_top_examples = {i: [] for i in range(n_top_sae)}
 
     for batch_idx, input_ids in enumerate(tqdm(all_input_ids, desc="Pass 2")):
         B, S = input_ids.shape
 
+        # SPD CI
         out = spd_model(input_ids, cache_type="input")
         ci = spd_model.calc_causal_importances(out.cache, sampling="continuous")
-        ci_cfc = ci.lower_leaky[cfc_name]  # (B, S, n_cfc)
 
+        # Build flat SPD activations for this batch
+        spd_all = torch.zeros(B * S, n_spd_total, device="cpu")
+        for layer, mod_type, mod_name in spd_modules:
+            ci_vals = ci.lower_leaky[mod_name].reshape(-1, spd_model.module_to_c[mod_name]).cpu().float()
+            offset = spd_offsets[mod_name]
+            n_c = ci_vals.shape[1]
+            spd_all[:, offset:offset + n_c] = ci_vals
+
+        # SAE activations (all layers)
         captured = {}
-        def _make_hook(li):
-            def _hook(_mod, _inp, out):
-                captured[li] = out.detach()
-            return _hook
-        h = base_model.h[layer_idx].register_forward_hook(_make_hook(layer_idx))
+        hooks = []
+        for l in LAYERS:
+            def _make_hook(li):
+                def _hook(_mod, _inp, out):
+                    captured[li] = out.detach()
+                return _hook
+            hooks.append(base_model.h[l].register_forward_hook(_make_hook(l)))
         base_model(input_ids)
-        h.remove()
-        resid = captured[layer_idx].reshape(-1, 768)
-        sae_acts = sae.encode(resid).float().reshape(B, S, -1)  # (B, S, sae_dict)
+        for h in hooks:
+            h.remove()
 
-        # Subset
-        ci_sub = ci_cfc[:, :, top_spd_indices].cpu()  # (B, S, n_spd)
-        sae_sub = sae_acts[:, :, top_sae_indices].cpu()  # (B, S, n_sae)
+        sae_all = torch.zeros(B * S, n_sae_total, device="cpu")
+        for li, l in enumerate(LAYERS):
+            resid = captured[l].reshape(-1, 768)
+            acts = saes[l].encode(resid).float().cpu()
+            sae_offset = li * sae_dict
+            sae_all[:, sae_offset:sae_offset + sae_dict] = acts
 
-        # Co-occurrence (flatten over B*S)
-        ci_flat = ci_sub.reshape(-1, n_spd)
-        sae_flat = sae_sub.reshape(-1, n_sae)
-        s_on = ci_flat > 0
-        a_on = sae_flat > 0
+        # Subset to top features
+        spd_sub = spd_all[:, top_spd_flat]  # (B*S, n_top_spd)
+        sae_sub = sae_all[:, top_sae_flat]  # (B*S, n_top_sae)
 
-        # Vectorized co-occurrence
-        both_active += (s_on.float().T @ a_on.float()).double()
+        s_on = spd_sub > 0
+        a_on = sae_sub > 0
+
+        both += (s_on.float().T @ a_on.float()).double()
         spd_on_sae_off += (s_on.float().T @ (~a_on).float()).double()
         spd_off_sae_on += ((~s_on).float().T @ a_on.float()).double()
         neither += ((~s_on).float().T @ (~a_on).float()).double()
 
-        # Top examples: per sequence
+        # Top examples per sequence
         token_ids_cpu = input_ids.cpu()
+        spd_seq = spd_sub.reshape(B, S, n_top_spd)
+        sae_seq = sae_sub.reshape(B, S, n_top_sae)
+
         for b in range(B):
             seq_tokens = token_ids_cpu[b].tolist()
-
-            for i in range(n_spd):
-                acts_seq = ci_sub[b, :, i]  # (S,)
-                max_val = acts_seq.max().item()
+            for i in range(n_top_spd):
+                acts = spd_seq[b, :, i]
+                max_val = acts.max().item()
                 if max_val > 0:
-                    heap = spd_top[i]
-                    entry = (max_val, batch_idx * B + b, seq_tokens, acts_seq.tolist())
+                    heap = spd_top_examples[i]
+                    entry = (max_val, batch_idx * B + b, seq_tokens, acts.tolist())
                     if len(heap) < TOP_K_EXAMPLES:
                         heapq.heappush(heap, entry)
                     elif max_val > heap[0][0]:
                         heapq.heapreplace(heap, entry)
-
-            for i in range(n_sae):
-                acts_seq = sae_sub[b, :, i]  # (S,)
-                max_val = acts_seq.max().item()
+            for i in range(n_top_sae):
+                acts = sae_seq[b, :, i]
+                max_val = acts.max().item()
                 if max_val > 0:
-                    heap = sae_top[i]
-                    entry = (max_val, batch_idx * B + b, seq_tokens, acts_seq.tolist())
+                    heap = sae_top_examples[i]
+                    entry = (max_val, batch_idx * B + b, seq_tokens, acts.tolist())
                     if len(heap) < TOP_K_EXAMPLES:
                         heapq.heappush(heap, entry)
                     elif max_val > heap[0][0]:
                         heapq.heapreplace(heap, entry)
 
     # Conditional probabilities
-    sae_total_on = both_active + spd_off_sae_on
+    sae_total_on = both + spd_off_sae_on
     sae_total_off = spd_on_sae_off + neither
-    spd_total_on = both_active + spd_on_sae_off
+    spd_total_on = both + spd_on_sae_off
     spd_total_off = spd_off_sae_on + neither
 
-    p_spd_given_sae = both_active / sae_total_on.clamp(min=1)
+    p_spd_given_sae = both / sae_total_on.clamp(min=1)
     p_spd_given_not_sae = spd_on_sae_off / sae_total_off.clamp(min=1)
     lift_spd = p_spd_given_sae / p_spd_given_not_sae.clamp(min=1e-10)
 
-    p_sae_given_spd = both_active / spd_total_on.clamp(min=1)
+    p_sae_given_spd = both / spd_total_on.clamp(min=1)
     p_sae_given_not_spd = spd_off_sae_on / spd_total_off.clamp(min=1)
     lift_sae = p_sae_given_spd / p_sae_given_not_spd.clamp(min=1e-10)
 
     combined_lift = (lift_spd * lift_sae).sqrt()
 
-    # Top pairs
-    flat_top = combined_lift.flatten().topk(top_n_pairs)
-
-    def format_examples(heap, tokenizer):
+    def format_examples(heap):
         examples = sorted(heap, key=lambda x: -x[0])
         result = []
         for max_val, _, seq_tokens, act_values in examples:
-            decoded = tokenizer.decode(seq_tokens)
             per_token = [tokenizer.decode([t]) for t in seq_tokens]
             result.append({
                 "max_activation": max_val,
@@ -233,34 +272,59 @@ def collect_layer_data(
             })
         return result
 
-    pairs = []
-    for val, flat_idx in zip(flat_top.values.tolist(), flat_top.indices.tolist()):
-        si = flat_idx // n_sae
-        ai = flat_idx % n_sae
-        pairs.append({
-            "spd_global_idx": top_spd_indices[si].item(),
-            "sae_global_idx": top_sae_indices[ai].item(),
-            "p_spd_given_sae": p_spd_given_sae[si, ai].item(),
-            "p_spd_given_not_sae": p_spd_given_not_sae[si, ai].item(),
-            "lift_spd": lift_spd[si, ai].item(),
-            "p_sae_given_spd": p_sae_given_spd[si, ai].item(),
-            "p_sae_given_not_spd": p_sae_given_not_spd[si, ai].item(),
-            "lift_sae": lift_sae[si, ai].item(),
-            "combined_lift": val,
-            "spd_fire_rate": spd_fire_rate[top_spd_indices[si]].item(),
-            "sae_fire_rate": sae_fire_rate[top_sae_indices[ai]].item(),
-            "spd_examples": format_examples(spd_top[si], tokenizer),
-            "sae_examples": format_examples(sae_top[ai], tokenizer),
-        })
+    def sae_flat_to_label(flat_idx):
+        flat_idx = flat_idx.item() if hasattr(flat_idx, 'item') else flat_idx
+        sae_layer = flat_idx // sae_dict
+        sae_feature = flat_idx % sae_dict
+        return LAYERS[sae_layer], sae_feature
 
-    return pairs
+    # For each SPD component, find top 10 SAE features
+    print(f"  Building per-component top SAE lists...")
+    all_components = {}
+
+    for si in range(n_top_spd):
+        spd_flat_idx = top_spd_flat[si].item()
+        spd_layer, spd_mod_type, spd_mod_name, spd_local_idx = spd_flat[spd_flat_idx]
+
+        lifts_for_this_spd = combined_lift[si]  # (n_top_sae,)
+        top_sae_for_spd = lifts_for_this_spd.topk(min(TOP_SAE_PER_COMPONENT, n_top_sae))
+
+        sae_matches = []
+        for rank in range(len(top_sae_for_spd.values)):
+            ai = top_sae_for_spd.indices[rank].item()
+            sae_flat_idx = top_sae_flat[ai].item()
+            sae_layer, sae_feature = sae_flat_to_label(sae_flat_idx)
+
+            sae_matches.append({
+                "sae_layer": sae_layer,
+                "sae_feature": sae_feature,
+                "combined_lift": combined_lift[si, ai].item(),
+                "p_spd_given_sae": p_spd_given_sae[si, ai].item(),
+                "p_spd_given_not_sae": p_spd_given_not_sae[si, ai].item(),
+                "lift_spd": lift_spd[si, ai].item(),
+                "p_sae_given_spd": p_sae_given_spd[si, ai].item(),
+                "p_sae_given_not_spd": p_sae_given_not_spd[si, ai].item(),
+                "lift_sae": lift_sae[si, ai].item(),
+                "sae_fire_rate": sae_fire_rate[sae_flat_idx].item(),
+                "sae_examples": format_examples(sae_top_examples[ai]),
+            })
+
+        comp_key = f"L{spd_layer}_{spd_mod_type}[{spd_local_idx}]"
+        all_components[comp_key] = {
+            "spd_layer": spd_layer,
+            "spd_mod_type": spd_mod_type,
+            "spd_local_idx": spd_local_idx,
+            "spd_fire_rate": spd_fire_rate[spd_flat_idx].item(),
+            "spd_examples": format_examples(spd_top_examples[si]),
+            "sae_matches": sae_matches,
+        }
+
+    return all_components
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--layers", type=int, nargs="+", default=LAYERS)
     parser.add_argument("--n_batches", type=int, default=50)
-    parser.add_argument("--top_n_pairs", type=int, default=50)
     args = parser.parse_args()
 
     from analysis.collect_spd_activations import load_spd_model
@@ -273,28 +337,14 @@ def main():
     base_model = spd_model.target_model
     tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
 
-    saes = {
-        layer: load_sae(Path(f"checkpoints/jose_sae_resid_local_k{SAE_K}_layer{layer}"))
-        for layer in args.layers
-    }
+    saes = {l: load_sae(Path(f"checkpoints/jose_sae_resid_local_k{SAE_K}_layer{l}")) for l in LAYERS}
 
-    all_data = {}
-    for layer_idx in args.layers:
-        print(f"\n{'='*60}\n  Layer {layer_idx}\n{'='*60}")
-        pairs = collect_layer_data(
-            spd_model, saes[layer_idx], base_model, tokenizer,
-            layer_idx, args.n_batches, args.top_n_pairs,
-        )
-        all_data[layer_idx] = pairs
-        print(f"  Top: SPD[{pairs[0]['spd_global_idx']}] <-> SAE[{pairs[0]['sae_global_idx']}] "
-              f"lift={pairs[0]['combined_lift']:.1f}x")
+    all_components = collect_all_data(spd_model, saes, base_model, tokenizer, args.n_batches)
 
-    save_path = OUTPUT_DIR / "dashboard_data.json"
-    # Convert int keys to strings for JSON
-    json_data = {str(k): v for k, v in all_data.items()}
+    save_path = OUTPUT_DIR / "dashboard_data_v2.json"
     with open(save_path, "w") as f:
-        json.dump(json_data, f)
-    print(f"\nSaved to {save_path}")
+        json.dump(all_components, f)
+    print(f"\nSaved {len(all_components)} components to {save_path}")
 
 
 if __name__ == "__main__":
