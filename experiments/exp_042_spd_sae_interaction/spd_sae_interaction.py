@@ -159,21 +159,34 @@ def collect_spd_sae_coactivations(
 
         print(f"\nLayer {layer_idx}: c_fc C={n_cfc}, down_proj C={n_down}, SAE dict={sae_dict}")
 
-        # Collect all CI values and SAE activations across batches
-        all_ci_cfc = []     # (n_tokens, n_cfc)
-        all_ci_down = []    # (n_tokens, n_down)
-        all_sae_output = [] # (n_tokens, sae_dict) - SAE at layer_idx
-        all_sae_input = []  # (n_tokens, sae_dict) - SAE at layer_idx-1 (if exists)
+        # Streaming correlation: accumulate sufficient statistics on CPU
+        # For Pearson corr we need: sum_x, sum_y, sum_xy, sum_x2, sum_y2, n
+        # We compute for ALL c_fc components vs ALL SAE output features,
+        # then select top ones after.
+        n_spd = n_cfc
+        n_sae = sae_dict
+
+        sum_ci = torch.zeros(n_spd, device="cpu", dtype=torch.float64)
+        sum_sae_out = torch.zeros(n_sae, device="cpu", dtype=torch.float64)
+        sum_ci2 = torch.zeros(n_spd, device="cpu", dtype=torch.float64)
+        sum_sae_out2 = torch.zeros(n_sae, device="cpu", dtype=torch.float64)
+        sum_ci_sae_out = torch.zeros(n_spd, n_sae, device="cpu", dtype=torch.float64)
+
+        has_input = layer_idx > 0
+        if has_input:
+            sum_sae_in = torch.zeros(n_sae, device="cpu", dtype=torch.float64)
+            sum_sae_in2 = torch.zeros(n_sae, device="cpu", dtype=torch.float64)
+            sum_ci_sae_in = torch.zeros(n_spd, n_sae, device="cpu", dtype=torch.float64)
+
+        n_total = 0
 
         for input_ids in tqdm(batches, desc=f"Layer {layer_idx}"):
             # SPD forward to get CI
             out = spd_model(input_ids, cache_type="input")
             ci = spd_model.calc_causal_importances(out.cache, sampling="continuous")
+            ci_cfc = ci.lower_leaky[cfc_name].reshape(-1, n_cfc).float()  # (B*S, n_spd)
 
-            ci_cfc = ci.lower_leaky[cfc_name]  # (B, S, n_cfc)
-            ci_down = ci.lower_leaky[down_name]  # (B, S, n_down)
-
-            # Clean forward through base model to get residual stream activations
+            # Clean forward for residual stream
             captured = {}
             hooks = []
             for l in LAYERS:
@@ -186,93 +199,83 @@ def collect_spd_sae_coactivations(
             for h in hooks:
                 h.remove()
 
-            # SAE activations at layer output
+            # SAE output activations
             resid_out = captured[layer_idx].reshape(-1, 768)
-            sae_acts_out = saes[layer_idx].encode(resid_out)
+            sae_out = saes[layer_idx].encode(resid_out).float()  # (B*S, n_sae)
 
-            all_ci_cfc.append(ci_cfc.reshape(-1, n_cfc))
-            all_ci_down.append(ci_down.reshape(-1, n_down))
-            all_sae_output.append(sae_acts_out)
+            # Move to CPU and accumulate
+            ci_cpu = ci_cfc.cpu().double()
+            sae_out_cpu = sae_out.cpu().double()
+            bs = ci_cpu.shape[0]
+            n_total += bs
 
-            # SAE activations at layer input (previous layer's residual stream)
-            if layer_idx > 0:
+            sum_ci += ci_cpu.sum(dim=0)
+            sum_sae_out += sae_out_cpu.sum(dim=0)
+            sum_ci2 += ci_cpu.pow(2).sum(dim=0)
+            sum_sae_out2 += sae_out_cpu.pow(2).sum(dim=0)
+            sum_ci_sae_out += ci_cpu.T @ sae_out_cpu
+
+            if has_input:
                 resid_in = captured[layer_idx - 1].reshape(-1, 768)
-                sae_acts_in = saes[layer_idx - 1].encode(resid_in)
-                all_sae_input.append(sae_acts_in)
+                sae_in = saes[layer_idx - 1].encode(resid_in).float()
+                sae_in_cpu = sae_in.cpu().double()
+                sum_sae_in += sae_in_cpu.sum(dim=0)
+                sum_sae_in2 += sae_in_cpu.pow(2).sum(dim=0)
+                sum_ci_sae_in += ci_cpu.T @ sae_in_cpu
 
-        all_ci_cfc = torch.cat(all_ci_cfc, dim=0)  # (N, n_cfc)
-        all_ci_down = torch.cat(all_ci_down, dim=0)  # (N, n_down)
-        all_sae_output = torch.cat(all_sae_output, dim=0)  # (N, sae_dict)
+        # Compute Pearson correlation from sufficient statistics
+        mean_ci = sum_ci / n_total
+        mean_sae_out = sum_sae_out / n_total
+        std_ci = ((sum_ci2 / n_total - mean_ci.pow(2)).clamp(min=1e-16)).sqrt()
+        std_sae_out = ((sum_sae_out2 / n_total - mean_sae_out.pow(2)).clamp(min=1e-16)).sqrt()
+        cov_out = sum_ci_sae_out / n_total - mean_ci.unsqueeze(1) * mean_sae_out.unsqueeze(0)
+        corr_output = (cov_out / (std_ci.unsqueeze(1) * std_sae_out.unsqueeze(0)).clamp(min=1e-16)).float()
 
-        # Compute correlation: SPD c_fc CI vs output SAE features
-        # Use just the top-100 most active SPD components to keep it manageable
-        cfc_activity = (all_ci_cfc > 0).float().mean(dim=0)  # firing rate per component
-        top_cfc = cfc_activity.topk(min(100, n_cfc)).indices
-
-        down_activity = (all_ci_down > 0).float().mean(dim=0)
-        top_down = down_activity.topk(min(100, n_down)).indices
-
-        sae_activity = (all_sae_output > 0).float().mean(dim=0)
-        top_sae_out = sae_activity.topk(min(200, sae_dict)).indices
-
-        # Correlation between top SPD c_fc components and top SAE output features
-        ci_subset = all_ci_cfc[:, top_cfc].float()  # (N, 100)
-        sae_subset = all_sae_output[:, top_sae_out].float()  # (N, 200)
-
-        # Pearson correlation
-        ci_centered = ci_subset - ci_subset.mean(dim=0, keepdim=True)
-        sae_centered = sae_subset - sae_subset.mean(dim=0, keepdim=True)
-        ci_std = ci_centered.pow(2).sum(dim=0).sqrt().clamp(min=1e-8)
-        sae_std = sae_centered.pow(2).sum(dim=0).sqrt().clamp(min=1e-8)
-
-        corr_output = (ci_centered.T @ sae_centered) / (ci_std.unsqueeze(1) * sae_std.unsqueeze(0))
-        # corr_output: (100, 200) - correlation between each SPD component and SAE feature
-
-        # Input SAE correlation
         corr_input = None
-        if layer_idx > 0:
-            all_sae_input = torch.cat(all_sae_input, dim=0)
-            sae_in_activity = (all_sae_input > 0).float().mean(dim=0)
-            top_sae_in = sae_in_activity.topk(min(200, sae_dict)).indices
+        if has_input:
+            mean_sae_in = sum_sae_in / n_total
+            std_sae_in = ((sum_sae_in2 / n_total - mean_sae_in.pow(2)).clamp(min=1e-16)).sqrt()
+            cov_in = sum_ci_sae_in / n_total - mean_ci.unsqueeze(1) * mean_sae_in.unsqueeze(0)
+            corr_input = (cov_in / (std_ci.unsqueeze(1) * std_sae_in.unsqueeze(0)).clamp(min=1e-16)).float()
 
-            sae_in_subset = all_sae_input[:, top_sae_in].float()
-            sae_in_centered = sae_in_subset - sae_in_subset.mean(dim=0, keepdim=True)
-            sae_in_std = sae_in_centered.pow(2).sum(dim=0).sqrt().clamp(min=1e-8)
-            corr_input = (ci_centered.T @ sae_in_centered) / (ci_std.unsqueeze(1) * sae_in_std.unsqueeze(0))
+        # Select top components/features for detailed analysis
+        cfc_activity = std_ci.float()  # proxy for activity
+        top_cfc = cfc_activity.topk(min(100, n_spd)).indices
+        sae_out_activity = std_sae_out.float()
+        top_sae_out = sae_out_activity.topk(min(200, n_sae)).indices
 
-        # Per-component stats: how many SAE features does each SPD component correlate with?
-        n_corr_gt_03_output = (corr_output.abs() > 0.3).sum(dim=1).float()  # per SPD component
-        n_corr_gt_05_output = (corr_output.abs() > 0.5).sum(dim=1).float()
+        corr_output_sub = corr_output[top_cfc][:, top_sae_out]
+
+        n_corr_gt_03_output = (corr_output_sub.abs() > 0.3).sum(dim=1).float()
+        n_corr_gt_05_output = (corr_output_sub.abs() > 0.5).sum(dim=1).float()
 
         results[layer_idx] = {
-            "corr_output": corr_output.cpu(),
-            "corr_input": corr_input.cpu() if corr_input is not None else None,
+            "corr_output": corr_output_sub,
+            "corr_input": corr_input[top_cfc][:, top_sae_out] if corr_input is not None else None,
             "n_spd_cfc": n_cfc,
             "n_spd_down": n_down,
             "sae_dict_size": sae_dict,
-            "top_cfc_indices": top_cfc.cpu(),
-            "top_sae_out_indices": top_sae_out.cpu(),
-            "n_corr_gt_03_output": n_corr_gt_03_output.cpu(),
-            "n_corr_gt_05_output": n_corr_gt_05_output.cpu(),
-            "max_corr_per_spd": corr_output.abs().max(dim=1).values.cpu(),
+            "top_cfc_indices": top_cfc,
+            "top_sae_out_indices": top_sae_out,
+            "n_corr_gt_03_output": n_corr_gt_03_output,
+            "n_corr_gt_05_output": n_corr_gt_05_output,
+            "max_corr_per_spd": corr_output_sub.abs().max(dim=1).values,
         }
 
-        print(f"  Correlation stats (SPD c_fc vs output SAE):")
-        print(f"    Max abs corr: {corr_output.abs().max():.3f}")
-        print(f"    Mean max-per-component: {corr_output.abs().max(dim=1).values.mean():.3f}")
+        print(f"  Correlation stats (SPD c_fc vs output SAE, top 100 x 200):")
+        print(f"    Max abs corr: {corr_output_sub.abs().max():.3f}")
+        print(f"    Mean max-per-component: {corr_output_sub.abs().max(dim=1).values.mean():.3f}")
         print(f"    Median SAE features with |corr|>0.3 per component: {n_corr_gt_03_output.median():.0f}")
         print(f"    Median SAE features with |corr|>0.5 per component: {n_corr_gt_05_output.median():.0f}")
 
         if corr_input is not None:
-            n_corr_gt_03_input = (corr_input.abs() > 0.3).sum(dim=1).float()
-            print(f"  Correlation stats (SPD c_fc vs input SAE):")
-            print(f"    Max abs corr: {corr_input.abs().max():.3f}")
-            print(f"    Mean max-per-component: {corr_input.abs().max(dim=1).values.mean():.3f}")
+            corr_input_sub = corr_input[top_cfc][:, top_sae_out]
+            n_corr_gt_03_input = (corr_input_sub.abs() > 0.3).sum(dim=1).float()
+            print(f"  Correlation stats (SPD c_fc vs input SAE, top 100 x 200):")
+            print(f"    Max abs corr: {corr_input_sub.abs().max():.3f}")
+            print(f"    Mean max-per-component: {corr_input_sub.abs().max(dim=1).values.mean():.3f}")
             print(f"    Median SAE features with |corr|>0.3 per component: {n_corr_gt_03_input.median():.0f}")
 
-        del all_ci_cfc, all_ci_down, all_sae_output
-        if layer_idx > 0:
-            del all_sae_input
         torch.cuda.empty_cache()
 
     return results
