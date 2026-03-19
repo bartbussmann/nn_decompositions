@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import json
+from collections import defaultdict
 from pathlib import Path
 
 import gradio as gr
@@ -174,43 +175,125 @@ def build_app(components: dict):
         </div>
         """
 
+    # Build reverse index: SAE feature -> list of (comp_key, match)
+    reverse_index = defaultdict(list)
+    for comp_key, comp in components.items():
+        for match in comp["sae_matches"]:
+            sae_key = f"L{match['sae_layer']}_F{match['sae_feature']}"
+            reverse_index[sae_key].append((comp_key, comp, match))
+    for sae_key in reverse_index:
+        reverse_index[sae_key].sort(key=lambda x: -x[2]["combined_lift"])
+
+    def get_reverse_sae_choices():
+        items = sorted(reverse_index.items(), key=lambda x: -x[1][0][2]["combined_lift"])
+        return [
+            f"{sae_key} ({len(comps)} SPD matches, top_lift={comps[0][2]['combined_lift']:.1f}x)"
+            for sae_key, comps in items[:200]
+        ]
+
+    def on_reverse_sae_change(sae_choice_str):
+        if not sae_choice_str:
+            return "", ""
+        sae_key = sae_choice_str.split(" (")[0]
+        matches = reverse_index.get(sae_key, [])
+        if not matches:
+            return "No matches", ""
+
+        # Show SAE examples from first match
+        first_match = matches[0][2]
+        sae_html = render_examples(first_match["sae_examples"], "#c05621")
+
+        # Table of all SPD components that map to this SAE feature
+        table = '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+        table += '<tr style="background:#f0f0f0"><th style="padding:6px">SPD Component</th><th>Lift</th><th>P(SPD|SAE)</th><th>P(SAE|SPD)</th><th>SPD fire rate</th></tr>'
+        for comp_key, comp, match in matches:
+            table += (
+                f'<tr style="border-bottom:1px solid #eee">'
+                f'<td style="padding:6px"><b>L{comp["spd_layer"]} {comp["spd_mod_type"]}[{comp["spd_local_idx"]}]</b></td>'
+                f'<td>{match["combined_lift"]:.1f}x</td>'
+                f'<td>{match["p_spd_given_sae"]:.4f}</td>'
+                f'<td>{match["p_sae_given_spd"]:.4f}</td>'
+                f'<td>{comp["spd_fire_rate"]:.4f}</td></tr>'
+            )
+        table += '</table>'
+
+        return table, sae_html
+
+    # Search/filter: find components with a single SAE match above threshold
+    def search_components(min_lift, max_matches):
+        min_lift = float(min_lift)
+        max_matches = int(max_matches)
+        results = []
+        for comp_key, comp in components.items():
+            high_matches = [m for m in comp["sae_matches"] if m["combined_lift"] >= min_lift]
+            if 1 <= len(high_matches) <= max_matches:
+                top = high_matches[0]
+                results.append(
+                    f"**{comp_key}** → L{top['sae_layer']}_SAE[{top['sae_feature']}] "
+                    f"(lift={top['combined_lift']:.1f}x, {len(high_matches)} matches ≥ {min_lift})"
+                )
+        results.sort(key=lambda x: -float(x.split("lift=")[1].split("x")[0]))
+        return "\n\n".join(results[:100]) if results else "No matches found"
+
     with gr.Blocks(title="SPD-SAE Interaction Dashboard") as app:
         gr.Markdown("# SPD Component — SAE Feature Interaction Dashboard")
-        gr.Markdown(
-            "Select a **layer** and **SPD component** (c_fc or down_proj) to see its "
-            "top 10 associated SAE features across all residual stream layers."
-        )
 
-        with gr.Row():
-            layer_dd = gr.Dropdown(
-                choices=[f"Layer {l}" for l in layers],
-                value=f"Layer {layers[0]}",
-                label="Layer", scale=1,
-            )
-            comp_dd = gr.Dropdown(
-                choices=get_component_choices(layers[0]),
-                value=get_component_choices(layers[0])[0] if get_component_choices(layers[0]) else None,
-                label="SPD Component", scale=2,
-            )
-            sae_dd = gr.Dropdown(
-                choices=[],
-                value=None,
-                label="SAE Feature (top 10 by lift, any layer)", scale=3,
-            )
+        with gr.Tabs():
+            # Tab 1: Browse by SPD component
+            with gr.Tab("Browse by SPD Component"):
+                gr.Markdown("Select a **layer** and **SPD component** (c_fc or down_proj) to see its "
+                            "top 10 associated SAE features across all residual stream layers.")
+                with gr.Row():
+                    layer_dd = gr.Dropdown(
+                        choices=[f"Layer {l}" for l in layers],
+                        value=f"Layer {layers[0]}",
+                        label="Layer", scale=1,
+                    )
+                    comp_dd = gr.Dropdown(
+                        choices=get_component_choices(layers[0]),
+                        value=get_component_choices(layers[0])[0] if get_component_choices(layers[0]) else None,
+                        label="SPD Component", scale=2,
+                    )
+                    sae_dd = gr.Dropdown(
+                        choices=[],
+                        value=None,
+                        label="SAE Feature (top 10 by lift, any layer)", scale=3,
+                    )
 
-        stats_out = gr.HTML("")
+                stats_out = gr.HTML("")
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("### SPD Component — Top Activating Sequences")
+                        spd_out = gr.HTML("")
+                    with gr.Column():
+                        gr.Markdown("### SAE Feature — Top Activating Sequences")
+                        sae_out = gr.HTML("")
 
-        with gr.Row():
-            with gr.Column():
-                gr.Markdown("### SPD Component — Top Activating Sequences")
-                spd_out = gr.HTML("")
-            with gr.Column():
-                gr.Markdown("### SAE Feature — Top Activating Sequences")
-                sae_out = gr.HTML("")
+                layer_dd.change(on_layer_change, [layer_dd], [comp_dd, sae_dd])
+                comp_dd.change(on_comp_change, [layer_dd, comp_dd], [sae_dd, stats_out, spd_out, sae_out])
+                sae_dd.change(on_sae_change, [layer_dd, comp_dd, sae_dd], [stats_out, spd_out, sae_out])
 
-        layer_dd.change(on_layer_change, [layer_dd], [comp_dd, sae_dd])
-        comp_dd.change(on_comp_change, [layer_dd, comp_dd], [sae_dd, stats_out, spd_out, sae_out])
-        sae_dd.change(on_sae_change, [layer_dd, comp_dd, sae_dd], [stats_out, spd_out, sae_out])
+            # Tab 2: Reverse lookup by SAE feature
+            with gr.Tab("Reverse Lookup (SAE → SPD)"):
+                gr.Markdown("Select an **SAE feature** to see which SPD components map to it.")
+                rev_sae_dd = gr.Dropdown(
+                    choices=get_reverse_sae_choices(),
+                    value=None,
+                    label="SAE Feature",
+                )
+                rev_table = gr.HTML("")
+                rev_sae_examples = gr.HTML("")
+                rev_sae_dd.change(on_reverse_sae_change, [rev_sae_dd], [rev_table, rev_sae_examples])
+
+            # Tab 3: Search
+            with gr.Tab("Search / Filter"):
+                gr.Markdown("Find SPD components by their matching properties.")
+                with gr.Row():
+                    search_lift = gr.Number(value=50, label="Minimum combined lift")
+                    search_max = gr.Number(value=3, label="Max # matches at this lift")
+                    search_btn = gr.Button("Search")
+                search_results = gr.Markdown("")
+                search_btn.click(search_components, [search_lift, search_max], [search_results])
 
     return app
 
