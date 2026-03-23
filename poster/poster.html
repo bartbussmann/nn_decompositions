@@ -187,7 +187,7 @@
         <span class="lbl">Result 1</span>
         <h2>SPD Achieves a Better Sparsity–Accuracy Tradeoff</h2>
         <img src="pareto_jose_32k_combined_ce.png" alt="Pareto">
-        <p class="cap">(a) Active components per module. (b) Per MLP reconstruction. (c) Total active params. SPD (purple) Pareto-dominates under all three sparsity measures. Dashed line = zero ablation. Lower is better.</p>
+        <p class="cap">(a) Active components per module. (b) Per MLP reconstruction. (c) Total active params. SPD (purple) Pareto-dominates under all three sparsity measures. Two SPD points correspond to different CI thresholds: CI&gt;0.5 (stricter, fewer active components) and CI&gt;0 (lenient). Dashed line = zero ablation. Lower is better.</p>
         <p style="margin-top:3px;">We first compare SPD against transcoders and CLTs trained with the standard <strong>MSE reconstruction loss</strong> on intermediate activations. SPD achieves lower CE degradation at comparable sparsity, and the ordering is <strong>consistent across all three normalizations</strong>. Even with the lenient CI&gt;0 threshold, SPD remains well below the activation-based methods.</p>
         <div class="callout">
           <p>This advantage may stem from SPD's end-to-end training on the model's output distribution, vs. the local layer-wise MSE objective. To control for this, we train all activation methods e2e with <strong>KL divergence</strong> on output logits, matching SPD's objective ↓</p>
@@ -198,10 +198,10 @@
         <span class="lbl">Result 2</span>
         <h2>E2E Activation Methods Overfit to Their Training Mode</h2>
         <img src="eval_e2e_jose_32k.png" alt="E2E">
-        <p class="cap">We evaluate under three protocols. (a) <strong>All-replace cascading:</strong> replace all 4 MLPs at once; each encoder receives the residual stream <em>after</em> previous layers' reconstructions (errors accumulate). (b) <strong>All-replace parallel:</strong> replace all 4 MLPs at once; each encoder receives the <em>original</em> clean residual stream (errors don't propagate). (c) <strong>Single-MLP:</strong> replace one MLP at a time (other 3 remain original), averaged over layers. Highlighted lines = matched training mode; faded lines = mismatched mode. SPD (purple) is stable across all three.</p>
-        <p style="margin-top:3px;">A faithful decomposition should perform equally well regardless of evaluation protocol. If an encoder has truly learned its MLP's function, its output should be correct whether or not earlier layers' MLPs have also been replaced. We test this by comparing <strong>matched-mode</strong> performance (trained and evaluated in the same protocol) against <strong>cross-mode</strong> performance (trained in one, evaluated in another).</p>
+        <p class="cap">(a) <strong>Cascading:</strong> replace all 4 MLPs; each encoder sees the residual stream <em>after</em> earlier reconstructions (errors accumulate). (b) <strong>Parallel:</strong> replace all 4 MLPs; each encoder sees the <em>original</em> clean stream (errors don't propagate). (c) <strong>Single-MLP:</strong> replace one MLP at a time, averaged over layers. Highlighted lines = training mode matches eval mode; faded = mismatched. SPD (purple) is stable across all three protocols.</p>
+        <p style="margin-top:3px;">We define <strong>δ = CE<sub>patched</sub> − CE<sub>baseline</sub></strong> (CE degradation from replacing MLPs with reconstructions; lower is better). A faithful decomposition should perform equally well regardless of evaluation protocol — if an encoder has truly learned its MLP's function, its output should be correct whether or not earlier layers' MLPs have also been replaced. We test <strong>matched-mode</strong> (trained and evaluated in the same protocol) against <strong>cross-mode</strong> (trained in one, evaluated in another).</p>
         <p style="margin-top:2px;">Activation methods show <strong>severe mode-mismatch brittleness</strong>: parallel-trained transcoders reach δ≈0.14 in matched mode but degrade to δ≈2.9–3.5 under cascading evaluation — comparable to zero ablation (dashed line). The pattern is symmetric: cascading-trained models fail under parallel evaluation. This indicates e2e-trained encoders learn <strong>compensatory strategies</strong> that jointly account for the MLP's computation <em>and</em> systematic reconstruction errors from earlier layers.</p>
-        <p style="margin-top:2px;">Independently-trained transcoders are the most robust activation method in single-MLP replacement (δ≈0.13–0.20), but still degrade when all four are inserted simultaneously (δ≈0.60–0.98).</p>
+        <p style="margin-top:2px;">Independently-trained transcoders are the most robust activation method in single-MLP replacement (δ≈0.08–0.19), but still degrade when all four are inserted simultaneously (δ≈0.38–0.85).</p>
         <div class="callout">
           <p><strong>Key insight:</strong> SPD achieves δ≈0.32–0.40 regardless of protocol. An SPD reconstruction is not a different function approximating the MLP — it is a <strong>subset of the MLP's own computations</strong>. Matched-mode methods achieve lower raw δ, but this is the expected cost of a more faithful decomposition.</p>
         </div>
@@ -215,27 +215,27 @@
         <h2>Feature Splitting — Component Stability</h2>
         <img src="feature_splitting.png" alt="Splitting">
         <p class="cap">Alive SPD components (mean CI &gt; 10⁻⁴) at 0.5×–4× base capacity. Early layers stay stable; later layers absorb extras.</p>
-        <p style="margin-top:3px;">When capacity grows, later layers absorb extras while early layers stay stable — SPD finds a <strong>natural number of mechanisms per layer</strong>. The parameter-faithfulness constraint prevents splitting by construction.</p>
+        <p style="margin-top:3px;">We train SPD at 0.5×–4× the base number of subcomponents and count how many stay "alive" (mean CI &gt; 10⁻⁴). When capacity grows, later layers absorb extras while early layers stay stable — SPD finds a <strong>natural number of mechanisms per layer</strong>. The parameter-faithfulness constraint prevents splitting by construction: components must sum to the original weights, so there is no room for redundant copies.</p>
       </div>
 
       <div class="panel">
         <span class="lbl">Result 4</span>
         <h2>Interpretability — Intruder Detection</h2>
         <img src="image (20).png" alt="Intruder">
-        <p class="cap">Layer 3 MLP. SPD CI&gt;0.5: 73.9% (c_fc), 66.1% (down_proj) vs. transcoder 61.9%. Random = 20%.</p>
-        <p style="margin-top:3px;">SPD components at CI&gt;0.5 are <strong>more interpretable</strong> than transcoder features (+12% absolute on automated intruder detection).</p>
+        <p class="cap">Layer 3 MLP. SPD CI&gt;0.5: 73.9% (c_fc), 66.1% (down_proj) vs. transcoder 61.9%. Random baseline = 20%.</p>
+        <p style="margin-top:3px;"><strong>Intruder detection</strong> measures interpretability: an LLM sees the top-activating examples for a feature plus one "intruder" from a different feature, and must identify the odd one out. Higher accuracy = more coherent, interpretable features. SPD components at CI&gt;0.5 score <strong>+12% absolute</strong> over transcoder features.</p>
       </div>
 
       <div class="panel grow">
         <span class="lbl">Takeaways</span>
         <h2>Summary &amp; Future Work</h2>
         <div class="fins">
-          <div class="fin"><div class="ic">✓</div><div class="fd"><strong>Pareto-dominant:</strong> SPD beats MSE-trained TCs and CLTs under all L0 normalizations.</div></div>
-          <div class="fin"><div class="ic">✓</div><div class="fd"><strong>Protocol-robust:</strong> Stable across eval modes; activation methods degrade 5–20×.</div></div>
+          <div class="fin"><div class="ic">✓</div><div class="fd"><strong>Pareto-dominant:</strong> SPD beats MSE-trained TCs and CLTs under all three L0 normalizations.</div></div>
+          <div class="fin"><div class="ic">✓</div><div class="fd"><strong>Protocol-robust:</strong> Stable across eval modes; activation methods degrade 5–20× under mismatch.</div></div>
           <div class="fin"><div class="ic">✓</div><div class="fd"><strong>No feature splitting:</strong> Parameter-faithfulness prevents splitting by construction.</div></div>
-          <div class="fin"><div class="ic">✓</div><div class="fd"><strong>Interpretable circuits:</strong> Case studies trace pronoun prediction and bracket closing.</div></div>
+          <div class="fin"><div class="ic">✓</div><div class="fd"><strong>More interpretable:</strong> +12% absolute on intruder detection vs. transcoders at comparable sparsity.</div></div>
         </div>
-        <p style="margin-top:5px;">SPD accounts for network function in terms of the <strong>actual objects doing the computation</strong>. Adversarial ablations reveal that naive masking dramatically underestimates components involved in any computation.</p>
+        <p style="margin-top:5px;">SPD accounts for network function in terms of the network's <strong>actual objects doing the computation</strong>.</p>
       </div>
     </div>
 
@@ -247,10 +247,10 @@
     <div class="refs">
       <span>[1] Braun et al. (2025). Interpretability in parameter space. arXiv:2501.14926</span>
       <span>[2] Bushnaq et al. (2025). Stochastic Parameter Decomposition. arXiv:2506.20790</span>
-      <span>[3] Dunefsky et al. (2024). Transcoders.</span>
-      <span>[4] Lindsey et al. (2024). Crosscoders.</span>
+      <span>[3] Dunefsky et al. (2024). Transcoders find interpretable LLM feature circuits. arXiv:2406.11944</span>
+      <span>[4] Lindsey et al. (2024). Sparse crosscoders. Anthropic Research.</span>
       <span>[5] Leask, Bussmann et al. (2025). SAEs do not find canonical units. arXiv:2502.04878</span>
-      <span>[6] Sharkey et al. (2025). Open problems in mech. interp.</span>
+      <span>[6] Sharkey et al. (2025). Open problems in mechanistic interpretability. arXiv:2501.16496</span>
     </div>
   </div>
 
