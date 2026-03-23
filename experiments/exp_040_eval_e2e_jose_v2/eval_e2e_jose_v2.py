@@ -13,6 +13,7 @@ Usage:
 """
 
 import json
+import re
 import sys
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
@@ -387,6 +388,11 @@ def download_artifacts(dict_size_label: str) -> dict:
 
             name = run.name
             top_k = run.config.get("top_k")
+            # Fallback: extract k from run name (e.g. tc_cascading_k16 -> 16)
+            if top_k is None:
+                m = re.search(r"_k(\d+)", name)
+                if m:
+                    top_k = int(m.group(1))
 
             if name.startswith("tc_"):
                 # e2e: tc_cascading_k16, tc_parallel_k8, tc_independent_k32
@@ -568,7 +574,8 @@ def main():
         print("-" * 100)
         for r in results:
             label = f"{r['type']}_{r['mode']}"
-            print(f"{label:<25} {r['top_k']:>4} {r['l0']:>6.1f}"
+            k_str = str(r['top_k']) if r['top_k'] is not None else "?"
+            print(f"{label:<25} {k_str:>4} {r['l0']:>6.1f}"
                   f"  {r['ce_cascading']:>10.4f}  {r['ce_parallel']:>10.4f}  {r['ce_single']:>10.4f}"
                   f"  | {r['ce_cascading']-baseline_ce:>8.4f}  {r['ce_parallel']-baseline_ce:>8.4f}  {r['ce_single']-baseline_ce:>8.4f}")
         for r in spd_results:
