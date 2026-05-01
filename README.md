@@ -31,7 +31,6 @@ and is auto-downloaded on first use.
 ├── experiments/
 │   ├── paper_runs.py                     # wandb / VPD run-IDs used in the paper
 │   ├── llm_base_model/                   # auto-populated cache (gitignored)
-│   ├── training_runs.md                  # wandb run-id table for every PLT/CLT
 │   ├── train_local_mse/                  # PLT + CLT local-MSE training (4k or 32k)
 │   ├── train_e2e/                        # PLT + CLT end-to-end training (4k or 32k)
 │   ├── pareto_plot_local/                # local-MSE Pareto plot (CE / L0)
@@ -57,8 +56,7 @@ huggingface-cli login            # `danbraunai/pile-uncopyrighted-tok` is gated
 
 The paper uses local-MSE-trained PLTs and CLTs at two dictionary sizes
 (4 096 and 32 768) and four top-k values (8, 16, 32, 64). End-to-end KL
-variants are also trained. All runs go to four wandb projects whose IDs
-are listed in `experiments/training_runs.md`.
+variants are also trained. The four wandb projects are:
 
 | project | script | notes |
 |---|---|---|
