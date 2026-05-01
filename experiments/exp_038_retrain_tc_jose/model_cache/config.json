@@ -1,1 +1,0 @@
-{"model_type": "LlamaSimpleMLP", "block_size": 512, "vocab_size": 50277, "n_layer": 4, "n_head": 6, "n_embd": 768, "n_intermediate": 3072, "mlp_bias": false, "attn_bias": false, "rotary_adjacent_pairs": false, "rotary_dim": 128, "rotary_base": 10000, "n_ctx": 512, "n_key_value_heads": 6, "use_grouped_query_attention": true, "flash_attention": false, "rms_norm_eps": 1e-06}

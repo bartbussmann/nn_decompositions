@@ -1,154 +1,92 @@
-#!/bin/bash
-# Setup script for nn_decompositions on RunPod (Ubuntu 22.04, CUDA 12.4).
+#!/usr/bin/env bash
+# One-shot setup for the VPD paper-replication repo.
 #
-# Installs the venv on the local machine disk (fast) and symlinks it
-# from the workspace so `source .venv/bin/activate` still works.
+# Uses `uv` (https://astral.sh/uv) to:
+#   1. install itself if missing (single static binary, no root needed),
+#   2. fetch CPython 3.13 if it isn't already on the system,
+#   3. create a .venv pinned to that interpreter,
+#   4. install the upstream `spd` package (editable, from a pinned branch)
+#      and this repo (editable) into the venv.
+#
+# Requires: a CUDA-12.4-compatible GPU and git. Python 3.13 does NOT need to
+# be pre-installed — uv will fetch it.
 #
 # Usage:
-#   bash setup_env.sh          # full install
-#   source .venv/bin/activate  # activate after install
-#
+#   bash setup_env.sh
+#   source .venv/bin/activate
+
 set -euo pipefail
 
-LOCAL_VENV="/root/nn_decompositions_venv"
-SYMLINK="/workspace/nn_decompositions/.venv"
-NN_DIR="/workspace/nn_decompositions"
-SPD_DIR="/workspace/spd"
-SPD_BRANCH="snapshot/launch-20260225_151714"  # branch used to train s-55ea3f9b (jose baseline)
+NN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SPD_DIR="${SPD_DIR:-$NN_DIR/external/spd}"
+SPD_BRANCH="${SPD_BRANCH:-snapshot/launch-20260225_151714}"  # branch used to train the VPD baseline (s-55ea3f9b)
 
 # --------------------------------------------------------------------------
-# 1. Ensure Python 3.13 is available
+# 1. Ensure `uv` is on PATH (~25 MB static binary, no root required).
 # --------------------------------------------------------------------------
-if command -v python3.13 &>/dev/null; then
-    PY=python3.13
-    echo "Found $($PY --version) at $(which $PY)"
-else
-    echo "Python 3.13 not found — installing via deadsnakes PPA..."
-    apt-get update -qq
-    apt-get install -y -qq software-properties-common
-
-    if ! add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null; then
-        echo "add-apt-repository failed (likely broken apt_pkg) — trying to fix..."
-        # Reinstall python3-apt and symlink the .so for the current python3
-        apt-get install -y -qq --reinstall python3-apt 2>/dev/null || true
-        SO_FILE=$(find /usr/lib/python3/dist-packages -name 'apt_pkg.cpython-*.so' 2>/dev/null | head -1)
-        if [ -n "$SO_FILE" ]; then
-            ln -sf "$SO_FILE" /usr/lib/python3/dist-packages/apt_pkg.so
-        fi
-
-        if ! add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null; then
-            echo "Still failing — adding deadsnakes PPA manually..."
-            CODENAME=$(. /etc/os-release && echo "${VERSION_CODENAME:-jammy}")
-            echo "deb http://ppa.launchpad.net/deadsnakes/ppa/ubuntu ${CODENAME} main" \
-                > /etc/apt/sources.list.d/deadsnakes-ppa.list
-            apt-get install -y -qq gpg
-            apt-key adv --keyserver keyserver.ubuntu.com \
-                --recv-keys F23C5A6CF475977595C89F51BA6932366A755776
-        fi
+if ! command -v uv &>/dev/null; then
+    echo "Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    # The installer drops uv into ~/.local/bin (or $XDG_BIN_HOME). Source the
+    # generated env file so this shell picks it up immediately.
+    if [ -f "$HOME/.local/bin/env" ]; then
+        # shellcheck source=/dev/null
+        source "$HOME/.local/bin/env"
+    else
+        export PATH="$HOME/.local/bin:$PATH"
     fi
-
-    apt-get update -qq
-    apt-get install -y -qq python3.13 python3.13-venv python3.13-dev
-    PY=python3.13
-    echo "Installed $($PY --version)"
 fi
+echo "Using uv: $(uv --version)"
+
+# Some images (RunPod, Colab) preset `UV_SYSTEM_PYTHON=1`, which makes
+# `uv pip` ignore the venv and dump packages into the host Python.
+# Clear it so every `uv pip install` below targets our venv.
+unset UV_SYSTEM_PYTHON
+unset UV_PYTHON
 
 # --------------------------------------------------------------------------
-# 2. Create venv on LOCAL disk (fast I/O)
+# 2-3. Install Python 3.13 if needed and create the venv.
 # --------------------------------------------------------------------------
-if [ -d "$LOCAL_VENV" ]; then
-    echo "Removing existing venv at $LOCAL_VENV..."
-    rm -rf "$LOCAL_VENV"
-fi
-# Also clean up any old symlink or directory at the workspace path
-if [ -L "$SYMLINK" ] || [ -d "$SYMLINK" ]; then
-    rm -rf "$SYMLINK"
-fi
+uv python install 3.13
+echo "Creating venv at $NN_DIR/.venv (Python 3.13)..."
+uv venv --python 3.13 "$NN_DIR/.venv"
 
-echo "Creating venv at $LOCAL_VENV (local disk)..."
-$PY -m venv "$LOCAL_VENV"
-
-# Symlink so `source .venv/bin/activate` works from the project dir
-ln -s "$LOCAL_VENV" "$SYMLINK"
-echo "Symlinked $SYMLINK -> $LOCAL_VENV"
-
-source "$LOCAL_VENV/bin/activate"
-pip install --upgrade pip setuptools wheel
+# Pass --python explicitly to every `uv pip install` so it targets the venv
+# regardless of any host Python on PATH.
+VENV_PY="$NN_DIR/.venv/bin/python"
+export VIRTUAL_ENV="$NN_DIR/.venv"
+export PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # --------------------------------------------------------------------------
-# 3. Install PyTorch + CUDA 12.4
+# 4. Install PyTorch (CUDA 12.4) + the upstream `spd` package + this repo.
 # --------------------------------------------------------------------------
-echo "Installing PyTorch with CUDA 12.4 support..."
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+uv pip install --python "$VENV_PY" torch torchvision --index-url https://download.pytorch.org/whl/cu124
 
-# --------------------------------------------------------------------------
-# 4. Install SPD (editable, with all its deps)
-# --------------------------------------------------------------------------
-echo "Installing SPD (editable) from branch $SPD_BRANCH..."
+echo "Cloning upstream spd into $SPD_DIR (branch $SPD_BRANCH)..."
+mkdir -p "$(dirname "$SPD_DIR")"
 if [ ! -d "$SPD_DIR" ]; then
-    echo "Cloning SPD repo..."
     git clone --branch "$SPD_BRANCH" https://github.com/goodfire-ai/spd.git "$SPD_DIR"
 else
-    echo "SPD repo exists, checking out $SPD_BRANCH..."
-    cd "$SPD_DIR"
-    git fetch origin "$SPD_BRANCH"
-    git checkout "$SPD_BRANCH"
-    cd "$NN_DIR"
+    (cd "$SPD_DIR" && git fetch origin "$SPD_BRANCH" && git checkout "$SPD_BRANCH")
 fi
-pip install -e "$SPD_DIR"
+uv pip install --python "$VENV_PY" -e "$SPD_DIR"
+
+echo "Installing nn_decompositions (editable)..."
+uv pip install --python "$VENV_PY" -e "$NN_DIR"
 
 # --------------------------------------------------------------------------
-# 5. Install nn_decompositions (editable, with all extras)
+# 5. Smoke test (use the venv interpreter explicitly so the result is
+#    independent of whatever Python happens to be first on PATH).
 # --------------------------------------------------------------------------
-echo "Installing nn-decompositions (editable, all extras)..."
-pip install -e "$NN_DIR[dev,analysis,simplestories]"
-
-# --------------------------------------------------------------------------
-# 6. Extra packages used by experiment scripts but not in pyproject.toml
-# --------------------------------------------------------------------------
-echo "Installing extra experiment dependencies..."
-pip install openai tabulate pyyaml
-
-# --------------------------------------------------------------------------
-# 7. Install Claude Code
-# --------------------------------------------------------------------------
-echo "Installing Node.js and npm via NodeSource..."
-curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
-apt-get install -y -qq nodejs
-echo "Installed node $(node --version), npm $(npm --version)"
-
-echo "Installing Claude Code..."
-npm install -g @anthropic-ai/claude-code
-
-# --------------------------------------------------------------------------
-# 8. Verify
-# --------------------------------------------------------------------------
-echo ""
-echo "============================================================"
-echo "Verifying installation..."
-echo "============================================================"
-python -c "
+"$VENV_PY" -c "
+import sys; print(f'python {sys.version.split()[0]}')
 import torch
-print(f'torch {torch.__version__}, CUDA available: {torch.cuda.is_available()}, CUDA version: {torch.version.cuda}')
-import wandb, datasets, tqdm, matplotlib, einops, jaxtyping
-print('Core packages OK')
-import spd
-print('SPD OK')
+print(f'torch {torch.__version__}, CUDA available: {torch.cuda.is_available()}')
+import spd; print('spd OK')
 from nn_decompositions.transcoder import BatchTopKTranscoder
-from nn_decompositions.config import EncoderConfig, CLTConfig
 from nn_decompositions.clt import CrossLayerTranscoder
-print('nn_decompositions core imports OK')
-from spd.models.components import make_mask_infos
-print('SPD imports OK')
+print('nn_decompositions OK')
 "
 
 echo ""
-echo "============================================================"
-echo "Setup complete!"
-echo ""
-echo "  Activate with:  source $SYMLINK/bin/activate"
-echo "  Venv location:  $LOCAL_VENV (local disk)"
-echo ""
-echo "  NOTE: The venv lives on the machine's local disk for speed."
-echo "  It will NOT persist across pod restarts — rerun this script."
-echo "============================================================"
+echo "Setup complete. Activate with:  source $NN_DIR/.venv/bin/activate"

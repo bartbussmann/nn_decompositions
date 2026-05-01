@@ -13,10 +13,13 @@ checkpoints/
 # WandB
 .wandb/
 wandb/
+wandb_*/
 
 # Environment
+.venv
+.venv/
 .env
-.env.local
+.env.*
 
 # IDE
 .vscode/
@@ -27,3 +30,7 @@ wandb/
 # OS
 .DS_Store
 Thumbs.db
+
+# Auto-populated caches
+experiments/llm_base_model/
+experiments/feature_splitting_heatmap/output/direction_cache/

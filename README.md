@@ -1,119 +1,114 @@
-# NN Decompositions
+# nn_decompositions — VPD paper replication
 
-A research repository for comparing neural network decomposition methods for mechanistic interpretability. Implements Sparse Autoencoders (SAEs), Transcoders, and Cross-Layer Transcoders (CLTs), and benchmarks them against Sparse Parameter Decomposition (SPD).
+This repository contains the per-layer transcoder (PLT) and cross-layer
+transcoder (CLT) training and evaluation code used in the VPD paper. It
+is a minimal slice that exactly reproduces the four headline figures
+(plus their underlying training runs).
 
-## Overview
+The PLT and CLT decomposition baselines are trained here; VPD itself is
+loaded from public artifacts on the [SPD repository](https://github.com/goodfire-ai/spd).
 
-The goal is to decompose transformer MLP computations into sparse, interpretable components and compare methods on reconstruction quality (MSE) vs. sparsity (L0) and downstream task performance (cross-entropy).
+## Target model
 
-The primary target model is a 4-layer **LlamaSimpleMLP** transformer (`n_embd=768`, GELU MLPs with `n_intermediate=3072`), trained on the Pile dataset.
+All experiments target a 4-layer LlamaSimpleMLP transformer
+(`d_model = 768`, `d_intermediate = 3072`, GELU MLPs) trained on the
+Pile. The base model is published at
+[`goodfire/spd/runs/t-9d2b8f02`](https://wandb.ai/goodfire/spd/runs/t-9d2b8f02)
+and is auto-downloaded on first use.
 
-## Installation
+## Layout
 
-**On RunPod** (recommended — handles Python 3.13, CUDA, and SPD):
+```
+.
+├── nn_decompositions/                    # core PLT / CLT package
+│   ├── transcoder.py                     # BatchTopKTranscoder
+│   ├── clt.py                            # CrossLayerTranscoder
+│   ├── config.py                         # EncoderConfig, CLTConfig
+│   ├── activation_store.py
+│   ├── training.py
+│   └── logs.py
+├── experiments/
+│   ├── paper_runs.py                     # wandb / VPD run-IDs used in the paper
+│   ├── eval_utils.py                     # shared helpers (data, hooks, CE, model loaders)
+│   ├── llm_base_model/                   # auto-populated cache (gitignored)
+│   ├── train_local_mse/                  # PLT + CLT local-MSE training (4k or 32k)
+│   ├── train_e2e/                        # PLT + CLT end-to-end training (4k or 32k)
+│   ├── pareto_plot_local/                # local-MSE Pareto plot (CE / MSE vs capacity)
+│   ├── pareto_plot_e2e/                  # end-to-end Pareto plot (CE / L0)
+│   ├── alive_subcomponents/              # alive-subcomponent scaling figure
+│   └── feature_splitting_heatmap/        # cross-model feature-splitting heatmaps
+├── setup_env.sh
+└── pyproject.toml
+```
+
+## Setup
+
+Requires a CUDA-12.4-compatible GPU and `git`. Python 3.13 itself does
+**not** need to be pre-installed — `setup_env.sh` uses [`uv`](https://astral.sh/uv)
+to fetch a 3.13 interpreter on the fly.
+
 ```bash
-bash setup_env.sh
+bash setup_env.sh                # installs uv + Python 3.13, creates .venv,
+                                 # installs torch + spd + this package
 source .venv/bin/activate
+wandb login                      # needed to pull artifacts and log training
+huggingface-cli login            # `danbraunai/pile-uncopyrighted-tok` is gated
 ```
 
-**Manual:**
-```bash
-pip install -e ".[dev,analysis]"
-pip install -e /path/to/spd  # sibling SPD repo
-```
+## Training the PLTs and CLTs
 
-## Model Implementations
+The paper uses local-MSE-trained PLTs and CLTs at two dictionary sizes
+(4 096 and 32 768) and four top-k values (8, 16, 32, 64). End-to-end KL
+variants are also trained. The four wandb projects are:
 
-### Transcoders (`transcoder.py`)
+| project | script | notes |
+|---|---|---|
+| `pile_local_sweep_jose`     | `train_local_mse/train_local_mse.py` | default `--dict_size 4096` |
+| `pile_local_sweep_jose_32k` | `train_local_mse/train_local_mse.py --dict_size 32768` | same script, 32k variant |
+| `pile_e2e_sweep_jose`       | `train_e2e/train_e2e.py` | default `--dict_size 4096` |
+| `pile_e2e_sweep_jose_32k`   | `train_e2e/train_e2e.py --dict_size 32768` | same script, 32k variant |
 
-Map MLP inputs to MLP outputs through a sparse bottleneck (input ≠ output):
+Each script polls GPU memory and launches one job per free device. Full
+sweeps require ≈ 40 GPU-hours on H100s.
 
-- **VanillaTranscoder** — L1 regularization on latent activations
-- **TopKTranscoder** — keeps top-k activations per sample
-- **BatchTopKTranscoder** — keeps top-k activations across the entire batch
-- **JumpReLUTranscoder** — learnable per-feature thresholds with straight-through gradients
+## Replicating the four figures
 
-### Cross-Layer Transcoder (`clt.py`)
+After training (or pointing the scripts at the existing wandb run IDs
+above), run each experiment from the repository root:
 
-Per-layer encoders with **triangular decoders**: a feature activated at source layer `i` writes to MLP outputs at layers `i, i+1, ..., n-1`. This captures cross-layer structure that per-layer transcoders cannot.
+| Figure | Script | Output JSON | Wall-clock |
+|---|---|---|---|
+| Local-MSE Pareto | `python experiments/pareto_plot_local/pareto_plot_local.py` | `pareto_plot_local/output/pareto_data.json` | ≈ 30 min |
+| End-to-end Pareto | `python experiments/pareto_plot_e2e/pareto_plot_e2e.py` then `python experiments/pareto_plot_e2e/plot.py` | `pareto_plot_e2e/output/results_{4k,32k}.json` | ≈ 20 min |
+| Alive-subcomponent scaling | `python experiments/alive_subcomponents/alive_subcomponents.py` | `alive_subcomponents/output/alive_line_data.json` | ≈ 15 min |
+| Feature-splitting heatmaps | `python experiments/feature_splitting_heatmap/feature_splitting_heatmap.py` | `feature_splitting_heatmap/output/heatmap_data_{input,output,matrix}_t0p5.json` | ≈ 25 min |
 
-### SAEs (`sae.py`)
+Each script supports `--plot-only` to re-render figures from the cached
+JSON in its `output/` directory without re-running the heavy compute.
 
-Standard sparse autoencoders that reconstruct input activations (input = output). Same four variants: Vanilla, TopK, BatchTopK, JumpReLU.
+The data files (`results_*.json`, `pareto_data.json`, `alive_line_data.json`,
+`heatmap_data_*.json`) are the canonical numerical output and are
+designed to be re-styled by collaborators without rerunning the
+extraction.
 
-## Configuration
+## Reference VPD checkpoints
 
-Configs are dataclasses defined in `config.py`:
+`pareto_plot_local`, `pareto_plot_e2e`, `alive_subcomponents`, and `feature_splitting_heatmap` also load four VPD checkpoints from
+the public `goodfire/spd` wandb project:
 
-- **EncoderConfig** — base config for transcoders (input_size, output_size, dict_size, encoder_type, top_k, training params)
-- **SAEConfig** — extends EncoderConfig with `input_size == output_size` constraint
-- **CLTConfig** — adds `layers` (list of layer indices) for cross-layer structure
+| Capacity | wandb run |
+|---|---|
+| 0.5x | `goodfire/spd/s-b2b37c4e` |
+| 1x   | `goodfire/spd/s-55ea3f9b` |
+| 2x   | `goodfire/spd/s-266cb440` |
+| 4x   | `goodfire/spd/s-d3834f54` |
 
-## Experiments
+These are loaded via `experiments.eval_utils.load_vpd_model` and
+require the [`spd` repository](https://github.com/goodfire-ai/spd) on the
+branch installed by `setup_env.sh`. All run IDs (VPD baselines, headline
+PLT/CLT runs, base-model path, wandb projects) live in
+`experiments/paper_runs.py` — edit there to swap in your own checkpoints.
 
-Each experiment lives in `experiments/exp_XXX_<name>/` with outputs in an `output/` subdirectory.
+## License
 
-### Training
-| ID | Description |
-|----|-------------|
-| 001 | Train BatchTopKTranscoders on all 4 layers (per-layer top_k matching SPD L0s) |
-| 002 | Train transcoders on SimpleStories dataset |
-| 003 | Train Cross-Layer Transcoder on all 4 layers |
-| 010 | Uniform top_k sweep [8, 16, 32, 64] across all layers |
-
-### Evaluation & Comparison
-| ID | Description |
-|----|-------------|
-| 005 | Pareto comparison on GPT-2 |
-| 006 | Single-layer Pareto comparison on Pile |
-| 007 | All-layers Pareto: replace all 4 MLPs simultaneously, L0 sweep, 3 x-axis variants |
-| 011 | Pareto from naturally-trained checkpoints (transcoders, CLTs, SPD thresholds, neuron baseline) |
-| 012 | Comprehensive model comparison table (dict size, alive features, dead %, L0, CE, MSE, params) |
-| 013 | Steering evaluation: LLM-judged concept/fluency scores across steering factors |
-| 014 | Topic ablation: zero AUROC-selected features, measure selectivity of topic suppression |
-
-### Analysis
-| ID | Description |
-|----|-------------|
-| 008 | Automated interpretability, intruder detection, faithfulness |
-| 009 | Diagnose activation tail behavior |
-
-### Pareto plots (exp_007, exp_011)
-
-Compare methods on three x-axis definitions to account for structural differences:
-1. **Active components per module** — raw average L0
-2. **Active components per MLP reconstruction** — accounts for CLT's cross-layer writes and SPD's dual modules
-3. **Total active parameters** — actual parameter count using per-layer L0s
-
-## Project Structure
-
-```
-nn_decompositions/
-├── sae.py               # SAE implementations (4 variants)
-├── transcoder.py         # Transcoder implementations (4 variants)
-├── clt.py                # Cross-Layer Transcoder
-├── config.py             # EncoderConfig, SAEConfig, CLTConfig
-├── activation_store.py   # ActivationsStore + DataConfig
-├── training.py           # Training loop (train_encoder)
-├── logs.py               # WandB logging and checkpointing
-├── main.py               # Example training scripts
-├── setup_env.sh          # RunPod environment setup
-├── analysis/             # Activation collection and dashboards
-│   ├── collect_activations.py
-│   ├── collect_spd_activations.py
-│   └── feature_dashboard.py
-└── experiments/
-    ├── exp_001_train_transcoder_pile/
-    ├── exp_002_train_transcoder_ss/
-    ├── exp_003_train_clt_pile/
-    ├── ...
-    ├── exp_011_pareto_trained_all_layers/
-    ├── exp_013_steering_eval/
-    └── exp_014_ablation_eval/
-```
-
-## References
-
-- [Scaling Monosemanticity](https://transformer-circuits.pub/2024/scaling-monosemanticity/)
-- [Towards Monosemanticity](https://transformer-circuits.pub/2023/monosemantic-features/)
-- [Scaling and Evaluating Sparse Autoencoders](https://arxiv.org/abs/2406.04093)
+MIT — see `LICENSE`.

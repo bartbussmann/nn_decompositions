@@ -131,15 +131,3 @@ class CLTConfig:
         return f"{base}_{self.lr}"
 
 
-@dataclass
-class SAEConfig(EncoderConfig):
-    """Config for Sparse Autoencoders (input_size == output_size)."""
-
-    wandb_project: str = "sparse_autoencoders"
-
-    def __post_init__(self):
-        assert self.input_size == self.output_size, "SAE requires input_size == output_size"
-
-    @property
-    def act_size(self) -> int:
-        return self.input_size
