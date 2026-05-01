@@ -13,10 +13,12 @@ checkpoints/
 # WandB
 .wandb/
 wandb/
+wandb_*/
 
 # Environment
+.venv/
 .env
-.env.local
+.env.*
 
 # IDE
 .vscode/
@@ -27,5 +29,7 @@ wandb/
 # OS
 .DS_Store
 Thumbs.db
-experiments/exp_042_spd_sae_interaction/output/dashboard_data_v2.json
-experiments/exp_042_spd_sae_interaction/output/dashboard_data.json
+
+# Auto-populated caches
+experiments/jose_base_model/
+experiments/exp_052_cross_model_heatmaps_t05/output/direction_cache/

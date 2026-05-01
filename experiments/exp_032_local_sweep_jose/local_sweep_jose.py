@@ -1,18 +1,17 @@
 """Local MSE training sweep on jose's target model (t-9d2b8f02).
 
-Same as exp_020 but using standard local MSE loss (per-layer reconstruction)
-instead of end-to-end KL divergence on final token logits.
+Per-layer MSE reconstruction (no end-to-end KL). Trains BatchTopK Transcoders
+and CLTs at k = 8, 16, 32, 64. Polls GPU memory to find free devices and
+launches jobs as capacity allows.
 
-Transcoders and CLTs, k=8/16/32/64.
-
-Polls GPU memory to find free devices and launches jobs as capacity allows.
-All runs go to a single wandb project with descriptive run names.
+Use --dict_size 4096 (default) to log to `pile_local_sweep_jose`, or
+--dict_size 32768 to log to `pile_local_sweep_jose_32k`.
 
 Usage:
     python experiments/exp_032_local_sweep_jose/local_sweep_jose.py
+    python experiments/exp_032_local_sweep_jose/local_sweep_jose.py --dict_size 32768
     python experiments/exp_032_local_sweep_jose/local_sweep_jose.py --top_ks 32 64
     python experiments/exp_032_local_sweep_jose/local_sweep_jose.py --types tc clt
-    python experiments/exp_032_local_sweep_jose/local_sweep_jose.py --min_free_gb 12
 """
 
 import os
@@ -32,9 +31,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 sys.path.insert(0, str(Path("/workspace/spd")))
 
 WANDB_MODEL_PATH = "goodfire/spd/runs/t-9d2b8f02"
-WANDB_PROJECT = "pile_local_sweep_jose"
+PROJECT_BY_DICT_SIZE = {4096: "pile_local_sweep_jose", 32768: "pile_local_sweep_jose_32k"}
 LAYERS = [0, 1, 2, 3]
-DICT_SIZE = 4096
 NUM_TOKENS = int(5e8)
 LR = 3e-4
 MODEL_BATCH_SIZE = 16
@@ -60,7 +58,7 @@ def compute_loss_llama(model, tokenizer, input_ids, attention_mask):
     return F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1)).item()
 
 
-def train_one(job: Job, device: str, model_cache_path: str):
+def train_one(job: Job, device: str, model_cache_path: str, dict_size: int, wandb_project: str):
     """Train a single job. Runs in a subprocess."""
     try:
         wandb_dir = Path(f"wandb_{job.name}").resolve()
@@ -124,14 +122,14 @@ def train_one(job: Job, device: str, model_cache_path: str):
                 cfg = EncoderConfig(
                     input_size=d_model,
                     output_size=d_model,
-                    dict_size=DICT_SIZE,
+                    dict_size=dict_size,
                     encoder_type="batchtopk",
                     top_k=job.top_k,
                     l1_coeff=0.0,
                     batch_size=4096,
                     num_tokens=NUM_TOKENS,
                     lr=LR,
-                    wandb_project=WANDB_PROJECT,
+                    wandb_project=wandb_project,
                     device=device,
                     e2e=False,
                     run_name=job.name,
@@ -150,14 +148,14 @@ def train_one(job: Job, device: str, model_cache_path: str):
                 layers=LAYERS,
                 input_size=d_model,
                 output_size=d_model,
-                dict_size=DICT_SIZE,
+                dict_size=dict_size,
                 encoder_type="batchtopk",
                 top_k=job.top_k,
                 l1_coeff=0.0,
                 batch_size=4096,
                 num_tokens=NUM_TOKENS,
                 lr=LR,
-                wandb_project=WANDB_PROJECT,
+                wandb_project=wandb_project,
                 run_name=job.name,
                 device=device,
                 e2e=False,
@@ -190,12 +188,16 @@ def get_free_gpus(min_free_bytes: float) -> list[int]:
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Local MSE training sweep (jose target model) with GPU queue")
+    parser.add_argument("--dict_size", type=int, default=4096, choices=[4096, 32768],
+                        help="Dictionary size; selects which wandb project to log to")
     parser.add_argument("--top_ks", type=int, nargs="+", default=ALL_TOP_KS)
     parser.add_argument("--types", type=str, nargs="+", default=ALL_TYPES,
                         choices=ALL_TYPES)
     parser.add_argument("--min_free_gb", type=float, default=12.0,
                         help="Minimum free GPU memory (GB) to start a job")
     args = parser.parse_args()
+
+    wandb_project = PROJECT_BY_DICT_SIZE[args.dict_size]
 
     jobs = [
         Job(name=f"{jtype}_k{k}", job_type=jtype, top_k=k)
@@ -206,17 +208,11 @@ def main():
     n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
     min_free_bytes = args.min_free_gb * 1e9
 
-    # Use jose's target model cache from exp_019 if available, otherwise download
-    jose_cache = Path(__file__).resolve().parent.parent / "exp_019_eval_e2e" / "jose_model_cache"
-    model_cache_path = str(Path(__file__).resolve().parent / "model_cache")
+    # Shared base-model cache. Auto-downloads from wandb on first run.
+    model_cache_path = str(Path(__file__).resolve().parent.parent / "jose_base_model")
     os.makedirs(model_cache_path, exist_ok=True)
 
-    if jose_cache.exists() and (jose_cache / "state_dict.pt").exists():
-        print(f"Using cached jose target model from {jose_cache}")
-        import shutil
-        shutil.copy2(jose_cache / "state_dict.pt", os.path.join(model_cache_path, "state_dict.pt"))
-        shutil.copy2(jose_cache / "config.json", os.path.join(model_cache_path, "config.json"))
-    else:
+    if not (Path(model_cache_path) / "state_dict.pt").exists():
         print("Downloading jose target model from wandb...")
         from spd.pretrain.models.llama_simple_mlp import LlamaSimpleMLP
         model = LlamaSimpleMLP.from_pretrained(WANDB_MODEL_PATH)
@@ -227,6 +223,7 @@ def main():
         del model
 
     print(f"Model cached at {model_cache_path}")
+    print(f"Logging to wandb project: {wandb_project} (dict_size={args.dict_size})")
 
     print(f"\n=== Local MSE Sweep (jose): {len(jobs)} jobs ===")
     for j in jobs:
@@ -261,7 +258,10 @@ def main():
                 job = pending.pop(0)
                 device = f"cuda:{gpu_id}"
                 print(f"[{job.name}] Launching on {device}")
-                p = ctx.Process(target=train_one, args=(job, device, model_cache_path))
+                p = ctx.Process(
+                    target=train_one,
+                    args=(job, device, model_cache_path, args.dict_size, wandb_project),
+                )
                 p.start()
                 running.append((p, job.name, gpu_id))
                 busy_gpus.add(gpu_id)

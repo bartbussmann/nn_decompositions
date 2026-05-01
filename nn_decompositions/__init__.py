@@ -1,4 +1,4 @@
-from nn_decompositions.config import CLTConfig, EncoderConfig, SAEConfig
+from nn_decompositions.config import CLTConfig, EncoderConfig
 from nn_decompositions.transcoder import (
     BatchTopKTranscoder,
     JumpReLUTranscoder,
@@ -9,7 +9,6 @@ from nn_decompositions.transcoder import (
 
 __all__ = [
     "EncoderConfig",
-    "SAEConfig",
     "CLTConfig",
     "SharedTranscoder",
     "VanillaTranscoder",

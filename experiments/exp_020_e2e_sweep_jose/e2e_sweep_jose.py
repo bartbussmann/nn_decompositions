@@ -215,17 +215,11 @@ def main():
     n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
     min_free_bytes = args.min_free_gb * 1e9
 
-    # Use jose's target model cache from exp_019 if available, otherwise download
-    jose_cache = Path(__file__).resolve().parent.parent / "exp_019_eval_e2e" / "jose_model_cache"
-    model_cache_path = str(Path(__file__).resolve().parent / "model_cache")
+    # Shared base-model cache. Auto-downloads from wandb on first run.
+    model_cache_path = str(Path(__file__).resolve().parent.parent / "jose_base_model")
     os.makedirs(model_cache_path, exist_ok=True)
 
-    if jose_cache.exists() and (jose_cache / "state_dict.pt").exists():
-        print(f"Using cached jose target model from {jose_cache}")
-        import shutil
-        shutil.copy2(jose_cache / "state_dict.pt", os.path.join(model_cache_path, "state_dict.pt"))
-        shutil.copy2(jose_cache / "config.json", os.path.join(model_cache_path, "config.json"))
-    else:
+    if not (Path(model_cache_path) / "state_dict.pt").exists():
         print("Downloading jose target model from wandb...")
         from spd.pretrain.models.llama_simple_mlp import LlamaSimpleMLP
         model = LlamaSimpleMLP.from_pretrained(WANDB_MODEL_PATH)

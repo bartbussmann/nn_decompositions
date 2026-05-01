@@ -1,154 +1,58 @@
-#!/bin/bash
-# Setup script for nn_decompositions on RunPod (Ubuntu 22.04, CUDA 12.4).
+#!/usr/bin/env bash
+# Set up a Python 3.13 venv with all dependencies needed to replicate
+# the VPD paper's transcoder and pareto experiments.
 #
-# Installs the venv on the local machine disk (fast) and symlinks it
-# from the workspace so `source .venv/bin/activate` still works.
+# Requires: Python 3.13, CUDA 12.4-compatible GPU, git.
 #
 # Usage:
-#   bash setup_env.sh          # full install
-#   source .venv/bin/activate  # activate after install
-#
+#   bash setup_env.sh
+#   source .venv/bin/activate
+
 set -euo pipefail
 
-LOCAL_VENV="/root/nn_decompositions_venv"
-SYMLINK="/workspace/nn_decompositions/.venv"
-NN_DIR="/workspace/nn_decompositions"
-SPD_DIR="/workspace/spd"
-SPD_BRANCH="snapshot/launch-20260225_151714"  # branch used to train s-55ea3f9b (jose baseline)
+NN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SPD_DIR="${SPD_DIR:-$NN_DIR/external/spd}"
+SPD_BRANCH="${SPD_BRANCH:-snapshot/launch-20260225_151714}"  # branch used to train s-55ea3f9b (jose baseline)
 
-# --------------------------------------------------------------------------
-# 1. Ensure Python 3.13 is available
-# --------------------------------------------------------------------------
-if command -v python3.13 &>/dev/null; then
-    PY=python3.13
-    echo "Found $($PY --version) at $(which $PY)"
-else
-    echo "Python 3.13 not found — installing via deadsnakes PPA..."
-    apt-get update -qq
-    apt-get install -y -qq software-properties-common
-
-    if ! add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null; then
-        echo "add-apt-repository failed (likely broken apt_pkg) — trying to fix..."
-        # Reinstall python3-apt and symlink the .so for the current python3
-        apt-get install -y -qq --reinstall python3-apt 2>/dev/null || true
-        SO_FILE=$(find /usr/lib/python3/dist-packages -name 'apt_pkg.cpython-*.so' 2>/dev/null | head -1)
-        if [ -n "$SO_FILE" ]; then
-            ln -sf "$SO_FILE" /usr/lib/python3/dist-packages/apt_pkg.so
-        fi
-
-        if ! add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null; then
-            echo "Still failing — adding deadsnakes PPA manually..."
-            CODENAME=$(. /etc/os-release && echo "${VERSION_CODENAME:-jammy}")
-            echo "deb http://ppa.launchpad.net/deadsnakes/ppa/ubuntu ${CODENAME} main" \
-                > /etc/apt/sources.list.d/deadsnakes-ppa.list
-            apt-get install -y -qq gpg
-            apt-key adv --keyserver keyserver.ubuntu.com \
-                --recv-keys F23C5A6CF475977595C89F51BA6932366A755776
-        fi
-    fi
-
-    apt-get update -qq
-    apt-get install -y -qq python3.13 python3.13-venv python3.13-dev
-    PY=python3.13
-    echo "Installed $($PY --version)"
+if ! command -v python3.13 &>/dev/null; then
+    echo "Error: python3.13 is required but not found." >&2
+    echo "Install it via deadsnakes (Ubuntu) or pyenv, then re-run." >&2
+    exit 1
 fi
 
-# --------------------------------------------------------------------------
-# 2. Create venv on LOCAL disk (fast I/O)
-# --------------------------------------------------------------------------
-if [ -d "$LOCAL_VENV" ]; then
-    echo "Removing existing venv at $LOCAL_VENV..."
-    rm -rf "$LOCAL_VENV"
-fi
-# Also clean up any old symlink or directory at the workspace path
-if [ -L "$SYMLINK" ] || [ -d "$SYMLINK" ]; then
-    rm -rf "$SYMLINK"
-fi
+echo "Creating venv at $NN_DIR/.venv ..."
+python3.13 -m venv "$NN_DIR/.venv"
+# shellcheck source=/dev/null
+source "$NN_DIR/.venv/bin/activate"
 
-echo "Creating venv at $LOCAL_VENV (local disk)..."
-$PY -m venv "$LOCAL_VENV"
-
-# Symlink so `source .venv/bin/activate` works from the project dir
-ln -s "$LOCAL_VENV" "$SYMLINK"
-echo "Symlinked $SYMLINK -> $LOCAL_VENV"
-
-source "$LOCAL_VENV/bin/activate"
 pip install --upgrade pip setuptools wheel
-
-# --------------------------------------------------------------------------
-# 3. Install PyTorch + CUDA 12.4
-# --------------------------------------------------------------------------
-echo "Installing PyTorch with CUDA 12.4 support..."
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 
-# --------------------------------------------------------------------------
-# 4. Install SPD (editable, with all its deps)
-# --------------------------------------------------------------------------
-echo "Installing SPD (editable) from branch $SPD_BRANCH..."
+echo "Cloning SPD repo into $SPD_DIR (branch $SPD_BRANCH)..."
+mkdir -p "$(dirname "$SPD_DIR")"
 if [ ! -d "$SPD_DIR" ]; then
-    echo "Cloning SPD repo..."
     git clone --branch "$SPD_BRANCH" https://github.com/goodfire-ai/spd.git "$SPD_DIR"
 else
-    echo "SPD repo exists, checking out $SPD_BRANCH..."
-    cd "$SPD_DIR"
-    git fetch origin "$SPD_BRANCH"
-    git checkout "$SPD_BRANCH"
-    cd "$NN_DIR"
+    (cd "$SPD_DIR" && git fetch origin "$SPD_BRANCH" && git checkout "$SPD_BRANCH")
 fi
 pip install -e "$SPD_DIR"
 
-# --------------------------------------------------------------------------
-# 5. Install nn_decompositions (editable, with all extras)
-# --------------------------------------------------------------------------
-echo "Installing nn-decompositions (editable, all extras)..."
-pip install -e "$NN_DIR[dev,analysis,simplestories]"
+echo "Installing nn_decompositions (editable)..."
+pip install -e "$NN_DIR"
 
-# --------------------------------------------------------------------------
-# 6. Extra packages used by experiment scripts but not in pyproject.toml
-# --------------------------------------------------------------------------
-echo "Installing extra experiment dependencies..."
-pip install openai tabulate pyyaml
+# Update sys.path hint for the experiment scripts so they can find SPD locally.
+echo "Note: experiment scripts add /workspace/spd to sys.path. If you cloned"
+echo "      SPD elsewhere, edit the sys.path.insert lines or symlink:"
+echo "        ln -s '$SPD_DIR' /workspace/spd"
 
-# --------------------------------------------------------------------------
-# 7. Install Claude Code
-# --------------------------------------------------------------------------
-echo "Installing Node.js and npm via NodeSource..."
-curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
-apt-get install -y -qq nodejs
-echo "Installed node $(node --version), npm $(npm --version)"
-
-echo "Installing Claude Code..."
-npm install -g @anthropic-ai/claude-code
-
-# --------------------------------------------------------------------------
-# 8. Verify
-# --------------------------------------------------------------------------
-echo ""
-echo "============================================================"
-echo "Verifying installation..."
-echo "============================================================"
 python -c "
 import torch
-print(f'torch {torch.__version__}, CUDA available: {torch.cuda.is_available()}, CUDA version: {torch.version.cuda}')
-import wandb, datasets, tqdm, matplotlib, einops, jaxtyping
-print('Core packages OK')
-import spd
-print('SPD OK')
+print(f'torch {torch.__version__}, CUDA available: {torch.cuda.is_available()}')
+import spd; print('spd OK')
 from nn_decompositions.transcoder import BatchTopKTranscoder
-from nn_decompositions.config import EncoderConfig, CLTConfig
 from nn_decompositions.clt import CrossLayerTranscoder
-print('nn_decompositions core imports OK')
-from spd.models.components import make_mask_infos
-print('SPD imports OK')
+print('nn_decompositions OK')
 "
 
 echo ""
-echo "============================================================"
-echo "Setup complete!"
-echo ""
-echo "  Activate with:  source $SYMLINK/bin/activate"
-echo "  Venv location:  $LOCAL_VENV (local disk)"
-echo ""
-echo "  NOTE: The venv lives on the machine's local disk for speed."
-echo "  It will NOT persist across pod restarts — rerun this script."
-echo "============================================================"
+echo "Setup complete. Activate with:  source $NN_DIR/.venv/bin/activate"

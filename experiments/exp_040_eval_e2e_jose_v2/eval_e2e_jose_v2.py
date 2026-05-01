@@ -37,7 +37,7 @@ from nn_decompositions.clt import CrossLayerTranscoder
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 LAYERS = [0, 1, 2, 3]
-JOSE_MODEL_CACHE = Path("experiments/exp_019_eval_e2e/jose_model_cache")
+JOSE_MODEL_CACHE = Path("experiments/jose_base_model")
 CHECKPOINT_DIR = Path("checkpoints/jose_v2")
 OUTPUT_DIR = Path("experiments/exp_040_eval_e2e_jose_v2/output")
 
@@ -515,8 +515,17 @@ def main():
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Load jose base model
+    # Load jose base model. Auto-downloads from wandb on first run.
     from spd.pretrain.models.llama_simple_mlp import LlamaSimpleMLP, LlamaSimpleMLPConfig
+
+    JOSE_MODEL_CACHE.mkdir(parents=True, exist_ok=True)
+    if not (JOSE_MODEL_CACHE / "state_dict.pt").exists():
+        print("Downloading jose target model from wandb (first run)...")
+        model = LlamaSimpleMLP.from_pretrained("goodfire/spd/runs/t-9d2b8f02")
+        torch.save(model.state_dict(), JOSE_MODEL_CACHE / "state_dict.pt")
+        with open(JOSE_MODEL_CACHE / "config.json", "w") as f:
+            json.dump(model.config.__dict__, f)
+        del model
 
     print("Loading jose base model...")
     with open(JOSE_MODEL_CACHE / "config.json") as f:
