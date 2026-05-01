@@ -26,10 +26,10 @@ and is auto-downloaded on first use.
 │   ├── config.py                         # EncoderConfig, CLTConfig
 │   ├── activation_store.py
 │   ├── training.py
-│   ├── logs.py
-│   └── eval_utils.py                     # shared helpers (data, hooks, CE, model loaders)
+│   └── logs.py
 ├── experiments/
 │   ├── paper_runs.py                     # wandb / VPD run-IDs used in the paper
+│   ├── eval_utils.py                     # shared helpers (data, hooks, CE, model loaders)
 │   ├── llm_base_model/                   # auto-populated cache (gitignored)
 │   ├── train_local_mse/                  # PLT + CLT local-MSE training (4k or 32k)
 │   ├── train_e2e/                        # PLT + CLT end-to-end training (4k or 32k)
@@ -103,7 +103,7 @@ the public `goodfire/spd` wandb project:
 | 2x   | `goodfire/spd/s-266cb440` |
 | 4x   | `goodfire/spd/s-d3834f54` |
 
-These are loaded via `nn_decompositions.eval_utils.load_vpd_model` and
+These are loaded via `experiments.eval_utils.load_vpd_model` and
 require the [`spd` repository](https://github.com/goodfire-ai/spd) on the
 branch installed by `setup_env.sh`. All run IDs (VPD baselines, headline
 PLT/CLT runs, base-model path, wandb projects) live in

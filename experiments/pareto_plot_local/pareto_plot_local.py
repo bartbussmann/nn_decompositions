@@ -28,7 +28,7 @@ load_dotenv()
 import torch
 import wandb
 
-from nn_decompositions.eval_utils import (
+from experiments.eval_utils import (
     collect_mlp_inputs,
     compute_ce_from_logits,
     compute_ce_loss,

@@ -1,9 +1,13 @@
-"""Shared utilities for the evaluation and analysis experiments.
+"""Shared utilities for the paper's experiment scripts.
 
-These helpers are imported by every script under `experiments/`. Keeping
-them here means a single canonical implementation per concern (data loading,
-CE loss, MLP-input hook, model loaders, etc.) and avoids the copy-and-drift
-pattern across scripts.
+These helpers (Pile streaming, CE loss, MLP-input hook, model loaders, …)
+are imported by every sibling script under `experiments/`. Keeping them
+here means a single canonical implementation per concern, and avoids
+the copy-and-drift pattern across scripts.
+
+This module lives in `experiments/` rather than `nn_decompositions/`
+because it's paper-experiment scaffolding — the reusable PLT/CLT
+library proper is just `nn_decompositions.{transcoder,clt,...}`.
 
 The contents are deliberately small and dependency-light — anything that
 needs upstream-`spd`-specific logic lives in `load_vpd_model` so importing

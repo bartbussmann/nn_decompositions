@@ -43,7 +43,7 @@ import torch.nn.functional as F
 import wandb
 from tqdm import tqdm
 
-from nn_decompositions.eval_utils import (
+from experiments.eval_utils import (
     cleanup_cuda,
     collect_mlp_inputs,
     get_pile_batches,

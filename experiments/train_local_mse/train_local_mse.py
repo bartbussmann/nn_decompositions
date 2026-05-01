@@ -26,7 +26,7 @@ load_dotenv()
 
 import torch
 
-from nn_decompositions.eval_utils import get_free_gpus
+from experiments.eval_utils import get_free_gpus
 from experiments.paper_runs import (
     LLM_BASE_MODEL,
     LLM_BASE_MODEL_CACHE,

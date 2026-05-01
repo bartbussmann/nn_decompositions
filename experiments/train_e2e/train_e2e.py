@@ -27,7 +27,7 @@ load_dotenv()
 import torch
 import torch.nn.functional as F
 
-from nn_decompositions.eval_utils import get_free_gpus
+from experiments.eval_utils import get_free_gpus
 from experiments.paper_runs import (
     E2E_PROJECT_BY_DICT_SIZE as PROJECT_BY_DICT_SIZE,
     LLM_BASE_MODEL,
