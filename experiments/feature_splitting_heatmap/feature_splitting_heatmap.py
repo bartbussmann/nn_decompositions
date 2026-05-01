@@ -4,19 +4,19 @@ For every ordered pair (A, B) of models and every alive feature j in A,
 we count how many alive features in B have cosine similarity above 0.5.
 We do this in three spaces:
 
-  - input  : encoder direction (SPD V column of c_fc; TC/CLT W_enc column).
-  - output : decoder direction (SPD U row of down_proj; TC/CLT W_dec row).
+  - input  : encoder direction (VPD V column of c_fc; TC/CLT W_enc column).
+  - output : decoder direction (VPD U row of down_proj; TC/CLT W_dec row).
   - matrix : combined / matrix-space cosine = cos_input * cos_output.
              By the outer-product identity this is exactly the cosine of
              the rank-1 matrix M_j = enc_j ⊗ dec_j.
 
-Models compared: VPD (SPD) at four capacities (0.5x / 1x / 2x / 4x),
+Models compared: VPD at four capacities (0.5x / 1x / 2x / 4x),
 PLT (per-layer transcoders) at 4k and 32k, and CLT at 4k and 32k.
 
 Note on the matrix-space heatmap: a feature must have *both* an encoder
 direction and a decoder direction sharing the same per-feature index for
 this cosine to be defined. That holds for transcoders (TC/CLT) but not
-for SPD — its c_fc and down_proj components are decomposed independently
+for VPD — its c_fc and down_proj components are decomposed independently
 and are not paired. The matrix-space heatmap therefore only includes the
 TC/CLT models. The input and output heatmaps include all 8 models.
 
@@ -59,14 +59,14 @@ from nn_decompositions.eval_utils import (
     collect_mlp_inputs,
     get_pile_batches,
     load_clt,
-    load_spd_model,
+    load_vpd_model,
     load_transcoder,
 )
 from experiments.paper_runs import (
     HEADLINE_CLT_RUNS,
     HEADLINE_TC_RUNS,
-    SPD_BASELINE_RUN,
-    SPD_CAPACITY_RUNS,
+    VPD_BASELINE_RUN,
+    VPD_CAPACITY_RUNS,
 )
 from nn_decompositions.transcoder import BatchTopKTranscoder
 
@@ -99,7 +99,7 @@ class ModelEntry:
     display: str
     cache_stem: str
     paired: bool
-    spd_run: str | None = None
+    vpd_run: str | None = None
     project: str | None = None
     run_id: str | None = None
 
@@ -111,10 +111,10 @@ _CLT_4K_PROJECT, _CLT_4K_RUN_ID = HEADLINE_CLT_RUNS[4096]
 _CLT_32K_PROJECT, _CLT_32K_RUN_ID = HEADLINE_CLT_RUNS[32768]
 
 MODELS: list[ModelEntry] = [
-    ModelEntry("spd", "VPD 0.5x", "spd_0p5x", paired=False, spd_run=SPD_CAPACITY_RUNS["0.5x"]),
-    ModelEntry("spd", "VPD 1x",   "spd_1x",   paired=False, spd_run=SPD_CAPACITY_RUNS["1x"]),
-    ModelEntry("spd", "VPD 2x",   "spd_2x",   paired=False, spd_run=SPD_CAPACITY_RUNS["2x"]),
-    ModelEntry("spd", "VPD 4x",   "spd_4x",   paired=False, spd_run=SPD_CAPACITY_RUNS["4x"]),
+    ModelEntry("vpd", "VPD 0.5x", "vpd_0p5x", paired=False, vpd_run=VPD_CAPACITY_RUNS["0.5x"]),
+    ModelEntry("vpd", "VPD 1x",   "vpd_1x",   paired=False, vpd_run=VPD_CAPACITY_RUNS["1x"]),
+    ModelEntry("vpd", "VPD 2x",   "vpd_2x",   paired=False, vpd_run=VPD_CAPACITY_RUNS["2x"]),
+    ModelEntry("vpd", "VPD 4x",   "vpd_4x",   paired=False, vpd_run=VPD_CAPACITY_RUNS["4x"]),
     ModelEntry("tc",  "PLT 4k",   "tc_4k",    paired=True,
                project=_PLT_4K_PROJECT,  run_id=_PLT_4K_RUN_ID),
     ModelEntry("tc",  "PLT 32k",  "tc_32k",   paired=True,
@@ -191,10 +191,10 @@ def download_clt_artifact(entry: ModelEntry) -> Path:
 @torch.no_grad()
 def extract_directions_spd(entry: ModelEntry, batches: list[torch.Tensor]
                            ) -> dict[str, dict[int, torch.Tensor]]:
-    """For SPD: 'input' uses c_fc.V columns, 'output' uses down_proj.U rows."""
-    spd_model, _ = load_spd_model(entry.spd_run)
-    spd_model.to(DEVICE)
-    spd_model.eval()
+    """For VPD: 'input' uses c_fc.V columns, 'output' uses down_proj.U rows."""
+    vpd_model, _ = load_vpd_model(entry.vpd_run)
+    vpd_model.to(DEVICE)
+    vpd_model.eval()
 
     def _module(layer: int, kind: str) -> str:
         return f"h.{layer}.mlp.{kind}"
@@ -204,17 +204,17 @@ def extract_directions_spd(entry: ModelEntry, batches: list[torch.Tensor]
         "output": [_module(l, "down_proj") for l in LAYERS],
     }
     ci_sum = {
-        m: torch.zeros(spd_model.module_to_c[m], dtype=torch.float64, device="cpu")
+        m: torch.zeros(vpd_model.module_to_c[m], dtype=torch.float64, device="cpu")
         for kind in sub_modules for m in sub_modules[kind]
     }
     n_tokens_total = 0
     for input_ids in tqdm(batches, desc=f"{entry.display} CI"):
         bsz, seq = input_ids.shape
         n_tokens_total += bsz * seq
-        out = spd_model(input_ids, cache_type="input")
-        ci = spd_model.calc_causal_importances(out.cache, sampling="continuous")
+        out = vpd_model(input_ids, cache_type="input")
+        ci = vpd_model.calc_causal_importances(out.cache, sampling="continuous")
         for m in ci_sum:
-            n_c = spd_model.module_to_c[m]
+            n_c = vpd_model.module_to_c[m]
             ci_vals = ci.lower_leaky[m].reshape(-1, n_c)
             ci_sum[m] += ci_vals.double().sum(dim=0).cpu()
 
@@ -225,13 +225,13 @@ def extract_directions_spd(entry: ModelEntry, batches: list[torch.Tensor]
         cfc_alive = (ci_sum[cfc] / n_tokens_total) > ALIVE_THRESHOLD
         down_alive = (ci_sum[down] / n_tokens_total) > ALIVE_THRESHOLD
 
-        V = spd_model.components[cfc].V.float()      # (d_in, C)
-        U = spd_model.components[down].U.float()     # (C, d_out)
+        V = vpd_model.components[cfc].V.float()      # (d_in, C)
+        U = vpd_model.components[down].U.float()     # (C, d_out)
 
         dirs["input"][layer] = F.normalize(V.T[cfc_alive], dim=1).cpu()
         dirs["output"][layer] = F.normalize(U[down_alive], dim=1).cpu()
 
-    del spd_model
+    del vpd_model
     cleanup_cuda()
     return dirs
 
@@ -315,7 +315,7 @@ def extract_or_load(entry: ModelEntry, base_model_provider) -> dict[str, dict[in
 
     print(f"\n=== Extracting directions: {entry.display} ===")
     batches = base_model_provider.batches
-    if entry.kind == "spd":
+    if entry.kind == "vpd":
         dirs = extract_directions_spd(entry, batches)
     elif entry.kind == "tc":
         dirs = extract_directions_tc(entry, base_model_provider.base_model, batches)
@@ -329,7 +329,7 @@ def extract_or_load(entry: ModelEntry, base_model_provider) -> dict[str, dict[in
 
 
 class _BaseModelProvider:
-    """Lazily load jose's base model (used by TC/CLT extraction)."""
+    """Lazily load the base LLM (used by TC/CLT extraction)."""
 
     def __init__(self, batches: list[torch.Tensor]):
         self.batches = batches
@@ -338,12 +338,12 @@ class _BaseModelProvider:
     @property
     def base_model(self):
         if self._base_model is None:
-            spd_model, _ = load_spd_model(SPD_BASELINE_RUN)
-            spd_model.to(DEVICE)
-            spd_model.eval()
-            self._base_model = spd_model.target_model
+            vpd_model, _ = load_vpd_model(VPD_BASELINE_RUN)
+            vpd_model.to(DEVICE)
+            vpd_model.eval()
+            self._base_model = vpd_model.target_model
             self._base_model.eval()
-            del spd_model
+            del vpd_model
             cleanup_cuda()
         return self._base_model
 

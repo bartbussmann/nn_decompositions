@@ -31,5 +31,5 @@ wandb_*/
 Thumbs.db
 
 # Auto-populated caches
-experiments/jose_base_model/
+experiments/llm_base_model/
 experiments/feature_splitting_heatmap/output/direction_cache/

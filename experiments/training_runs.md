@@ -1,6 +1,8 @@
-# Jose Target Model Training Runs
+# Base LLM Training Runs
 
-All runs target **jose's LlamaSimpleMLP** (`goodfire/spd/runs/t-9d2b8f02`), trained on the Pile dataset (500M tokens), using BatchTopK activation function.
+All runs target the **base LLM** — a 4-layer LlamaSimpleMLP at
+`goodfire/spd/runs/t-9d2b8f02` — trained on the Pile dataset (500M tokens),
+using a BatchTopK activation function.
 
 ## Local MSE Training
 

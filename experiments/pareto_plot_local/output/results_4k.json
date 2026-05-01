@@ -254,9 +254,9 @@
       "ce_single": 4.41347873210907
     }
   ],
-  "spd_results": [
+  "vpd_results": [
     {
-      "type": "jose",
+      "type": "vpd",
       "mode": "CI>0.5",
       "threshold": 0.5,
       "l0": 11.835263061523438,
@@ -266,7 +266,7 @@
       "ce_single": 3.2797
     },
     {
-      "type": "jose",
+      "type": "vpd",
       "mode": "CI>0.1",
       "threshold": 0.1,
       "l0": 15.0,
@@ -276,7 +276,7 @@
       "ce_single": 3.2443
     },
     {
-      "type": "jose",
+      "type": "vpd",
       "mode": "CI>0.0",
       "threshold": 0.0,
       "l0": 16.111325073242188,

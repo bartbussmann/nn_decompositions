@@ -29,9 +29,9 @@ and is auto-downloaded on first use.
 │   ├── logs.py
 │   └── eval_utils.py                     # shared helpers (data, hooks, CE, model loaders)
 ├── experiments/
-│   ├── paper_runs.py                     # wandb / SPD run-IDs used in the paper
-│   ├── jose_base_model/                  # auto-populated cache (gitignored)
-│   ├── jose_training_runs.md             # wandb run-id table for every PLT/CLT
+│   ├── paper_runs.py                     # wandb / VPD run-IDs used in the paper
+│   ├── llm_base_model/                   # auto-populated cache (gitignored)
+│   ├── training_runs.md                  # wandb run-id table for every PLT/CLT
 │   ├── train_local_mse/                  # PLT + CLT local-MSE training (4k or 32k)
 │   ├── train_e2e/                        # PLT + CLT end-to-end training (4k or 32k)
 │   ├── pareto_plot_local/                # local-MSE Pareto plot (CE / L0)
@@ -58,7 +58,7 @@ huggingface-cli login            # `danbraunai/pile-uncopyrighted-tok` is gated
 The paper uses local-MSE-trained PLTs and CLTs at two dictionary sizes
 (4 096 and 32 768) and four top-k values (8, 16, 32, 64). End-to-end KL
 variants are also trained. All runs go to four wandb projects whose IDs
-are listed in `experiments/jose_training_runs.md`.
+are listed in `experiments/training_runs.md`.
 
 | project | script | notes |
 |---|---|---|
@@ -92,7 +92,7 @@ extraction.
 
 ## Reference VPD checkpoints
 
-`pareto_plot_local`, `pareto_plot_e2e`, `alive_subcomponents`, and `feature_splitting_heatmap` also load four VPD (SPD) checkpoints from
+`pareto_plot_local`, `pareto_plot_e2e`, `alive_subcomponents`, and `feature_splitting_heatmap` also load four VPD checkpoints from
 the public `goodfire/spd` wandb project:
 
 | Capacity | wandb run |
@@ -102,12 +102,11 @@ the public `goodfire/spd` wandb project:
 | 2x   | `goodfire/spd/s-266cb440` |
 | 4x   | `goodfire/spd/s-d3834f54` |
 
-These are loaded via `nn_decompositions.eval_utils.load_spd_model` and
-require the [SPD repository](https://github.com/goodfire-ai/spd) on the
-branch installed by `setup_env.sh`. All run IDs (SPD baselines, headline
+These are loaded via `nn_decompositions.eval_utils.load_vpd_model` and
+require the [`spd` repository](https://github.com/goodfire-ai/spd) on the
+branch installed by `setup_env.sh`. All run IDs (VPD baselines, headline
 PLT/CLT runs, base-model path, wandb projects) live in
-`experiments/paper_runs.py` — edit there to swap in your own
-checkpoints.
+`experiments/paper_runs.py` — edit there to swap in your own checkpoints.
 
 ## License
 

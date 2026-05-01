@@ -1,8 +1,8 @@
-"""Combined Pareto plot: 4k + 32k dict sizes on jose's target model.
+"""Combined Pareto plot: 4k + 32k dict sizes on the base LLM.
 
 Single figure showing CE / MSE vs three capacity definitions for
 PLT (BatchTopK Transcoders) and CLTs at both 4k and 32k dict sizes,
-overlaid with SPD baselines (three CI thresholds) and the neuron baseline.
+overlaid with VPD baselines (three CI thresholds) and the neuron baseline.
 
 Usage:
     python experiments/pareto_plot_e2e/pareto_plot_e2e.py
@@ -32,11 +32,11 @@ from nn_decompositions.eval_utils import (
     compute_ce_loss,
     get_pile_batches,
     load_clt,
-    load_spd_model,
+    load_vpd_model,
     load_transcoder,
     patched_forward,
 )
-from experiments.paper_runs import SPD_BASELINE_RUN
+from experiments.paper_runs import VPD_BASELINE_RUN
 from nn_decompositions.clt import CrossLayerTranscoder  # for type hints
 from spd.models.components import make_mask_infos
 
@@ -298,15 +298,15 @@ def eval_clt_batchtopk(
 
 
 # =============================================================================
-# SPD (thresholded)
+# VPD (thresholded)
 # =============================================================================
 
 
-def _capture_all_layer_mlp_outputs(spd_model, input_ids, **model_kwargs):
+def _capture_all_layer_mlp_outputs(vpd_model, input_ids, **model_kwargs):
     captured = {}
     hooks = []
     for layer_idx in LAYERS:
-        target_mlp = spd_model.target_model.h[layer_idx].mlp
+        target_mlp = vpd_model.target_model.h[layer_idx].mlp
 
         def _make_hook(li):
             def _capture(_mod, _inp, out):
@@ -314,22 +314,22 @@ def _capture_all_layer_mlp_outputs(spd_model, input_ids, **model_kwargs):
             return _capture
 
         hooks.append(target_mlp.register_forward_hook(_make_hook(layer_idx)))
-    spd_model(input_ids, **model_kwargs)
+    vpd_model(input_ids, **model_kwargs)
     for h in hooks:
         h.remove()
     return captured
 
 
 @torch.no_grad()
-def eval_spd_thresholded(
-    spd_model, batches, module_names, mlp_activations, threshold: float,
+def eval_vpd_thresholded(
+    vpd_model, batches, module_names, mlp_activations, threshold: float,
 ) -> dict:
     total_ce, total_mse = 0.0, 0.0
     module_l0_totals = {name: 0.0 for name in module_names}
 
     for batch_idx, input_ids in enumerate(batches):
-        out = spd_model(input_ids, cache_type="input")
-        ci = spd_model.calc_causal_importances(out.cache, sampling="continuous")
+        out = vpd_model(input_ids, cache_type="input")
+        ci = vpd_model.calc_causal_importances(out.cache, sampling="continuous")
         masks = {}
         for mod_name in module_names:
             ci_post = ci.lower_leaky[mod_name]
@@ -338,11 +338,11 @@ def eval_spd_thresholded(
             module_l0_totals[mod_name] += mask.sum(-1).mean().item()
 
         mask_infos = make_mask_infos(masks)
-        logits = spd_model(input_ids, mask_infos=mask_infos)
+        logits = vpd_model(input_ids, mask_infos=mask_infos)
         total_ce += compute_ce_from_logits(logits, input_ids)
 
-        captured_orig = _capture_all_layer_mlp_outputs(spd_model, input_ids)
-        captured_masked = _capture_all_layer_mlp_outputs(spd_model, input_ids, mask_infos=mask_infos)
+        captured_orig = _capture_all_layer_mlp_outputs(vpd_model, input_ids)
+        captured_masked = _capture_all_layer_mlp_outputs(vpd_model, input_ids, mask_infos=mask_infos)
         batch_mse = 0.0
         for layer_idx in LAYERS:
             batch_mse += F.mse_loss(captured_masked[layer_idx], captured_orig[layer_idx]).item()
@@ -442,7 +442,7 @@ def compute_x_values(method: str, result: dict, d_in: int, d_out: int, d_hidden:
         per_component = sum(ll.values()) / n
         per_mlp = sum(ll[i] * (n - i) for i in range(n)) / n
         total_params = sum(ll[i] * (d_in + (n - i) * d_out) for i in range(n))
-    elif method == "SPD":
+    elif method == "VPD":
         ml = result["module_l0s"]
         per_component = sum(ml.values()) / len(ml)
         per_mlp = sum(
@@ -575,7 +575,7 @@ def main():
     parser = argparse.ArgumentParser(description="Combined Pareto plot (4k + 32k)")
     parser.add_argument("--project_4k", type=str, default="mats-sprint/pile_local_sweep_jose")
     parser.add_argument("--project_32k", type=str, default="mats-sprint/pile_local_sweep_jose_32k")
-    parser.add_argument("--spd_run", type=str, default=SPD_BASELINE_RUN)
+    parser.add_argument("--vpd_run", type=str, default=VPD_BASELINE_RUN)
     parser.add_argument("--n_eval_batches", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--seq_len", type=int, default=512)
@@ -613,10 +613,10 @@ def main():
                              save_path=base_path.replace(".png", "_combined_mse.png"))
         return
 
-    print("Loading SPD model (jose)...")
-    spd_model, raw_config = load_spd_model(args.spd_run)
-    spd_model.to(DEVICE)
-    base_model = spd_model.target_model
+    print("Loading VPD model...")
+    vpd_model, raw_config = load_vpd_model(args.vpd_run)
+    vpd_model.to(DEVICE)
+    base_model = vpd_model.target_model
     base_model.eval()
 
     all_cfc_names = [f"h.{l}.mlp.c_fc" for l in LAYERS]
@@ -629,19 +629,19 @@ def main():
 
     # Download transcoders and CLTs from both projects
     print(f"\nDownloading 4k transcoders from {args.project_4k}...")
-    tc_paths_4k = download_transcoders(args.project_4k, "jose")
+    tc_paths_4k = download_transcoders(args.project_4k, "plt")
     print(f"  Found top_k values: {sorted(tc_paths_4k.keys())}")
 
     print(f"\nDownloading 32k transcoders from {args.project_32k}...")
-    tc_paths_32k = download_transcoders(args.project_32k, "jose32k")
+    tc_paths_32k = download_transcoders(args.project_32k, "plt32k")
     print(f"  Found top_k values: {sorted(tc_paths_32k.keys())}")
 
     print(f"\nDownloading 4k CLTs from {args.project_4k}...")
-    clt_paths_4k = download_clts(args.project_4k, "jose")
+    clt_paths_4k = download_clts(args.project_4k, "plt")
     print(f"  Found CLTs: {[(k, str(p)) for k, p in clt_paths_4k]}")
 
     print(f"\nDownloading 32k CLTs from {args.project_32k}...")
-    clt_paths_32k = download_clts(args.project_32k, "jose32k")
+    clt_paths_32k = download_clts(args.project_32k, "plt32k")
     print(f"  Found CLTs: {[(k, str(p)) for k, p in clt_paths_32k]}")
 
     # Load eval data
@@ -714,14 +714,14 @@ def main():
         clt_points_32k.append(result)
         print(f"  L0={result['l0']:.1f}, CE={result['ce']:.4f}, MSE={result['mse']:.6f}")
 
-    # Evaluate SPD
-    spd_points = []
+    # Evaluate VPD
+    vpd_points = []
     for threshold, label in [(0.5, "CI>0.5"), (0.1, "CI>0.1"), (0.0, "CI>0")]:
-        print(f"\nEvaluating SPD ({label})...")
-        result = eval_spd_thresholded(spd_model, batches, all_module_names, mlp_activations, threshold)
+        print(f"\nEvaluating VPD ({label})...")
+        result = eval_vpd_thresholded(vpd_model, batches, all_module_names, mlp_activations, threshold)
         result["threshold"] = threshold
-        result.update(compute_x_values("SPD", result, d_in, d_out, d_hidden))
-        spd_points.append(result)
+        result.update(compute_x_values("VPD", result, d_in, d_out, d_hidden))
+        vpd_points.append(result)
         print(f"  L0={result['l0']:.1f}, CE={result['ce']:.4f}, MSE={result['mse']:.6f}")
 
     # Evaluate neurons
@@ -739,9 +739,9 @@ def main():
         "PLT (32k)": tc_points_32k,
         "CLT (4k)": clt_points_4k,
         "CLT (32k)": clt_points_32k,
-        "VPD (CI>0.5)": [spd_points[0]],
-        "VPD (CI>0.1)": [spd_points[1]],
-        "VPD (CI>0)": [spd_points[2]],
+        "VPD (CI>0.5)": [vpd_points[0]],
+        "VPD (CI>0.1)": [vpd_points[1]],
+        "VPD (CI>0)": [vpd_points[2]],
         "Neurons": neuron_points,
     }
 
@@ -791,7 +791,7 @@ def main():
                        ("CLT (4k)", clt_points_4k), ("CLT (32k)", clt_points_32k)]:
         for p in pts:
             print(f"{label:<20} {p['top_k']:>6} {p['l0']:>8.1f} {p['ce']:>10.4f} {p['mse']:>12.6f}")
-    for p in spd_points:
+    for p in vpd_points:
         label = f"VPD (CI>{p['threshold']})"
         print(f"{label:<20} {'':>6} {p['l0']:>8.1f} {p['ce']:>10.4f} {p['mse']:>12.6f}")
     for p in neuron_points:

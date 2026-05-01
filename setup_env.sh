@@ -12,7 +12,7 @@ set -euo pipefail
 
 NN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SPD_DIR="${SPD_DIR:-$NN_DIR/external/spd}"
-SPD_BRANCH="${SPD_BRANCH:-snapshot/launch-20260225_151714}"  # branch used to train s-55ea3f9b (jose baseline)
+SPD_BRANCH="${SPD_BRANCH:-snapshot/launch-20260225_151714}"  # branch used to train the VPD baseline (s-55ea3f9b)
 
 if ! command -v python3.13 &>/dev/null; then
     echo "Error: python3.13 is required but not found." >&2

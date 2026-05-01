@@ -6,8 +6,9 @@ CE loss, MLP-input hook, model loaders, etc.) and avoids the copy-and-drift
 pattern across scripts.
 
 The contents are deliberately small and dependency-light — anything that
-needs SPD-specific logic lives in `load_spd_model` so importing from this
-module does not pull in SPD until the function is actually called.
+needs upstream-`spd`-specific logic lives in `load_vpd_model` so importing
+from this module does not pull in the upstream package until the function
+is actually called.
 """
 
 from __future__ import annotations
@@ -171,12 +172,13 @@ def load_clt(checkpoint_dir: Path, device: str | torch.device) -> CrossLayerTran
     return clt
 
 
-def load_spd_model(wandb_path: str):
-    """Load an SPD ComponentModel from a wandb run, bypassing full Config validation.
+def load_vpd_model(wandb_path: str):
+    """Load a VPD `ComponentModel` from a wandb run, bypassing full Config validation.
 
     The run config includes training-only fields (loss configs, autocast_bf16, etc.)
-    that may not match the current SPD codebase. This loader extracts only the
-    architecture fields needed to reconstruct the ComponentModel for inference.
+    that may not match the current upstream codebase. This loader extracts only
+    the architecture fields needed to reconstruct the `ComponentModel` for
+    inference.
 
     Returns ``(component_model, raw_config_dict)``.
     """
@@ -208,7 +210,8 @@ def load_spd_model(wandb_path: str):
     model_class_path = raw_config["pretrained_model_class"]
 
     # Import LlamaSimpleMLP via importlib to avoid the pretrain __init__ chain,
-    # which imports gpt2.py -> log0 (renamed to `log` on the SPD branch we use).
+    # which imports gpt2.py -> log0 (renamed to `log` on the upstream `spd`
+    # branch we use).
     if model_class_path == "spd.pretrain.models.llama_simple_mlp.LlamaSimpleMLP":
         import importlib
 

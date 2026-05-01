@@ -64,10 +64,10 @@ MATCHED_MODELS = {
     "ce_single":    {"tc_independent"},
 }
 
-SPD_COLOR = "#6b21a8"
+VPD_COLOR = "#6b21a8"
 
 
-def plot_three_panel(baseline_ce, results, spd_results, save_path, title_suffix=""):
+def plot_three_panel(baseline_ce, results, vpd_results, save_path, title_suffix=""):
     groups = {}
     for r in results:
         key = f"{r['type']}_{r['mode']}"
@@ -77,7 +77,7 @@ def plot_three_panel(baseline_ce, results, spd_results, save_path, title_suffix=
     for v in groups.values():
         v.sort(key=lambda x: x["top_k"])
 
-    spd_ce_keys = {"ce_cascading": "ce_cascading", "ce_parallel": "ce_parallel", "ce_single": "ce_single"}
+    vpd_ce_keys = {"ce_cascading": "ce_cascading", "ce_parallel": "ce_parallel", "ce_single": "ce_single"}
 
     fig, axes = plt.subplots(1, 3, figsize=(16, 5.2), sharey=True)
     panel_labels = ["(a)", "(b)", "(c)"]
@@ -113,20 +113,20 @@ def plot_three_panel(baseline_ce, results, spd_results, save_path, title_suffix=
                         markeredgecolor="white", markeredgewidth=0.8,
                         alpha=alpha, zorder=zorder, **style)
 
-        if spd_results:
-            spd_ce_key = spd_ce_keys[ce_key]
-            spd_markers = {"CI>0.5": "P", "CI>0.1": "X", "CI>0.0": "D"}
-            for spd_r in spd_results:
-                if "l0" not in spd_r:
+        if vpd_results:
+            vpd_ce_key = vpd_ce_keys[ce_key]
+            vpd_markers = {"CI>0.5": "P", "CI>0.1": "X", "CI>0.0": "D"}
+            for vpd_r in vpd_results:
+                if "l0" not in vpd_r:
                     continue
                 # Fall back to ce_all for old results files without separate cascading/parallel
-                ce_val = spd_r.get(spd_ce_key, spd_r.get("ce_all"))
+                ce_val = vpd_r.get(vpd_ce_key, vpd_r.get("ce_all"))
                 delta = ce_val - baseline_ce
-                marker = spd_markers.get(spd_r["mode"], "P")
-                ax.plot(spd_r["l0"], delta, color=SPD_COLOR,
+                marker = vpd_markers.get(vpd_r["mode"], "P")
+                ax.plot(vpd_r["l0"], delta, color=VPD_COLOR,
                         marker=marker, markersize=14, linestyle="none",
                         markeredgecolor="white", markeredgewidth=1.0,
-                        zorder=7, label=f"VPD ({spd_r['mode']})")
+                        zorder=7, label=f"VPD ({vpd_r['mode']})")
 
         ax.set_xlabel("L0 (active features per module)")
         ax.set_title(title, fontsize=11, pad=10)
@@ -161,7 +161,7 @@ def plot_three_panel(baseline_ce, results, spd_results, save_path, title_suffix=
                       linewidth=1.8, linestyle=s["linestyle"], label=LABEL_MAP[model_name])
 
     def _vpd_handle(mode, marker):
-        return Line2D([0], [0], color=SPD_COLOR, marker=marker, markersize=10,
+        return Line2D([0], [0], color=VPD_COLOR, marker=marker, markersize=10,
                       markeredgecolor="white", markeredgewidth=0.6,
                       linewidth=0, linestyle="none", label=f"VPD ({mode})")
 
@@ -213,12 +213,12 @@ def main():
 
         baseline_ce = data["baseline_ce"]
         results = data["results"]
-        spd_results = data.get("spd_results", [])
-        print(f"{dict_label}: baseline={baseline_ce:.4f}, {len(results)} results, {len(spd_results)} SPD")
+        vpd_results = data.get("vpd_results", [])
+        print(f"{dict_label}: baseline={baseline_ce:.4f}, {len(results)} results, {len(vpd_results)} VPD")
 
         plot_three_panel(
-            baseline_ce, results, spd_results,
-            OUTPUT_DIR / f"eval_e2e_jose_{dict_label}.png",
+            baseline_ce, results, vpd_results,
+            OUTPUT_DIR / f"eval_e2e_{dict_label}.png",
         )
 
 

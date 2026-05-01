@@ -1,6 +1,6 @@
 """Alive-subcomponent scaling figure.
 
-For each model (SPD at 4 capacities, PLT at 4k and 32k, CLT at 4k and 32k)
+For each model (VPD at 4 capacities, PLT at 4k and 32k, CLT at 4k and 32k)
 streams 1M Pile tokens, computes per-feature alive masks, and plots
 alive subcomponents vs total subcomponent capacity (log-log).
 
@@ -32,14 +32,14 @@ from nn_decompositions.eval_utils import (
     cleanup_cuda,
     collect_mlp_inputs,
     get_pile_batches,
-    load_spd_model,
+    load_vpd_model,
     parse_torch_dtype,
 )
 from experiments.paper_runs import (
     HEADLINE_CLT_RUNS,
     HEADLINE_TC_RUNS,
-    SPD_BASELINE_RUN,
-    SPD_CAPACITY_RUNS,
+    VPD_BASELINE_RUN,
+    VPD_CAPACITY_RUNS,
 )
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -51,15 +51,15 @@ N_BATCHES = N_TOKENS // (BATCH_SIZE * SEQ_LEN)
 ALIVE_THRESHOLD = 1e-6
 
 OUTPUT_DIR = Path("experiments/alive_subcomponents/output")
-SPD_ALIVE_FILE = OUTPUT_DIR / "alive_components_mean_ci.json"
+VPD_ALIVE_FILE = OUTPUT_DIR / "alive_components_mean_ci.json"
 LINE_DATA_FILE = OUTPUT_DIR / "alive_line_data.json"
 
 # Plot labels are pretty-printed; the underlying runs come from paper_runs.
-SPD_RUNS = {
-    "0.5x":      SPD_CAPACITY_RUNS["0.5x"],
-    "1x (jose)": SPD_CAPACITY_RUNS["1x"],
-    "2x":        SPD_CAPACITY_RUNS["2x"],
-    "4x":        SPD_CAPACITY_RUNS["4x"],
+VPD_RUNS = {
+    "0.5x":      VPD_CAPACITY_RUNS["0.5x"],
+    "1x": VPD_CAPACITY_RUNS["1x"],
+    "2x":        VPD_CAPACITY_RUNS["2x"],
+    "4x":        VPD_CAPACITY_RUNS["4x"],
 }
 
 TC_RUNS  = {ds: {"project": p, "run_id": r} for ds, (p, r) in HEADLINE_TC_RUNS.items()}
@@ -209,29 +209,29 @@ def download_clt_artifact(run_info: dict) -> Path:
 
 
 @torch.no_grad()
-def count_spd_alive_mean_ci(spd_model, batches: list[torch.Tensor], threshold: float) -> dict[str, dict[str, int]]:
+def count_vpd_alive_mean_ci(vpd_model, batches: list[torch.Tensor], threshold: float) -> dict[str, dict[str, int]]:
     mlp_modules = []
     for layer in LAYERS:
         for pattern in MLP_MODULE_PATTERNS:
             mod_name = pattern.format(layer)
-            if mod_name in spd_model.module_to_c:
+            if mod_name in vpd_model.module_to_c:
                 mlp_modules.append(mod_name)
 
     ci_sum = {
-        mod_name: torch.zeros(spd_model.module_to_c[mod_name], dtype=torch.float64, device="cpu")
+        mod_name: torch.zeros(vpd_model.module_to_c[mod_name], dtype=torch.float64, device="cpu")
         for mod_name in mlp_modules
     }
     n_tokens_total = 0
 
-    for input_ids in tqdm(batches, desc="SPD mean-CI alive count"):
+    for input_ids in tqdm(batches, desc="VPD mean-CI alive count"):
         batch = input_ids.to(DEVICE)
         bsz, seq = batch.shape
         n_tokens_total += bsz * seq
-        out = spd_model(batch, cache_type="input")
-        ci = spd_model.calc_causal_importances(out.cache, sampling="continuous")
+        out = vpd_model(batch, cache_type="input")
+        ci = vpd_model.calc_causal_importances(out.cache, sampling="continuous")
 
         for mod_name in mlp_modules:
-            n_c = spd_model.module_to_c[mod_name]
+            n_c = vpd_model.module_to_c[mod_name]
             ci_vals = ci.lower_leaky[mod_name].reshape(-1, n_c)
             ci_sum[mod_name] += ci_vals.double().sum(dim=0).cpu()
 
@@ -239,7 +239,7 @@ def count_spd_alive_mean_ci(spd_model, batches: list[torch.Tensor], threshold: f
     for mod_name in mlp_modules:
         mean_ci = ci_sum[mod_name] / n_tokens_total
         alive = int((mean_ci > threshold).sum().item())
-        total = int(spd_model.module_to_c[mod_name])
+        total = int(vpd_model.module_to_c[mod_name])
         results[mod_name] = {"alive": alive, "total": total}
     return results
 
@@ -294,47 +294,47 @@ def count_clt_alive(clt: SimpleCrossLayerTranscoder, base_model, batches: list[t
     return total, alive
 
 
-def compute_spd_results(batches: list[torch.Tensor], reuse_cache: bool) -> dict[str, dict[str, dict[str, int]]]:
-    if reuse_cache and SPD_ALIVE_FILE.exists():
-        with open(SPD_ALIVE_FILE) as f:
+def compute_vpd_results(batches: list[torch.Tensor], reuse_cache: bool) -> dict[str, dict[str, dict[str, int]]]:
+    if reuse_cache and VPD_ALIVE_FILE.exists():
+        with open(VPD_ALIVE_FILE) as f:
             existing = json.load(f)
     else:
         existing = {}
 
-    for label, run_path in SPD_RUNS.items():
+    for label, run_path in VPD_RUNS.items():
         if reuse_cache and label in existing:
-            print(f"Using cached SPD results for {label}")
+            print(f"Using cached VPD results for {label}")
             continue
 
-        print(f"\n{'=' * 64}\nSPD {label}: {run_path}\n{'=' * 64}")
-        spd_model, _ = load_spd_model(run_path)
-        spd_model.to(DEVICE)
-        spd_model.eval()
-        existing[label] = count_spd_alive_mean_ci(spd_model, batches, threshold=ALIVE_THRESHOLD)
+        print(f"\n{'=' * 64}\nVPD {label}: {run_path}\n{'=' * 64}")
+        vpd_model, _ = load_vpd_model(run_path)
+        vpd_model.to(DEVICE)
+        vpd_model.eval()
+        existing[label] = count_vpd_alive_mean_ci(vpd_model, batches, threshold=ALIVE_THRESHOLD)
 
-        del spd_model
+        del vpd_model
         cleanup_cuda()
 
-        with open(SPD_ALIVE_FILE, "w") as f:
+        with open(VPD_ALIVE_FILE, "w") as f:
             json.dump(existing, f, indent=2)
-        print(f"Saved intermediate SPD results to {SPD_ALIVE_FILE}")
+        print(f"Saved intermediate VPD results to {VPD_ALIVE_FILE}")
 
     return existing
 
 
 def build_plot_points(
-    spd_raw: dict[str, dict[str, dict[str, int]]],
+    vpd_raw: dict[str, dict[str, dict[str, int]]],
 ) -> list[tuple[int, int]]:
     points = []
-    for label in ["0.5x", "1x (jose)", "2x", "4x"]:
-        total = sum(v["total"] for v in spd_raw[label].values())
-        alive = sum(v["alive"] for v in spd_raw[label].values())
+    for label in ["0.5x", "1x", "2x", "4x"]:
+        total = sum(v["total"] for v in vpd_raw[label].values())
+        alive = sum(v["alive"] for v in vpd_raw[label].values())
         points.append((total, alive))
-        print(f"SPD {label}: {alive}/{total} alive ({100 * alive / total:.1f}%)")
+        print(f"VPD {label}: {alive}/{total} alive ({100 * alive / total:.1f}%)")
     return points
 
 
-def plot(spd_points: list[tuple[int, int]], tc_points: list[tuple[int, int]], clt_points: list[tuple[int, int]]) -> None:
+def plot(vpd_points: list[tuple[int, int]], tc_points: list[tuple[int, int]], clt_points: list[tuple[int, int]]) -> None:
     plt.rcParams.update(
         {
             "font.family": "serif",
@@ -356,12 +356,12 @@ def plot(spd_points: list[tuple[int, int]], tc_points: list[tuple[int, int]], cl
     )
 
     fig, ax = plt.subplots(figsize=(7, 5))
-    all_totals = [t for t, _ in spd_points + tc_points + clt_points]
+    all_totals = [t for t, _ in vpd_points + tc_points + clt_points]
     lo = min(all_totals) * 0.7
     hi = max(all_totals) * 1.5
     ax.plot([lo, hi], [lo, hi], ls="--", color="#cccccc", lw=1, zorder=0, label="y = x (all alive)")
 
-    ax.plot([t for t, _ in spd_points], [a for _, a in spd_points], "o-", color="#6b21a8", markersize=7, lw=2, label="VPD", zorder=3)
+    ax.plot([t for t, _ in vpd_points], [a for _, a in vpd_points], "o-", color="#6b21a8", markersize=7, lw=2, label="VPD", zorder=3)
     ax.plot([t for t, _ in tc_points], [a for _, a in tc_points], "s-", color="#2b6cb0", markersize=7, lw=2, label="PLT (k=16)", zorder=3)
     ax.plot([t for t, _ in clt_points], [a for _, a in clt_points], "^-", color="#dd6b20", markersize=7, lw=2, label="CLT (k=16)", zorder=3)
 
@@ -387,26 +387,26 @@ def main(plot_only: bool, reuse_cache: bool) -> None:
     if plot_only:
         with open(LINE_DATA_FILE) as f:
             data = json.load(f)
-        spd_points = [(d["total"], d["alive"]) for d in data["spd"]]
+        vpd_points = [(d["total"], d["alive"]) for d in data["vpd"]]
         tc_points = [(d["total"], d["alive"]) for d in data["tc"]]
         clt_points = [(d["total"], d["alive"]) for d in data["clt"]]
-        plot(spd_points, tc_points, clt_points)
+        plot(vpd_points, tc_points, clt_points)
         return
 
     print(f"Preparing evaluation batches: {N_BATCHES} batches ({N_TOKENS / 1e6:.0f}M tokens)")
     batches = get_eval_batches(N_BATCHES)
 
-    print("\nStage 1/3: SPD mean-CI alive counts")
-    spd_raw = compute_spd_results(batches, reuse_cache=reuse_cache)
-    spd_points = build_plot_points(spd_raw)
+    print("\nStage 1/3: VPD mean-CI alive counts")
+    vpd_raw = compute_vpd_results(batches, reuse_cache=reuse_cache)
+    vpd_points = build_plot_points(vpd_raw)
 
-    print("\nStage 2/3: Load base model from Jose SPD checkpoint")
-    spd_model, _ = load_spd_model(SPD_BASELINE_RUN)
-    spd_model.to(DEVICE)
-    spd_model.eval()
-    base_model = spd_model.target_model
+    print("\nStage 2/3: Load base model from Jose VPD checkpoint")
+    vpd_model, _ = load_vpd_model(VPD_BASELINE_RUN)
+    vpd_model.to(DEVICE)
+    vpd_model.eval()
+    base_model = vpd_model.target_model
     base_model.eval()
-    del spd_model
+    del vpd_model
     cleanup_cuda()
 
     print("\nStage 3/3: TC + CLT alive counts")
@@ -433,7 +433,7 @@ def main(plot_only: bool, reuse_cache: bool) -> None:
         cleanup_cuda()
 
     output_data = {
-        "spd": [{"total": t, "alive": a} for t, a in spd_points],
+        "vpd": [{"total": t, "alive": a} for t, a in vpd_points],
         "tc": [{"total": t, "alive": a, "dict_size": ds} for (t, a), ds in zip(tc_points, TC_RUNS.keys())],
         "clt": [{"total": t, "alive": a, "dict_size": ds} for (t, a), ds in zip(clt_points, CLT_RUNS.keys())],
     }
@@ -441,7 +441,7 @@ def main(plot_only: bool, reuse_cache: bool) -> None:
         json.dump(output_data, f, indent=2)
     print(f"Saved line data to {LINE_DATA_FILE}")
 
-    plot(spd_points, tc_points, clt_points)
+    plot(vpd_points, tc_points, clt_points)
 
 
 if __name__ == "__main__":
@@ -450,7 +450,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--reuse-cache",
         action="store_true",
-        help="Reuse cached SPD mean-CI results if present",
+        help="Reuse cached VPD mean-CI results if present",
     )
     args = parser.parse_args()
     main(plot_only=args.plot_only, reuse_cache=args.reuse_cache)

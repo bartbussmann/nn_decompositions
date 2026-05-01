@@ -1,4 +1,4 @@
-"""Single source of truth for the wandb / SPD identifiers used by the paper.
+"""Single source of truth for the wandb / VPD identifiers used by the paper.
 
 Every experiment script imports from this module instead of hardcoding wandb
 paths. To reproduce against a different set of checkpoints, edit the values
@@ -8,30 +8,35 @@ Note on project names: training scripts call `wandb.init(project=<bare>)` and
 require the bare project name; eval scripts call `wandb.Api().runs("<entity>/<project>")`
 and require the entity-qualified form. We expose both via the bare strings
 plus a `qualified()` helper.
+
+(Wandb run paths and project names contain the strings "jose" / "spd" —
+these are baked into the cloud and remain unchanged. Everything else uses
+the paper terminology: `LLM_BASE_MODEL` for the target transformer and VPD
+for the sparse parameter decomposition method.)
 """
 
 from pathlib import Path
 
-# Jose's 4-layer LlamaSimpleMLP target model (n_embd=768, GELU, Pile-trained).
-JOSE_BASE_MODEL = "goodfire/spd/runs/t-9d2b8f02"
+# The 4-layer LlamaSimpleMLP target model (n_embd=768, GELU, Pile-trained).
+LLM_BASE_MODEL = "goodfire/spd/runs/t-9d2b8f02"
 
-# Local cache for the base model. The training scripts auto-download here on
-# first run; the eval scripts read from the same path. Path is relative to the
-# repo root (where Python is invoked from).
-JOSE_BASE_MODEL_CACHE = Path("experiments/jose_base_model")
+# Local cache for the base model. Training scripts auto-download here on
+# first run; the eval scripts read from the same path. Path is relative to
+# the repo root (where Python is invoked from).
+LLM_BASE_MODEL_CACHE = Path("experiments/llm_base_model")
 
 # Four VPD checkpoints: same training recipe, log2 capacity sweep.
-SPD_CAPACITY_RUNS = {
+VPD_CAPACITY_RUNS = {
     "0.5x": "goodfire/spd/s-b2b37c4e",
     "1x":   "goodfire/spd/s-55ea3f9b",
     "2x":   "goodfire/spd/s-266cb440",
     "4x":   "goodfire/spd/s-d3834f54",
 }
 
-# The 1x ("jose") VPD model is the canonical baseline whenever a single VPD
-# reference is needed (e.g. to recover the base target model from its
-# `target_model` attribute).
-SPD_BASELINE_RUN = SPD_CAPACITY_RUNS["1x"]
+# The 1x VPD model is the canonical baseline whenever a single VPD reference
+# is needed (e.g. to recover the base target model from its `target_model`
+# attribute).
+VPD_BASELINE_RUN = VPD_CAPACITY_RUNS["1x"]
 
 # WandB entity that owns the paper's training projects.
 WANDB_ENTITY = "mats-sprint"

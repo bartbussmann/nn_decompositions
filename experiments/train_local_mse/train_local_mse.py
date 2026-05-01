@@ -1,4 +1,4 @@
-"""Local MSE training sweep on jose's target model (t-9d2b8f02).
+"""Local MSE training sweep on the base LLM.
 
 Per-layer MSE reconstruction (no end-to-end KL). Trains BatchTopK Transcoders
 and CLTs at k = 8, 16, 32, 64. Polls GPU memory to find free devices and
@@ -28,12 +28,12 @@ import torch
 
 from nn_decompositions.eval_utils import get_free_gpus
 from experiments.paper_runs import (
-    JOSE_BASE_MODEL,
-    JOSE_BASE_MODEL_CACHE,
+    LLM_BASE_MODEL,
+    LLM_BASE_MODEL_CACHE,
     LOCAL_PROJECT_BY_DICT_SIZE as PROJECT_BY_DICT_SIZE,
 )
 
-WANDB_MODEL_PATH = JOSE_BASE_MODEL
+WANDB_MODEL_PATH = LLM_BASE_MODEL
 LAYERS = [0, 1, 2, 3]
 NUM_TOKENS = int(5e8)
 LR = 3e-4
@@ -179,7 +179,7 @@ def train_one(job: Job, device: str, model_cache_path: str, dict_size: int, wand
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Local MSE training sweep (jose target model) with GPU queue")
+    parser = argparse.ArgumentParser(description="Local MSE training sweep (base LLM) with GPU queue")
     parser.add_argument("--dict_size", type=int, default=4096, choices=[4096, 32768],
                         help="Dictionary size; selects which wandb project to log to")
     parser.add_argument("--top_ks", type=int, nargs="+", default=ALL_TOP_KS)
@@ -201,11 +201,11 @@ def main():
     min_free_bytes = args.min_free_gb * 1e9
 
     # Shared base-model cache. Auto-downloads from wandb on first run.
-    model_cache_path = str(Path(__file__).resolve().parent.parent.parent / JOSE_BASE_MODEL_CACHE)
+    model_cache_path = str(Path(__file__).resolve().parent.parent.parent / LLM_BASE_MODEL_CACHE)
     os.makedirs(model_cache_path, exist_ok=True)
 
     if not (Path(model_cache_path) / "state_dict.pt").exists():
-        print("Downloading jose target model from wandb...")
+        print("Downloading base LLM from wandb...")
         from spd.pretrain.models.llama_simple_mlp import LlamaSimpleMLP
         model = LlamaSimpleMLP.from_pretrained(WANDB_MODEL_PATH)
         torch.save(model.state_dict(), os.path.join(model_cache_path, "state_dict.pt"))
@@ -217,7 +217,7 @@ def main():
     print(f"Model cached at {model_cache_path}")
     print(f"Logging to wandb project: {wandb_project} (dict_size={args.dict_size})")
 
-    print(f"\n=== Local MSE Sweep (jose): {len(jobs)} jobs ===")
+    print(f"\n=== Local MSE Sweep: {len(jobs)} jobs ===")
     for j in jobs:
         print(f"  {j.name}")
     print(f"GPUs available: {n_gpus}")

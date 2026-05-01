@@ -1,4 +1,4 @@
-"""Local Pareto: CE / L0 evaluation of trained PLTs and CLTs on jose's target model.
+"""Local Pareto: CE / L0 evaluation of trained PLTs and CLTs on the base LLM.
 
 For each trained PLT (BatchTopK Transcoder) and CLT — at dict_size 4k
 and 32k, both local-MSE and end-to-end KL — patch the base model's MLPs
@@ -6,7 +6,7 @@ with the model's reconstructions and report:
   - average L0 (per-token feature density)
   - cross-entropy under three patching modes: cascading, parallel, single-MLP
 
-Also evaluates SPD baselines at three CI thresholds (0.5, 0.1, 0.0).
+Also evaluates VPD baselines at three CI thresholds (0.5, 0.1, 0.0).
 
 Results land in `output/results_4k.json` and `output/results_32k.json`,
 which `plot.py` then turns into the local Pareto figure.
@@ -14,7 +14,7 @@ which `plot.py` then turns into the local Pareto figure.
 Usage:
     python experiments/pareto_plot_local/pareto_plot_local.py
     python experiments/pareto_plot_local/pareto_plot_local.py --dict_sizes 4k
-    python experiments/pareto_plot_local/pareto_plot_local.py --skip_spd
+    python experiments/pareto_plot_local/pareto_plot_local.py --skip_vpd
 """
 
 import json
@@ -38,24 +38,24 @@ from nn_decompositions.eval_utils import (
     compute_ce_loss,
     get_pile_batches,
     load_clt,
-    load_spd_model,
+    load_vpd_model,
     load_transcoder,
     patched_forward,
 )
 from nn_decompositions.transcoder import BatchTopKTranscoder  # for type hints
 from experiments.paper_runs import (
-    JOSE_BASE_MODEL,
-    JOSE_BASE_MODEL_CACHE,
+    LLM_BASE_MODEL,
+    LLM_BASE_MODEL_CACHE,
     PROJECT_E2E_4K,
     PROJECT_E2E_32K,
     PROJECT_LOCAL_4K,
     PROJECT_LOCAL_32K,
-    SPD_BASELINE_RUN,
+    VPD_BASELINE_RUN,
 )
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 LAYERS = [0, 1, 2, 3]
-CHECKPOINT_DIR = Path("checkpoints/jose_v2")
+CHECKPOINT_DIR = Path("checkpoints/pareto_plot_local")
 OUTPUT_DIR = Path("experiments/pareto_plot_local/output")
 
 PROJECTS = {
@@ -244,25 +244,25 @@ def eval_clt_single_mlp(base_model, clt, batches) -> float:
 
 
 # =============================================================================
-# SPD eval
+# VPD eval
 # =============================================================================
 
 
 @torch.no_grad()
-def eval_spd_all(spd_model, batches, module_names, threshold) -> tuple[float, float]:
+def eval_vpd_all(vpd_model, batches, module_names, threshold) -> tuple[float, float]:
     from spd.models.components import make_mask_infos
     total_ce = 0.0
     module_l0_totals = {name: 0.0 for name in module_names}
     for input_ids in batches:
-        out = spd_model(input_ids, cache_type="input")
-        ci = spd_model.calc_causal_importances(out.cache, sampling="continuous")
+        out = vpd_model(input_ids, cache_type="input")
+        ci = vpd_model.calc_causal_importances(out.cache, sampling="continuous")
         masks = {}
         for mod_name in module_names:
             mask = (ci.lower_leaky[mod_name] > threshold).float()
             masks[mod_name] = mask
             module_l0_totals[mod_name] += mask.sum(-1).mean().item()
         mask_infos = make_mask_infos(masks)
-        logits = spd_model(input_ids, mask_infos=mask_infos)
+        logits = vpd_model(input_ids, mask_infos=mask_infos)
         total_ce += compute_ce_from_logits(logits, input_ids)
     n = len(batches)
     avg_l0 = sum(v / n for v in module_l0_totals.values()) / len(module_names)
@@ -270,18 +270,18 @@ def eval_spd_all(spd_model, batches, module_names, threshold) -> tuple[float, fl
 
 
 @torch.no_grad()
-def eval_spd_all_parallel(spd_model, batches, module_names, threshold) -> float:
-    """Clean-input SPD: compute masked MLP outputs from clean residual streams."""
+def eval_vpd_all_parallel(vpd_model, batches, module_names, threshold) -> float:
+    """Clean-input VPD: compute masked MLP outputs from clean residual streams."""
     from spd.models.components import make_mask_infos
-    base_model = spd_model.target_model
+    base_model = vpd_model.target_model
     total_ce = 0.0
     for input_ids in batches:
         # Get clean MLP inputs from original model
         clean_inputs = _collect_rms2_outputs(base_model, input_ids)
 
         # Compute CI from clean forward pass
-        out = spd_model(input_ids, cache_type="input")
-        ci = spd_model.calc_causal_importances(out.cache, sampling="continuous")
+        out = vpd_model(input_ids, cache_type="input")
+        ci = vpd_model.calc_causal_importances(out.cache, sampling="continuous")
         masks = {m: (ci.lower_leaky[m] > threshold).float() for m in module_names}
         mask_infos = make_mask_infos(masks)
 
@@ -292,8 +292,8 @@ def eval_spd_all_parallel(spd_model, batches, module_names, threshold) -> float:
             cfc_name = f"h.{layer_idx}.mlp.c_fc"
             down_name = f"h.{layer_idx}.mlp.down_proj"
 
-            cfc_components = spd_model.components[cfc_name]
-            down_components = spd_model.components[down_name]
+            cfc_components = vpd_model.components[cfc_name]
+            down_components = vpd_model.components[down_name]
 
             # c_fc: x -> hidden (with mask)
             hidden = cfc_components(
@@ -323,18 +323,18 @@ def eval_spd_all_parallel(spd_model, batches, module_names, threshold) -> float:
 
 
 @torch.no_grad()
-def eval_spd_single_mlp(spd_model, batches, threshold) -> float:
+def eval_vpd_single_mlp(vpd_model, batches, threshold) -> float:
     from spd.models.components import make_mask_infos
     total_ce = 0.0
     for layer_idx in LAYERS:
         layer_mods = [f"h.{layer_idx}.mlp.c_fc", f"h.{layer_idx}.mlp.down_proj"]
         layer_ce = 0.0
         for input_ids in batches:
-            out = spd_model(input_ids, cache_type="input")
-            ci = spd_model.calc_causal_importances(out.cache, sampling="continuous")
+            out = vpd_model(input_ids, cache_type="input")
+            ci = vpd_model.calc_causal_importances(out.cache, sampling="continuous")
             masks = {m: (ci.lower_leaky[m] > threshold).float() for m in layer_mods}
             mask_infos = make_mask_infos(masks)
-            logits = spd_model(input_ids, mask_infos=mask_infos)
+            logits = vpd_model(input_ids, mask_infos=mask_infos)
             layer_ce += compute_ce_from_logits(logits, input_ids)
         total_ce += layer_ce / len(batches)
     return total_ce / len(LAYERS)
@@ -424,36 +424,36 @@ def download_artifacts(dict_size_label: str) -> dict:
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="Evaluate jose e2e + local models (v2)")
+    parser = argparse.ArgumentParser(description="Evaluate PLT/CLT models on the base LLM")
     parser.add_argument("--dict_sizes", nargs="+", default=["4k", "32k"], choices=["4k", "32k"])
     parser.add_argument("--n_eval_batches", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--seq_len", type=int, default=512)
-    parser.add_argument("--spd_thresholds", type=float, nargs="+", default=[0.5, 0.1, 0.0])
-    parser.add_argument("--skip_spd", action="store_true")
+    parser.add_argument("--vpd_thresholds", type=float, nargs="+", default=[0.5, 0.1, 0.0])
+    parser.add_argument("--skip_vpd", action="store_true")
     parser.add_argument("--skip_download", action="store_true")
     args = parser.parse_args()
 
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Load jose base model. Auto-downloads from wandb on first run.
+    # Load base LLM. Auto-downloads from wandb on first run.
     from spd.pretrain.models.llama_simple_mlp import LlamaSimpleMLP, LlamaSimpleMLPConfig
 
-    JOSE_BASE_MODEL_CACHE.mkdir(parents=True, exist_ok=True)
-    if not (JOSE_BASE_MODEL_CACHE / "state_dict.pt").exists():
-        print("Downloading jose target model from wandb (first run)...")
-        model = LlamaSimpleMLP.from_pretrained(JOSE_BASE_MODEL)
-        torch.save(model.state_dict(), JOSE_BASE_MODEL_CACHE / "state_dict.pt")
-        with open(JOSE_BASE_MODEL_CACHE / "config.json", "w") as f:
+    LLM_BASE_MODEL_CACHE.mkdir(parents=True, exist_ok=True)
+    if not (LLM_BASE_MODEL_CACHE / "state_dict.pt").exists():
+        print("Downloading base LLM from wandb (first run)...")
+        model = LlamaSimpleMLP.from_pretrained(LLM_BASE_MODEL)
+        torch.save(model.state_dict(), LLM_BASE_MODEL_CACHE / "state_dict.pt")
+        with open(LLM_BASE_MODEL_CACHE / "config.json", "w") as f:
             json.dump(model.config.__dict__, f)
         del model
 
-    print("Loading jose base model...")
-    with open(JOSE_BASE_MODEL_CACHE / "config.json") as f:
+    print("Loading base LLM...")
+    with open(LLM_BASE_MODEL_CACHE / "config.json") as f:
         model_cfg = LlamaSimpleMLPConfig(**json.load(f))
     base_model = LlamaSimpleMLP(model_cfg)
-    sd = torch.load(JOSE_BASE_MODEL_CACHE / "state_dict.pt", map_location="cpu", weights_only=True)
+    sd = torch.load(LLM_BASE_MODEL_CACHE / "state_dict.pt", map_location="cpu", weights_only=True)
     base_model.load_state_dict(sd)
     base_model.to(DEVICE)
     base_model.eval()
@@ -525,34 +525,34 @@ def main():
             })
             del clt; torch.cuda.empty_cache()
 
-        # SPD
-        spd_results = []
-        if not args.skip_spd:
-            print("\nLoading jose SPD model...")
-            spd_model, _ = load_spd_model(SPD_BASELINE_RUN)
-            spd_model.to(DEVICE)
+        # VPD
+        vpd_results = []
+        if not args.skip_vpd:
+            print("\nLoading VPD model...")
+            vpd_model, _ = load_vpd_model(VPD_BASELINE_RUN)
+            vpd_model.to(DEVICE)
             all_module_names = [f"h.{l}.mlp.c_fc" for l in LAYERS] + [f"h.{l}.mlp.down_proj" for l in LAYERS]
 
-            for threshold in args.spd_thresholds:
+            for threshold in args.vpd_thresholds:
                 label = f"CI>{threshold}"
-                print(f"\n--- SPD ({label}) ---")
-                ce_cascading, l0 = eval_spd_all(spd_model, batches, all_module_names, threshold)
-                ce_parallel = eval_spd_all_parallel(spd_model, batches, all_module_names, threshold)
-                ce_single = eval_spd_single_mlp(spd_model, batches, threshold)
+                print(f"\n--- VPD ({label}) ---")
+                ce_cascading, l0 = eval_vpd_all(vpd_model, batches, all_module_names, threshold)
+                ce_parallel = eval_vpd_all_parallel(vpd_model, batches, all_module_names, threshold)
+                ce_single = eval_vpd_single_mlp(vpd_model, batches, threshold)
                 print(f"  L0={l0:.1f}  casc={ce_cascading:.4f} ({ce_cascading-baseline_ce:+.4f})  "
                       f"para={ce_parallel:.4f} ({ce_parallel-baseline_ce:+.4f})  "
                       f"single={ce_single:.4f} ({ce_single-baseline_ce:+.4f})")
-                spd_results.append({
-                    "type": "jose", "mode": label, "threshold": threshold, "l0": l0,
+                vpd_results.append({
+                    "type": "vpd", "mode": label, "threshold": threshold, "l0": l0,
                     "ce_all": ce_cascading, "ce_cascading": ce_cascading,
                     "ce_parallel": ce_parallel, "ce_single": ce_single,
                 })
-            del spd_model; torch.cuda.empty_cache()
+            del vpd_model; torch.cuda.empty_cache()
 
         # Save results
         output_path = OUTPUT_DIR / f"results_{dict_label}.json"
         with open(output_path, "w") as f:
-            json.dump({"baseline_ce": baseline_ce, "results": results, "spd_results": spd_results}, f, indent=2)
+            json.dump({"baseline_ce": baseline_ce, "results": results, "vpd_results": vpd_results}, f, indent=2)
         print(f"\nResults saved to {output_path}")
 
         # Summary table
@@ -564,8 +564,8 @@ def main():
             print(f"{label:<25} {k_str:>4} {r['l0']:>6.1f}"
                   f"  {r['ce_cascading']:>10.4f}  {r['ce_parallel']:>10.4f}  {r['ce_single']:>10.4f}"
                   f"  | {r['ce_cascading']-baseline_ce:>8.4f}  {r['ce_parallel']-baseline_ce:>8.4f}  {r['ce_single']-baseline_ce:>8.4f}")
-        for r in spd_results:
-            label = f"spd_{r['mode']}"
+        for r in vpd_results:
+            label = f"vpd_{r['mode']}"
             print(f"{label:<25} {'':>4} {r['l0']:>6.1f}"
                   f"  {r['ce_cascading']:>10.4f}  {r['ce_parallel']:>10.4f}  {r['ce_single']:>10.4f}"
                   f"  | {r['ce_cascading']-baseline_ce:>8.4f}  {r['ce_parallel']-baseline_ce:>8.4f}  {r['ce_single']-baseline_ce:>8.4f}")
