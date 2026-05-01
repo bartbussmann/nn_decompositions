@@ -1,12 +1,21 @@
-# nn_decompositions — VPD paper replication
+# (Cross-layer) Transcoder VPD experiments
 
 This repository contains the per-layer transcoder (PLT) and cross-layer
 transcoder (CLT) training and evaluation code used in the VPD paper. It
 is a minimal slice that exactly reproduces the four headline figures
 (plus their underlying training runs).
 
-The PLT and CLT decomposition baselines are trained here; VPD itself is
-loaded from public artifacts on the [SPD repository](https://github.com/goodfire-ai/spd).
+> **You don't need to retrain anything to reproduce the figures.** The
+> four eval scripts under `experiments/` pull pre-trained PLT, CLT, and
+> VPD checkpoints from the public wandb projects listed in
+> [`experiments/paper_runs.py`](experiments/paper_runs.py) and stream
+> them into the analysis on demand. The training scripts
+> (`experiments/train_local_mse/`, `experiments/train_e2e/`) are
+> included for completeness — run them only if you want to reproduce
+> the training sweeps end-to-end (~40 GPU-hours on H100s).
+
+The PLT and CLT decomposition baselines were trained here; VPD itself
+is loaded from public artifacts on the [SPD repository](https://github.com/goodfire-ai/spd).
 
 ## Target model
 
