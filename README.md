@@ -33,8 +33,7 @@ and is auto-downloaded on first use.
 │   ├── jose_base_model/                  # auto-populated cache (gitignored)
 │   ├── jose_training_runs.md             # wandb run-id table for every PLT/CLT
 │   ├── train_local_mse/                  # PLT + CLT local-MSE training (4k or 32k)
-│   ├── train_e2e_4k/                     # PLT + CLT end-to-end training (4k)
-│   ├── train_e2e_32k/                    # PLT + CLT end-to-end training (32k)
+│   ├── train_e2e/                        # PLT + CLT end-to-end training (4k or 32k)
 │   ├── pareto_plot_local/                # local-MSE Pareto plot (CE / L0)
 │   ├── pareto_plot_e2e/                  # end-to-end Pareto plot (CE / MSE vs capacity)
 │   ├── alive_subcomponents/              # alive-subcomponent scaling figure
@@ -64,8 +63,8 @@ are listed in `experiments/jose_training_runs.md`.
 |---|---|---|
 | `pile_local_sweep_jose`     | `train_local_mse/train_local_mse.py` | default `--dict_size 4096` |
 | `pile_local_sweep_jose_32k` | `train_local_mse/train_local_mse.py --dict_size 32768` | same script, 32k variant |
-| `pile_e2e_sweep_jose`       | `train_e2e_4k/train_e2e_4k.py` | 4k end-to-end KL |
-| `pile_e2e_sweep_jose_32k`   | `train_e2e_32k/train_e2e_32k.py` | 32k end-to-end KL |
+| `pile_e2e_sweep_jose`       | `train_e2e/train_e2e.py` | default `--dict_size 4096` |
+| `pile_e2e_sweep_jose_32k`   | `train_e2e/train_e2e.py --dict_size 32768` | same script, 32k variant |
 
 Each script polls GPU memory and launches one job per free device. Full
 sweeps require ≈ 40 GPU-hours on H100s.
