@@ -33,7 +33,6 @@ from experiments.paper_runs import (
     LOCAL_PROJECT_BY_DICT_SIZE as PROJECT_BY_DICT_SIZE,
 )
 
-WANDB_MODEL_PATH = LLM_BASE_MODEL
 LAYERS = [0, 1, 2, 3]
 NUM_TOKENS = int(5e8)
 LR = 3e-4
@@ -207,7 +206,7 @@ def main():
     if not (Path(model_cache_path) / "state_dict.pt").exists():
         print("Downloading base LLM from wandb...")
         from spd.pretrain.models.llama_simple_mlp import LlamaSimpleMLP
-        model = LlamaSimpleMLP.from_pretrained(WANDB_MODEL_PATH)
+        model = LlamaSimpleMLP.from_pretrained(LLM_BASE_MODEL)
         torch.save(model.state_dict(), os.path.join(model_cache_path, "state_dict.pt"))
         import json
         with open(os.path.join(model_cache_path, "config.json"), "w") as f:

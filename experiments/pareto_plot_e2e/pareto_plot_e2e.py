@@ -24,7 +24,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import wandb
-from tqdm import tqdm
 
 from nn_decompositions.eval_utils import (
     collect_mlp_inputs,

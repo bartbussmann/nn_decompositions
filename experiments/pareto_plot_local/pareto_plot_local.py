@@ -26,13 +26,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import wandb
-from tqdm import tqdm
 
 from nn_decompositions.eval_utils import (
-    cleanup_cuda,
     collect_mlp_inputs,
     compute_ce_from_logits,
     compute_ce_loss,

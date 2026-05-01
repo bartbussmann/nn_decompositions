@@ -53,7 +53,6 @@ import torch.nn.functional as F
 import wandb
 from tqdm import tqdm
 
-from nn_decompositions.clt import CrossLayerTranscoder
 from nn_decompositions.eval_utils import (
     cleanup_cuda,
     collect_mlp_inputs,
@@ -68,7 +67,6 @@ from experiments.paper_runs import (
     VPD_BASELINE_RUN,
     VPD_CAPACITY_RUNS,
 )
-from nn_decompositions.transcoder import BatchTopKTranscoder
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 LAYERS = [0, 1, 2, 3]
