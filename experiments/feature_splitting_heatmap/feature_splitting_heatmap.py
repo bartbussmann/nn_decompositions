@@ -1,34 +1,24 @@
-"""Cross-model feature-matching heatmaps at threshold > 0.5.
+"""Cross-model feature-matching heatmap (output space, threshold > 0.5).
 
 For every ordered pair (A, B) of models and every alive feature j in A,
-we count how many alive features in B have cosine similarity above 0.5.
-We do this in three spaces:
+count how many alive features in B have output-space cosine similarity
+above 0.5. The "output direction" of a feature is its decoder vector:
 
-  - input  : encoder direction (VPD V column of c_fc; TC/CLT W_enc column).
-  - output : decoder direction (VPD U row of down_proj; TC/CLT W_dec row).
-  - matrix : combined / matrix-space cosine = cos_input * cos_output.
-             By the outer-product identity this is exactly the cosine of
-             the rank-1 matrix M_j = enc_j ⊗ dec_j.
+  - VPD     : `U` row of `down_proj`
+  - PLT/CLT : `W_dec` row
 
-Models compared: VPD at four capacities (0.5x / 1x / 2x / 4x),
-PLT (per-layer transcoders) at 4k and 32k, and CLT at 4k and 32k.
+Models compared: VPD at four capacities (0.5x / 1x / 2x / 4x), PLT
+(per-layer transcoders) at 4k and 32k, and CLT at 4k and 32k.
 
-Note on the matrix-space heatmap: a feature must have *both* an encoder
-direction and a decoder direction sharing the same per-feature index for
-this cosine to be defined. That holds for transcoders (TC/CLT) but not
-for VPD — its c_fc and down_proj components are decomposed independently
-and are not paired. The matrix-space heatmap therefore only includes the
-TC/CLT models. The input and output heatmaps include all 8 models.
-
-For each (A, B) pair the JSON stores `pct_split` (averaged over the 4
-layers): the % of features in A with >1 match in B (excluding self when
-A == B). Self-matches are subtracted before counting.
+The JSON output stores `pct_split` (averaged over the 4 layers): the
+% of features in A with >1 match in B (excluding self when A == B).
 
 Pipeline (single self-contained script, no subprocesses):
   1. Stream 1M Pile tokens.
-  2. For each model, compute alive-feature masks per layer.
-  3. Cache normalized alive directions to disk (input + output).
-  4. Compute the three heatmaps and save JSON + reference plot.
+  2. For each model, compute alive-feature masks per layer and extract
+     the normalized output direction of each alive feature.
+  3. Cache directions to disk.
+  4. Compute the heatmap and save JSON + reference plot.
 
 Usage:
   python experiments/feature_splitting_heatmap/feature_splitting_heatmap.py
@@ -87,16 +77,13 @@ CHECKPOINT_DIR = Path("checkpoints/feature_splitting_heatmap")
 class ModelEntry:
     """One model in the comparison.
 
-    `kind` is "spd", "tc", or "clt". `display` is the publication-friendly
-    label. `paired` is True iff every alive feature has both an input and
-    output direction sharing the same row index — required for matrix-space
-    cosine.
+    `kind` is "vpd", "tc", or "clt". `display` is the publication-friendly
+    label used in the JSON / heatmap.
     """
 
     kind: str
     display: str
     cache_stem: str
-    paired: bool
     vpd_run: str | None = None
     project: str | None = None
     run_id: str | None = None
@@ -109,18 +96,14 @@ _CLT_4K_PROJECT, _CLT_4K_RUN_ID = HEADLINE_CLT_RUNS[4096]
 _CLT_32K_PROJECT, _CLT_32K_RUN_ID = HEADLINE_CLT_RUNS[32768]
 
 MODELS: list[ModelEntry] = [
-    ModelEntry("vpd", "VPD 0.5x", "vpd_0p5x", paired=False, vpd_run=VPD_CAPACITY_RUNS["0.5x"]),
-    ModelEntry("vpd", "VPD 1x",   "vpd_1x",   paired=False, vpd_run=VPD_CAPACITY_RUNS["1x"]),
-    ModelEntry("vpd", "VPD 2x",   "vpd_2x",   paired=False, vpd_run=VPD_CAPACITY_RUNS["2x"]),
-    ModelEntry("vpd", "VPD 4x",   "vpd_4x",   paired=False, vpd_run=VPD_CAPACITY_RUNS["4x"]),
-    ModelEntry("tc",  "PLT 4k",   "tc_4k",    paired=True,
-               project=_PLT_4K_PROJECT,  run_id=_PLT_4K_RUN_ID),
-    ModelEntry("tc",  "PLT 32k",  "tc_32k",   paired=True,
-               project=_PLT_32K_PROJECT, run_id=_PLT_32K_RUN_ID),
-    ModelEntry("clt", "CLT 4k",   "clt_4k",   paired=True,
-               project=_CLT_4K_PROJECT,  run_id=_CLT_4K_RUN_ID),
-    ModelEntry("clt", "CLT 32k",  "clt_32k",  paired=True,
-               project=_CLT_32K_PROJECT, run_id=_CLT_32K_RUN_ID),
+    ModelEntry("vpd", "VPD 0.5x", "vpd_0p5x", vpd_run=VPD_CAPACITY_RUNS["0.5x"]),
+    ModelEntry("vpd", "VPD 1x",   "vpd_1x",   vpd_run=VPD_CAPACITY_RUNS["1x"]),
+    ModelEntry("vpd", "VPD 2x",   "vpd_2x",   vpd_run=VPD_CAPACITY_RUNS["2x"]),
+    ModelEntry("vpd", "VPD 4x",   "vpd_4x",   vpd_run=VPD_CAPACITY_RUNS["4x"]),
+    ModelEntry("tc",  "PLT 4k",   "tc_4k",    project=_PLT_4K_PROJECT,  run_id=_PLT_4K_RUN_ID),
+    ModelEntry("tc",  "PLT 32k",  "tc_32k",   project=_PLT_32K_PROJECT, run_id=_PLT_32K_RUN_ID),
+    ModelEntry("clt", "CLT 4k",   "clt_4k",   project=_CLT_4K_PROJECT,  run_id=_CLT_4K_RUN_ID),
+    ModelEntry("clt", "CLT 32k",  "clt_32k",  project=_CLT_32K_PROJECT, run_id=_CLT_32K_RUN_ID),
 ]
 
 
@@ -182,28 +165,22 @@ def download_clt_artifact(entry: ModelEntry) -> Path:
 
 
 # =============================================================================
-# Direction extraction (one model, both spaces, all layers)
+# Output-direction extraction (one model, all layers)
 # =============================================================================
 
 
 @torch.no_grad()
-def extract_directions_spd(entry: ModelEntry, batches: list[torch.Tensor]
-                           ) -> dict[str, dict[int, torch.Tensor]]:
-    """For VPD: 'input' uses c_fc.V columns, 'output' uses down_proj.U rows."""
+def extract_directions_vpd(entry: ModelEntry, batches: list[torch.Tensor]
+                           ) -> dict[int, torch.Tensor]:
+    """For VPD: output directions are `U` rows of each layer's `down_proj`."""
     vpd_model, _ = load_vpd_model(entry.vpd_run)
     vpd_model.to(DEVICE)
     vpd_model.eval()
 
-    def _module(layer: int, kind: str) -> str:
-        return f"h.{layer}.mlp.{kind}"
-
-    sub_modules = {
-        "input": [_module(l, "c_fc") for l in LAYERS],
-        "output": [_module(l, "down_proj") for l in LAYERS],
-    }
+    down_modules = [f"h.{l}.mlp.down_proj" for l in LAYERS]
     ci_sum = {
         m: torch.zeros(vpd_model.module_to_c[m], dtype=torch.float64, device="cpu")
-        for kind in sub_modules for m in sub_modules[kind]
+        for m in down_modules
     }
     n_tokens_total = 0
     for input_ids in tqdm(batches, desc=f"{entry.display} CI"):
@@ -211,23 +188,17 @@ def extract_directions_spd(entry: ModelEntry, batches: list[torch.Tensor]
         n_tokens_total += bsz * seq
         out = vpd_model(input_ids, cache_type="input")
         ci = vpd_model.calc_causal_importances(out.cache, sampling="continuous")
-        for m in ci_sum:
+        for m in down_modules:
             n_c = vpd_model.module_to_c[m]
             ci_vals = ci.lower_leaky[m].reshape(-1, n_c)
             ci_sum[m] += ci_vals.double().sum(dim=0).cpu()
 
-    dirs: dict[str, dict[int, torch.Tensor]] = {"input": {}, "output": {}}
+    dirs: dict[int, torch.Tensor] = {}
     for layer in LAYERS:
-        cfc = _module(layer, "c_fc")
-        down = _module(layer, "down_proj")
-        cfc_alive = (ci_sum[cfc] / n_tokens_total) > ALIVE_THRESHOLD
-        down_alive = (ci_sum[down] / n_tokens_total) > ALIVE_THRESHOLD
-
-        V = vpd_model.components[cfc].V.float()      # (d_in, C)
-        U = vpd_model.components[down].U.float()     # (C, d_out)
-
-        dirs["input"][layer] = F.normalize(V.T[cfc_alive], dim=1).cpu()
-        dirs["output"][layer] = F.normalize(U[down_alive], dim=1).cpu()
+        down = f"h.{layer}.mlp.down_proj"
+        alive = (ci_sum[down] / n_tokens_total) > ALIVE_THRESHOLD
+        U = vpd_model.components[down].U.float()  # (C, d_out)
+        dirs[layer] = F.normalize(U[alive], dim=1).cpu()
 
     del vpd_model
     cleanup_cuda()
@@ -236,7 +207,7 @@ def extract_directions_spd(entry: ModelEntry, batches: list[torch.Tensor]
 
 @torch.no_grad()
 def extract_directions_tc(entry: ModelEntry, base_model, batches: list[torch.Tensor]
-                          ) -> dict[str, dict[int, torch.Tensor]]:
+                          ) -> dict[int, torch.Tensor]:
     layer_paths = download_tc_layers(entry)
     transcoders = {l: load_transcoder(p, DEVICE) for l, p in layer_paths.items()}
 
@@ -253,16 +224,14 @@ def extract_directions_tc(entry: ModelEntry, base_model, batches: list[torch.Ten
             acts = tc.encode(flat)
             fire_count[layer_idx] += (acts > 0).sum(dim=0).to(torch.int64)
 
-    dirs: dict[str, dict[int, torch.Tensor]] = {"input": {}, "output": {}}
+    dirs: dict[int, torch.Tensor] = {}
     for layer_idx in LAYERS:
         tc = transcoders[layer_idx]
         sparsity = fire_count[layer_idx].float() / n_tokens
         alive = sparsity > ALIVE_THRESHOLD
-        # W_enc is (d_in, dict_size); W_dec is (dict_size, d_out).
-        enc = F.normalize(tc.W_enc.float().T, dim=1)[alive]
+        # W_dec is (dict_size, d_out).
         dec = F.normalize(tc.W_dec.float(), dim=1)[alive]
-        dirs["input"][layer_idx] = enc.cpu()
-        dirs["output"][layer_idx] = dec.cpu()
+        dirs[layer_idx] = dec.cpu()
 
     del transcoders
     cleanup_cuda()
@@ -271,7 +240,7 @@ def extract_directions_tc(entry: ModelEntry, base_model, batches: list[torch.Ten
 
 @torch.no_grad()
 def extract_directions_clt(entry: ModelEntry, base_model, batches: list[torch.Tensor]
-                           ) -> dict[str, dict[int, torch.Tensor]]:
+                           ) -> dict[int, torch.Tensor]:
     clt_path = download_clt_artifact(entry)
     clt = load_clt(clt_path, DEVICE)
 
@@ -288,23 +257,21 @@ def extract_directions_clt(entry: ModelEntry, base_model, batches: list[torch.Te
             acts = clt.encode_layer(flat, layer_idx)
             fire_count[layer_idx] += (acts > 0).sum(dim=0).to(torch.int64)
 
-    dirs: dict[str, dict[int, torch.Tensor]] = {"input": {}, "output": {}}
+    dirs: dict[int, torch.Tensor] = {}
     for layer_idx in range(n_layers):
         sparsity = fire_count[layer_idx].float() / n_tokens
         alive = sparsity > ALIVE_THRESHOLD
-        # W_enc[i] is (d_in, dict_size); same-layer W_dec[i][0] is (dict_size, d_out).
-        enc = F.normalize(clt.W_enc[layer_idx].float().T, dim=1)[alive]
+        # Same-layer W_dec[i][0] is (dict_size, d_out).
         dec = F.normalize(clt.W_dec[layer_idx][0].float(), dim=1)[alive]
-        dirs["input"][layer_idx] = enc.cpu()
-        dirs["output"][layer_idx] = dec.cpu()
+        dirs[layer_idx] = dec.cpu()
 
     del clt
     cleanup_cuda()
     return dirs
 
 
-def extract_or_load(entry: ModelEntry, base_model_provider) -> dict[str, dict[int, torch.Tensor]]:
-    """Return {space: {layer: tensor(n_alive, d) normalized}}, caching to disk."""
+def extract_or_load(entry: ModelEntry, base_model_provider) -> dict[int, torch.Tensor]:
+    """Return {layer: tensor(n_alive, d) of normalized output directions}, caching to disk."""
     DIR_CACHE.mkdir(parents=True, exist_ok=True)
     cache_path = DIR_CACHE / f"{entry.cache_stem}.pt"
     if cache_path.exists():
@@ -314,7 +281,7 @@ def extract_or_load(entry: ModelEntry, base_model_provider) -> dict[str, dict[in
     print(f"\n=== Extracting directions: {entry.display} ===")
     batches = base_model_provider.batches
     if entry.kind == "vpd":
-        dirs = extract_directions_spd(entry, batches)
+        dirs = extract_directions_vpd(entry, batches)
     elif entry.kind == "tc":
         dirs = extract_directions_tc(entry, base_model_provider.base_model, batches)
     elif entry.kind == "clt":
@@ -351,7 +318,7 @@ class _BaseModelProvider:
 # =============================================================================
 
 
-def count_matches_single(a: torch.Tensor, b: torch.Tensor, threshold: float, exclude_self: bool) -> np.ndarray:
+def count_matches(a: torch.Tensor, b: torch.Tensor, threshold: float, exclude_self: bool) -> np.ndarray:
     n_a = a.shape[0]
     if n_a == 0 or b.shape[0] == 0:
         return np.zeros(n_a, dtype=np.int64)
@@ -364,26 +331,12 @@ def count_matches_single(a: torch.Tensor, b: torch.Tensor, threshold: float, exc
     return np.maximum(counts - 1, 0) if exclude_self else counts
 
 
-def count_matches_matrix(a_in, a_out, b_in, b_out, threshold, exclude_self) -> np.ndarray:
-    n_a = a_in.shape[0]
-    if n_a == 0 or b_in.shape[0] == 0:
-        return np.zeros(n_a, dtype=np.int64)
-    counts = np.empty(n_a, dtype=np.int64)
-    bi = b_in.to(DEVICE)
-    bo = b_out.to(DEVICE)
-    for start in range(0, n_a, CHUNK):
-        ai = a_in[start:start + CHUNK].to(DEVICE)
-        ao = a_out[start:start + CHUNK].to(DEVICE)
-        cos = (ai @ bi.T) * (ao @ bo.T)
-        counts[start:start + ai.shape[0]] = (cos > threshold).sum(dim=1).cpu().numpy()
-    return np.maximum(counts - 1, 0) if exclude_self else counts
-
-
 def _pct_split(counts: np.ndarray) -> float:
     return 100.0 * float((counts > 1).sum()) / counts.size if counts.size else 0.0
 
 
-def compute_single_space(dirs, models: list[ModelEntry], space: str, threshold: float) -> dict:
+def compute_heatmap(dirs: dict[str, dict[int, torch.Tensor]], models: list[ModelEntry],
+                    threshold: float) -> dict:
     names = [m.display for m in models]
     n = len(names)
     pct_split = np.zeros((n, n))
@@ -392,49 +345,20 @@ def compute_single_space(dirs, models: list[ModelEntry], space: str, threshold: 
             same = (name_a == name_b)
             per_layer = []
             for layer in LAYERS:
-                a = dirs[name_a][space][layer]
-                b = dirs[name_b][space][layer]
-                counts = count_matches_single(a, b, threshold, same)
+                a = dirs[name_a][layer]
+                b = dirs[name_b][layer]
+                counts = count_matches(a, b, threshold, same)
                 if counts.size:
                     per_layer.append(_pct_split(counts))
             pct_split[i, j] = float(np.mean(per_layer)) if per_layer else 0.0
         print(f"  {name_a:<10} done — diag split={pct_split[i, i]:.1f}%")
-    return {"threshold": threshold, "space": space, "models": names, "pct_split": pct_split.tolist()}
-
-
-def compute_matrix_space(dirs, models: list[ModelEntry], threshold: float) -> dict:
-    names = [m.display for m in models]
-    n = len(names)
-    pct_split = np.zeros((n, n))
-    for i, name_a in enumerate(names):
-        for j, name_b in enumerate(names):
-            same = (name_a == name_b)
-            per_layer = []
-            for layer in LAYERS:
-                a_in = dirs[name_a]["input"][layer]
-                a_out = dirs[name_a]["output"][layer]
-                b_in = dirs[name_b]["input"][layer]
-                b_out = dirs[name_b]["output"][layer]
-                assert a_in.shape[0] == a_out.shape[0], f"{name_a} L{layer} not paired"
-                assert b_in.shape[0] == b_out.shape[0], f"{name_b} L{layer} not paired"
-                counts = count_matches_matrix(a_in, a_out, b_in, b_out, threshold, same)
-                if counts.size:
-                    per_layer.append(_pct_split(counts))
-            pct_split[i, j] = float(np.mean(per_layer)) if per_layer else 0.0
-        print(f"  {name_a:<10} done — diag split={pct_split[i, i]:.1f}%")
-    return {"threshold": threshold, "space": "matrix", "models": names, "pct_split": pct_split.tolist()}
+    return {"threshold": threshold, "space": "output", "models": names,
+            "pct_split": pct_split.tolist()}
 
 
 # =============================================================================
 # Plotting (reference figure — collaborators can restyle from JSON)
 # =============================================================================
-
-
-SPACE_LABELS = {
-    "input":  "input space (encoder / V)",
-    "output": "output space (decoder / U)",
-    "matrix": "matrix space (encoder ⊗ decoder)",
-}
 
 
 def plot_heatmap(data: dict, save_path: Path) -> None:
@@ -469,7 +393,7 @@ def plot_heatmap(data: dict, save_path: Path) -> None:
             ax.text(j, i, f"{pct_split[i, j]:.1f}", ha="center", va="center", fontsize=8, color=color)
     plt.colorbar(im, ax=ax, shrink=0.85, label="% features with >1 match")
     ax.set_title(
-        f"Feature splitting — {SPACE_LABELS[data['space']]} (cosine > {data['threshold']})",
+        f"Feature splitting — output space (decoder / U) (cosine > {data['threshold']})",
         fontsize=12,
     )
     fig.tight_layout()
@@ -491,49 +415,33 @@ def threshold_tag(t: float) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--plot-only", action="store_true",
-                        help="Re-render plots from existing JSON without recomputing")
+                        help="Re-render the plot from existing JSON without recomputing")
     args = parser.parse_args()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     tag = threshold_tag(THRESHOLD)
-    spaces = ("input", "output", "matrix")
+    json_path = OUTPUT_DIR / f"heatmap_data_output_{tag}.json"
+    plot_stem = OUTPUT_DIR / f"cross_model_heatmap_output_{tag}"
 
     if args.plot_only:
-        for space in spaces:
-            json_path = OUTPUT_DIR / f"heatmap_data_{space}_{tag}.json"
-            if not json_path.exists():
-                print(f"  Skip {space}: {json_path} missing")
-                continue
-            with open(json_path) as f:
-                data = json.load(f)
-            plot_heatmap(data, OUTPUT_DIR / f"cross_model_heatmap_{space}_{tag}")
+        with open(json_path) as f:
+            data = json.load(f)
+        plot_heatmap(data, plot_stem)
         return
 
     print(f"Loading {N_BATCHES} eval batches ({N_TOKENS / 1e6:.0f}M tokens)...")
     batches = get_eval_batches(N_BATCHES)
     provider = _BaseModelProvider(batches)
 
-    dirs: dict[str, dict[str, dict[int, torch.Tensor]]] = {}
+    dirs: dict[str, dict[int, torch.Tensor]] = {}
     for entry in MODELS:
         dirs[entry.display] = extract_or_load(entry, provider)
 
-    print(f"\n=== input space (cosine > {THRESHOLD}) ===")
-    data_in = compute_single_space(dirs, MODELS, "input", THRESHOLD)
-    (OUTPUT_DIR / f"heatmap_data_input_{tag}.json").write_text(json.dumps(data_in, indent=2))
-    plot_heatmap(data_in, OUTPUT_DIR / f"cross_model_heatmap_input_{tag}")
-
     print(f"\n=== output space (cosine > {THRESHOLD}) ===")
-    data_out = compute_single_space(dirs, MODELS, "output", THRESHOLD)
-    (OUTPUT_DIR / f"heatmap_data_output_{tag}.json").write_text(json.dumps(data_out, indent=2))
-    plot_heatmap(data_out, OUTPUT_DIR / f"cross_model_heatmap_output_{tag}")
-
-    print(f"\n=== matrix space (cosine > {THRESHOLD}) ===")
-    paired = [m for m in MODELS if m.paired]
-    print(f"  Restricted to paired models: {[m.display for m in paired]}")
-    data_mat = compute_matrix_space(dirs, paired, THRESHOLD)
-    (OUTPUT_DIR / f"heatmap_data_matrix_{tag}.json").write_text(json.dumps(data_mat, indent=2))
-    plot_heatmap(data_mat, OUTPUT_DIR / f"cross_model_heatmap_matrix_{tag}")
+    data = compute_heatmap(dirs, MODELS, THRESHOLD)
+    json_path.write_text(json.dumps(data, indent=2))
+    plot_heatmap(data, plot_stem)
 
 
 if __name__ == "__main__":
