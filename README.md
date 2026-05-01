@@ -43,10 +43,13 @@ and is auto-downloaded on first use.
 
 ## Setup
 
-Requires Python 3.13 and a CUDA-12.4 GPU.
+Requires a CUDA-12.4-compatible GPU and `git`. Python 3.13 itself does
+**not** need to be pre-installed — `setup_env.sh` uses [`uv`](https://astral.sh/uv)
+to fetch a 3.13 interpreter on the fly.
 
 ```bash
-bash setup_env.sh                # creates .venv, installs torch + spd + this package
+bash setup_env.sh                # installs uv + Python 3.13, creates .venv,
+                                 # installs torch + spd + this package
 source .venv/bin/activate
 wandb login                      # needed to pull artifacts and log training
 huggingface-cli login            # `danbraunai/pile-uncopyrighted-tok` is gated

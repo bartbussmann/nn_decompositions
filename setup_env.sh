@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
-# Set up a Python 3.13 venv with all dependencies needed to replicate
-# the VPD paper's transcoder and pareto experiments.
+# One-shot setup for the VPD paper-replication repo.
 #
-# Requires: Python 3.13, CUDA 12.4-compatible GPU, git.
+# Uses `uv` (https://astral.sh/uv) to:
+#   1. install itself if missing (single static binary, no root needed),
+#   2. fetch CPython 3.13 if it isn't already on the system,
+#   3. create a .venv pinned to that interpreter,
+#   4. install the upstream `spd` package (editable, from a pinned branch)
+#      and this repo (editable) into the venv.
+#
+# Requires: a CUDA-12.4-compatible GPU and git. Python 3.13 does NOT need to
+# be pre-installed — uv will fetch it.
 #
 # Usage:
 #   bash setup_env.sh
@@ -14,38 +21,64 @@ NN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SPD_DIR="${SPD_DIR:-$NN_DIR/external/spd}"
 SPD_BRANCH="${SPD_BRANCH:-snapshot/launch-20260225_151714}"  # branch used to train the VPD baseline (s-55ea3f9b)
 
-if ! command -v python3.13 &>/dev/null; then
-    echo "Error: python3.13 is required but not found." >&2
-    echo "Install it via deadsnakes (Ubuntu) or pyenv, then re-run." >&2
-    exit 1
+# --------------------------------------------------------------------------
+# 1. Ensure `uv` is on PATH (~25 MB static binary, no root required).
+# --------------------------------------------------------------------------
+if ! command -v uv &>/dev/null; then
+    echo "Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    # The installer drops uv into ~/.local/bin (or $XDG_BIN_HOME). Source the
+    # generated env file so this shell picks it up immediately.
+    if [ -f "$HOME/.local/bin/env" ]; then
+        # shellcheck source=/dev/null
+        source "$HOME/.local/bin/env"
+    else
+        export PATH="$HOME/.local/bin:$PATH"
+    fi
 fi
+echo "Using uv: $(uv --version)"
 
-echo "Creating venv at $NN_DIR/.venv ..."
-python3.13 -m venv "$NN_DIR/.venv"
-# shellcheck source=/dev/null
-source "$NN_DIR/.venv/bin/activate"
+# --------------------------------------------------------------------------
+# 2-3. Install Python 3.13 if needed and create the venv.
+# --------------------------------------------------------------------------
+uv python install 3.13
+echo "Creating venv at $NN_DIR/.venv (Python 3.13)..."
+uv venv --python 3.13 "$NN_DIR/.venv"
 
-pip install --upgrade pip setuptools wheel
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+# Use the venv for everything below.
+export VIRTUAL_ENV="$NN_DIR/.venv"
+export PATH="$VIRTUAL_ENV/bin:$PATH"
 
-echo "Cloning SPD repo into $SPD_DIR (branch $SPD_BRANCH)..."
+# --------------------------------------------------------------------------
+# 4. Install PyTorch (CUDA 12.4) + the upstream `spd` package + this repo.
+# --------------------------------------------------------------------------
+uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+
+echo "Cloning upstream spd into $SPD_DIR (branch $SPD_BRANCH)..."
 mkdir -p "$(dirname "$SPD_DIR")"
 if [ ! -d "$SPD_DIR" ]; then
     git clone --branch "$SPD_BRANCH" https://github.com/goodfire-ai/spd.git "$SPD_DIR"
 else
     (cd "$SPD_DIR" && git fetch origin "$SPD_BRANCH" && git checkout "$SPD_BRANCH")
 fi
-pip install -e "$SPD_DIR"
+uv pip install -e "$SPD_DIR"
 
 echo "Installing nn_decompositions (editable)..."
-pip install -e "$NN_DIR"
+uv pip install -e "$NN_DIR"
 
-# Update sys.path hint for the experiment scripts so they can find SPD locally.
-echo "Note: experiment scripts add /workspace/spd to sys.path. If you cloned"
-echo "      SPD elsewhere, edit the sys.path.insert lines or symlink:"
-echo "        ln -s '$SPD_DIR' /workspace/spd"
+# Experiment scripts have `sys.path.insert(0, "/workspace/spd")` left over
+# from the original RunPod layout. If you cloned spd anywhere else, either
+# symlink it into place...
+if [ ! -e /workspace/spd ] && [ -w /workspace ]; then
+    ln -s "$SPD_DIR" /workspace/spd
+    echo "Created symlink /workspace/spd -> $SPD_DIR"
+fi
 
+# --------------------------------------------------------------------------
+# 5. Smoke test.
+# --------------------------------------------------------------------------
 python -c "
+import sys; print(f'python {sys.version.split()[0]}')
 import torch
 print(f'torch {torch.__version__}, CUDA available: {torch.cuda.is_available()}')
 import spd; print('spd OK')
