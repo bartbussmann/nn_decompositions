@@ -12,8 +12,7 @@ Usage:
 import argparse
 import json
 import re
-import sys
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -25,15 +24,20 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import wandb
-from datasets import load_dataset
 from tqdm import tqdm
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-sys.path.insert(0, str(Path("/workspace/spd")))
-
-from nn_decompositions.transcoder import BatchTopKTranscoder
-from nn_decompositions.config import EncoderConfig, CLTConfig
-from nn_decompositions.clt import CrossLayerTranscoder
+from nn_decompositions.eval_utils import (
+    collect_mlp_inputs,
+    compute_ce_from_logits,
+    compute_ce_loss,
+    get_pile_batches,
+    load_clt,
+    load_spd_model,
+    load_transcoder,
+    patched_forward,
+)
+from nn_decompositions.paper_runs import SPD_BASELINE_RUN
+from nn_decompositions.clt import CrossLayerTranscoder  # for type hints
 from spd.models.components import make_mask_infos
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -138,48 +142,12 @@ def download_clts(project: str, prefix: str) -> list[tuple[int, Path]]:
 
 
 def get_eval_batches(n_batches: int, batch_size: int, seq_len: int) -> list[torch.Tensor]:
-    dataset = load_dataset("danbraunai/pile-uncopyrighted-tok", split="train", streaming=True)
-    dataset = dataset.shuffle(seed=0, buffer_size=10000)
-    data_iter = iter(dataset)
-    batches = []
-    for _ in tqdm(range(n_batches), desc="Loading batches"):
-        batch_ids = []
-        for _ in range(batch_size):
-            sample = next(data_iter)
-            ids = sample["input_ids"]
-            if not isinstance(ids, torch.Tensor):
-                ids = torch.tensor(ids, dtype=torch.long)
-            batch_ids.append(ids[:seq_len])
-        batches.append(torch.stack(batch_ids).to(DEVICE))
-    return batches
+    return get_pile_batches(n_batches, batch_size, seq_len, device=DEVICE)
 
 
 # =============================================================================
 # Helpers
 # =============================================================================
-
-
-@contextmanager
-def patched_forward(module: nn.Module, patched_fn):
-    original = module.forward
-    module.forward = patched_fn
-    try:
-        yield
-    finally:
-        module.forward = original
-
-
-def compute_ce_loss(model, input_ids: torch.Tensor) -> float:
-    logits, _ = model(input_ids)
-    targets = input_ids[:, 1:].contiguous()
-    shift_logits = logits[:, :-1].contiguous()
-    return F.cross_entropy(shift_logits.view(-1, shift_logits.size(-1)), targets.view(-1)).item()
-
-
-def compute_ce_from_logits(logits: torch.Tensor, input_ids: torch.Tensor) -> float:
-    targets = input_ids[:, 1:].contiguous()
-    shift_logits = logits[:, :-1].contiguous()
-    return F.cross_entropy(shift_logits.view(-1, shift_logits.size(-1)), targets.view(-1)).item()
 
 
 # =============================================================================
@@ -222,23 +190,6 @@ def get_mlp_activations(model, batches):
 # =============================================================================
 # Transcoder loading & eval
 # =============================================================================
-
-
-ENCODER_CLASSES = {"batchtopk": BatchTopKTranscoder}
-
-
-def load_transcoder(checkpoint_dir: str):
-    checkpoint_dir = Path(checkpoint_dir)
-    with open(checkpoint_dir / "config.json") as f:
-        cfg_dict = json.load(f)
-    dtype_str = cfg_dict.get("dtype", "torch.float32")
-    cfg_dict["dtype"] = getattr(torch, dtype_str.replace("torch.", ""))
-    cfg_dict["device"] = DEVICE
-    cfg = EncoderConfig(**cfg_dict)
-    encoder = ENCODER_CLASSES[cfg.encoder_type](cfg)
-    encoder.load_state_dict(torch.load(checkpoint_dir / "encoder.pt", map_location=DEVICE))
-    encoder.eval()
-    return encoder
 
 
 @torch.no_grad()
@@ -286,37 +237,8 @@ def eval_transcoder_batchtopk(
 # =============================================================================
 
 
-def load_clt(checkpoint_dir: str):
-    checkpoint_dir = Path(checkpoint_dir)
-    with open(checkpoint_dir / "config.json") as f:
-        cfg_dict = json.load(f)
-    cfg_dict["layers"] = json.loads(cfg_dict["layers"])
-    dtype_str = cfg_dict.get("dtype", "torch.float32")
-    cfg_dict["dtype"] = getattr(torch, dtype_str.replace("torch.", ""))
-    cfg_dict["device"] = DEVICE
-    cfg = CLTConfig(**cfg_dict)
-    clt = CrossLayerTranscoder(cfg)
-    clt.load_state_dict(torch.load(checkpoint_dir / "encoder.pt", map_location=DEVICE))
-    clt.eval()
-    return clt
-
-
 def _collect_rms2_outputs(base_model, input_ids):
-    captured = {}
-    hooks = []
-    for layer_idx in LAYERS:
-        rms2 = base_model.h[layer_idx].rms_2
-
-        def _make_hook(li):
-            def _hook(_mod, _inp, out):
-                captured[li] = out.detach()
-            return _hook
-
-        hooks.append(rms2.register_forward_hook(_make_hook(layer_idx)))
-    base_model(input_ids)
-    for h in hooks:
-        h.remove()
-    return captured
+    return collect_mlp_inputs(base_model, input_ids, LAYERS)
 
 
 def _clt_batchtopk_acts(clt, inputs, k):
@@ -653,7 +575,7 @@ def main():
     parser = argparse.ArgumentParser(description="Combined Pareto plot (4k + 32k)")
     parser.add_argument("--project_4k", type=str, default="mats-sprint/pile_local_sweep_jose")
     parser.add_argument("--project_32k", type=str, default="mats-sprint/pile_local_sweep_jose_32k")
-    parser.add_argument("--spd_run", type=str, default="goodfire/spd/s-55ea3f9b")
+    parser.add_argument("--spd_run", type=str, default=SPD_BASELINE_RUN)
     parser.add_argument("--n_eval_batches", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--seq_len", type=int, default=512)
@@ -690,8 +612,6 @@ def main():
                              y_key="mse", ylabel="MLP reconstruction MSE",
                              save_path=base_path.replace(".png", "_combined_mse.png"))
         return
-
-    from analysis.collect_spd_activations import load_spd_model
 
     print("Loading SPD model (jose)...")
     spd_model, raw_config = load_spd_model(args.spd_run)
@@ -742,7 +662,7 @@ def main():
     tc_points_4k = []
     for top_k in sorted(tc_paths_4k.keys()):
         layer_paths = tc_paths_4k[top_k]
-        transcoders = {l: load_transcoder(str(layer_paths[l])) for l in LAYERS}
+        transcoders = {l: load_transcoder(layer_paths[l], DEVICE) for l in LAYERS}
         for tc in transcoders.values():
             tc.to(DEVICE)
 
@@ -757,7 +677,7 @@ def main():
     tc_points_32k = []
     for top_k in sorted(tc_paths_32k.keys()):
         layer_paths = tc_paths_32k[top_k]
-        transcoders = {l: load_transcoder(str(layer_paths[l])) for l in LAYERS}
+        transcoders = {l: load_transcoder(layer_paths[l], DEVICE) for l in LAYERS}
         for tc in transcoders.values():
             tc.to(DEVICE)
 
@@ -771,7 +691,7 @@ def main():
     # Evaluate 4k CLTs
     clt_points_4k = []
     for top_k, path in clt_paths_4k:
-        clt = load_clt(str(path))
+        clt = load_clt(path, DEVICE)
         clt.to(DEVICE)
 
         print(f"\nEvaluating CLT 4k k={top_k}...")
@@ -784,7 +704,7 @@ def main():
     # Evaluate 32k CLTs
     clt_points_32k = []
     for top_k, path in clt_paths_32k:
-        clt = load_clt(str(path))
+        clt = load_clt(path, DEVICE)
         clt.to(DEVICE)
 
         print(f"\nEvaluating CLT 32k k={top_k}...")

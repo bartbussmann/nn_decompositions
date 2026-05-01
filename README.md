@@ -26,9 +26,9 @@ and is auto-downloaded on first use.
 │   ├── config.py                         # EncoderConfig, CLTConfig
 │   ├── activation_store.py
 │   ├── training.py
-│   └── logs.py
-├── analysis/
-│   └── collect_spd_activations.py        # SPD model loader
+│   ├── logs.py
+│   ├── eval_utils.py                     # shared helpers (data, hooks, CE, model loaders)
+│   └── paper_runs.py                     # wandb / SPD run-IDs used in the paper
 ├── experiments/
 │   ├── jose_base_model/                  # auto-populated cache (gitignored)
 │   ├── jose_training_runs.md             # wandb run-id table for every PLT/CLT
@@ -50,6 +50,7 @@ Requires Python 3.13 and a CUDA-12.4 GPU.
 bash setup_env.sh                # creates .venv, installs torch + spd + this package
 source .venv/bin/activate
 wandb login                      # needed to pull artifacts and log training
+huggingface-cli login            # `danbraunai/pile-uncopyrighted-tok` is gated
 ```
 
 ## Training the PLTs and CLTs
@@ -74,12 +75,12 @@ sweeps require ≈ 40 GPU-hours on H100s.
 After training (or pointing the scripts at the existing wandb run IDs
 above), run each experiment from the repository root:
 
-| Figure | Script | Wall-clock |
-|---|---|---|
-| Local-MSE Pareto | `python experiments/pareto_plot_local/pareto_plot_local.py` then `python experiments/pareto_plot_local/plot.py` | ≈ 20 min |
-| End-to-end Pareto | `python experiments/pareto_plot_e2e/pareto_plot_e2e.py` | ≈ 30 min |
-| Alive-subcomponent scaling | `python experiments/alive_subcomponents/alive_subcomponents.py` | ≈ 15 min |
-| Feature-splitting heatmaps | `python experiments/feature_splitting_heatmap/feature_splitting_heatmap.py` | ≈ 25 min |
+| Figure | Script | Output JSON | Wall-clock |
+|---|---|---|---|
+| Local-MSE Pareto | `python experiments/pareto_plot_local/pareto_plot_local.py` then `python experiments/pareto_plot_local/plot.py` | `pareto_plot_local/output/results_{4k,32k}.json` | ≈ 20 min |
+| End-to-end Pareto | `python experiments/pareto_plot_e2e/pareto_plot_e2e.py` | `pareto_plot_e2e/output/pareto_data.json` | ≈ 30 min |
+| Alive-subcomponent scaling | `python experiments/alive_subcomponents/alive_subcomponents.py` | `alive_subcomponents/output/alive_line_data.json` | ≈ 15 min |
+| Feature-splitting heatmaps | `python experiments/feature_splitting_heatmap/feature_splitting_heatmap.py` | `feature_splitting_heatmap/output/heatmap_data_{input,output,matrix}_t0p5.json` | ≈ 25 min |
 
 Each script supports `--plot-only` to re-render figures from the cached
 JSON in its `output/` directory without re-running the heavy compute.
@@ -101,9 +102,12 @@ the public `goodfire/spd` wandb project:
 | 2x   | `goodfire/spd/s-266cb440` |
 | 4x   | `goodfire/spd/s-d3834f54` |
 
-These are loaded via `analysis/collect_spd_activations.py:load_spd_model`
-and require the [SPD repository](https://github.com/goodfire-ai/spd) on
-the branch installed by `setup_env.sh`.
+These are loaded via `nn_decompositions.eval_utils.load_spd_model` and
+require the [SPD repository](https://github.com/goodfire-ai/spd) on the
+branch installed by `setup_env.sh`. All run IDs (SPD baselines, headline
+PLT/CLT runs, base-model path, wandb projects) live in
+`nn_decompositions/paper_runs.py` — edit there to swap in your own
+checkpoints.
 
 ## License
 

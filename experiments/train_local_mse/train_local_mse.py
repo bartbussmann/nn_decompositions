@@ -15,7 +15,6 @@ Usage:
 """
 
 import os
-import sys
 import time
 import traceback
 import multiprocessing as mp
@@ -27,11 +26,14 @@ load_dotenv()
 
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-sys.path.insert(0, str(Path("/workspace/spd")))
+from nn_decompositions.eval_utils import get_free_gpus
+from nn_decompositions.paper_runs import (
+    JOSE_BASE_MODEL,
+    JOSE_BASE_MODEL_CACHE,
+    LOCAL_PROJECT_BY_DICT_SIZE as PROJECT_BY_DICT_SIZE,
+)
 
-WANDB_MODEL_PATH = "goodfire/spd/runs/t-9d2b8f02"
-PROJECT_BY_DICT_SIZE = {4096: "pile_local_sweep_jose", 32768: "pile_local_sweep_jose_32k"}
+WANDB_MODEL_PATH = JOSE_BASE_MODEL
 LAYERS = [0, 1, 2, 3]
 NUM_TOKENS = int(5e8)
 LR = 3e-4
@@ -175,16 +177,6 @@ def train_one(job: Job, device: str, model_cache_path: str, dict_size: int, wand
         traceback.print_exc()
 
 
-def get_free_gpus(min_free_bytes: float) -> list[int]:
-    """Return GPU IDs with at least min_free_bytes of free VRAM."""
-    free_gpus = []
-    for i in range(torch.cuda.device_count()):
-        free, _total = torch.cuda.mem_get_info(i)
-        if free >= min_free_bytes:
-            free_gpus.append(i)
-    return free_gpus
-
-
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Local MSE training sweep (jose target model) with GPU queue")
@@ -209,7 +201,7 @@ def main():
     min_free_bytes = args.min_free_gb * 1e9
 
     # Shared base-model cache. Auto-downloads from wandb on first run.
-    model_cache_path = str(Path(__file__).resolve().parent.parent / "jose_base_model")
+    model_cache_path = str(Path(__file__).resolve().parent.parent.parent / JOSE_BASE_MODEL_CACHE)
     os.makedirs(model_cache_path, exist_ok=True)
 
     if not (Path(model_cache_path) / "state_dict.pt").exists():

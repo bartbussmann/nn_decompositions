@@ -38,9 +38,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import gc
 import json
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -53,15 +51,24 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import wandb
-from datasets import load_dataset
 from tqdm import tqdm
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-sys.path.insert(0, str(Path("/workspace/spd")))
-
-from nn_decompositions.transcoder import BatchTopKTranscoder
-from nn_decompositions.config import EncoderConfig, CLTConfig
 from nn_decompositions.clt import CrossLayerTranscoder
+from nn_decompositions.eval_utils import (
+    cleanup_cuda,
+    collect_mlp_inputs,
+    get_pile_batches,
+    load_clt,
+    load_spd_model,
+    load_transcoder,
+)
+from nn_decompositions.paper_runs import (
+    HEADLINE_CLT_RUNS,
+    HEADLINE_TC_RUNS,
+    SPD_BASELINE_RUN,
+    SPD_CAPACITY_RUNS,
+)
+from nn_decompositions.transcoder import BatchTopKTranscoder
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 LAYERS = [0, 1, 2, 3]
@@ -98,19 +105,24 @@ class ModelEntry:
 
 
 # Order matters: this is also the row/column order of the heatmap.
+_PLT_4K_PROJECT, _PLT_4K_RUN_ID = HEADLINE_TC_RUNS[4096]
+_PLT_32K_PROJECT, _PLT_32K_RUN_ID = HEADLINE_TC_RUNS[32768]
+_CLT_4K_PROJECT, _CLT_4K_RUN_ID = HEADLINE_CLT_RUNS[4096]
+_CLT_32K_PROJECT, _CLT_32K_RUN_ID = HEADLINE_CLT_RUNS[32768]
+
 MODELS: list[ModelEntry] = [
-    ModelEntry("spd", "VPD 0.5x", "spd_0p5x", paired=False, spd_run="goodfire/spd/s-b2b37c4e"),
-    ModelEntry("spd", "VPD 1x",   "spd_1x",   paired=False, spd_run="goodfire/spd/s-55ea3f9b"),
-    ModelEntry("spd", "VPD 2x",   "spd_2x",   paired=False, spd_run="goodfire/spd/s-266cb440"),
-    ModelEntry("spd", "VPD 4x",   "spd_4x",   paired=False, spd_run="goodfire/spd/s-d3834f54"),
+    ModelEntry("spd", "VPD 0.5x", "spd_0p5x", paired=False, spd_run=SPD_CAPACITY_RUNS["0.5x"]),
+    ModelEntry("spd", "VPD 1x",   "spd_1x",   paired=False, spd_run=SPD_CAPACITY_RUNS["1x"]),
+    ModelEntry("spd", "VPD 2x",   "spd_2x",   paired=False, spd_run=SPD_CAPACITY_RUNS["2x"]),
+    ModelEntry("spd", "VPD 4x",   "spd_4x",   paired=False, spd_run=SPD_CAPACITY_RUNS["4x"]),
     ModelEntry("tc",  "PLT 4k",   "tc_4k",    paired=True,
-               project="mats-sprint/pile_local_sweep_jose",     run_id="4ziu27fn"),
+               project=_PLT_4K_PROJECT,  run_id=_PLT_4K_RUN_ID),
     ModelEntry("tc",  "PLT 32k",  "tc_32k",   paired=True,
-               project="mats-sprint/pile_local_sweep_jose_32k", run_id="c4o8i98k"),
+               project=_PLT_32K_PROJECT, run_id=_PLT_32K_RUN_ID),
     ModelEntry("clt", "CLT 4k",   "clt_4k",   paired=True,
-               project="mats-sprint/pile_local_sweep_jose",     run_id="77sgz1pe"),
+               project=_CLT_4K_PROJECT,  run_id=_CLT_4K_RUN_ID),
     ModelEntry("clt", "CLT 32k",  "clt_32k",  paired=True,
-               project="mats-sprint/pile_local_sweep_jose_32k", run_id="j20m9hzr"),
+               project=_CLT_32K_PROJECT, run_id=_CLT_32K_RUN_ID),
 ]
 
 
@@ -120,41 +132,11 @@ MODELS: list[ModelEntry] = [
 
 
 def get_eval_batches(n_batches: int) -> list[torch.Tensor]:
-    dataset = load_dataset("danbraunai/pile-uncopyrighted-tok", split="train", streaming=True)
-    dataset = dataset.shuffle(seed=0, buffer_size=10000)
-    data_iter = iter(dataset)
-    batches: list[torch.Tensor] = []
-    for _ in tqdm(range(n_batches), desc="Loading eval batches"):
-        batch_ids = []
-        for _ in range(BATCH_SIZE):
-            sample = next(data_iter)
-            ids = sample["input_ids"]
-            if not isinstance(ids, torch.Tensor):
-                ids = torch.tensor(ids, dtype=torch.long)
-            batch_ids.append(ids[:SEQ_LEN])
-        batches.append(torch.stack(batch_ids).to(DEVICE))
-    return batches
+    return get_pile_batches(n_batches, BATCH_SIZE, SEQ_LEN, device=DEVICE)
 
 
-def collect_mlp_inputs(base_model, input_ids: torch.Tensor) -> dict[int, torch.Tensor]:
-    captured: dict[int, torch.Tensor] = {}
-    hooks = []
-    for layer_idx in LAYERS:
-        def _make_hook(li: int):
-            def _hook(_mod, _inp, out):
-                captured[li] = out.detach()
-            return _hook
-        hooks.append(base_model.h[layer_idx].rms_2.register_forward_hook(_make_hook(layer_idx)))
-    base_model(input_ids)
-    for h in hooks:
-        h.remove()
-    return captured
-
-
-def cleanup_cuda() -> None:
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+def _collect_mlp_inputs(base_model, input_ids: torch.Tensor) -> dict[int, torch.Tensor]:
+    return collect_mlp_inputs(base_model, input_ids, LAYERS)
 
 
 # =============================================================================
@@ -169,33 +151,6 @@ def _download_artifact(project: str, artifact_name: str, dest: Path) -> Path:
     artifact = api.artifact(f"{project}/{artifact_name}")
     artifact.download(root=str(dest))
     return dest
-
-
-def load_transcoder(checkpoint_dir: Path) -> BatchTopKTranscoder:
-    with open(checkpoint_dir / "config.json") as f:
-        cfg_dict = json.load(f)
-    dtype_str = cfg_dict.get("dtype", "torch.float32")
-    cfg_dict["dtype"] = getattr(torch, dtype_str.replace("torch.", ""))
-    cfg_dict["device"] = DEVICE
-    cfg = EncoderConfig(**cfg_dict)
-    tc = BatchTopKTranscoder(cfg)
-    tc.load_state_dict(torch.load(checkpoint_dir / "encoder.pt", map_location=DEVICE))
-    tc.eval()
-    return tc
-
-
-def load_clt(checkpoint_dir: Path) -> CrossLayerTranscoder:
-    with open(checkpoint_dir / "config.json") as f:
-        cfg_dict = json.load(f)
-    cfg_dict["layers"] = json.loads(cfg_dict["layers"])
-    dtype_str = cfg_dict.get("dtype", "torch.float32")
-    cfg_dict["dtype"] = getattr(torch, dtype_str.replace("torch.", ""))
-    cfg_dict["device"] = DEVICE
-    cfg = CLTConfig(**cfg_dict)
-    clt = CrossLayerTranscoder(cfg)
-    clt.load_state_dict(torch.load(checkpoint_dir / "encoder.pt", map_location=DEVICE))
-    clt.eval()
-    return clt
 
 
 def download_tc_layers(entry: ModelEntry) -> dict[int, Path]:
@@ -237,8 +192,6 @@ def download_clt_artifact(entry: ModelEntry) -> Path:
 def extract_directions_spd(entry: ModelEntry, batches: list[torch.Tensor]
                            ) -> dict[str, dict[int, torch.Tensor]]:
     """For SPD: 'input' uses c_fc.V columns, 'output' uses down_proj.U rows."""
-    from analysis.collect_spd_activations import load_spd_model
-
     spd_model, _ = load_spd_model(entry.spd_run)
     spd_model.to(DEVICE)
     spd_model.eval()
@@ -287,13 +240,13 @@ def extract_directions_spd(entry: ModelEntry, batches: list[torch.Tensor]
 def extract_directions_tc(entry: ModelEntry, base_model, batches: list[torch.Tensor]
                           ) -> dict[str, dict[int, torch.Tensor]]:
     layer_paths = download_tc_layers(entry)
-    transcoders = {l: load_transcoder(p) for l, p in layer_paths.items()}
+    transcoders = {l: load_transcoder(p, DEVICE) for l, p in layer_paths.items()}
 
     dict_size = next(iter(transcoders.values())).cfg.dict_size
     fire_count = {l: torch.zeros(dict_size, dtype=torch.int64, device=DEVICE) for l in LAYERS}
     n_tokens = 0
     for input_ids in tqdm(batches, desc=f"{entry.display} fire"):
-        captured = collect_mlp_inputs(base_model, input_ids)
+        captured = _collect_mlp_inputs(base_model, input_ids)
         bsz, seq = input_ids.shape
         n_tokens += bsz * seq
         for layer_idx in LAYERS:
@@ -322,14 +275,14 @@ def extract_directions_tc(entry: ModelEntry, base_model, batches: list[torch.Ten
 def extract_directions_clt(entry: ModelEntry, base_model, batches: list[torch.Tensor]
                            ) -> dict[str, dict[int, torch.Tensor]]:
     clt_path = download_clt_artifact(entry)
-    clt = load_clt(clt_path)
+    clt = load_clt(clt_path, DEVICE)
 
     n_layers = clt.cfg.n_layers
     dict_size = clt.cfg.dict_size
     fire_count = {l: torch.zeros(dict_size, dtype=torch.int64, device=DEVICE) for l in range(n_layers)}
     n_tokens = 0
     for input_ids in tqdm(batches, desc=f"{entry.display} fire"):
-        captured = collect_mlp_inputs(base_model, input_ids)
+        captured = _collect_mlp_inputs(base_model, input_ids)
         bsz, seq = input_ids.shape
         n_tokens += bsz * seq
         for layer_idx in range(n_layers):
@@ -385,8 +338,7 @@ class _BaseModelProvider:
     @property
     def base_model(self):
         if self._base_model is None:
-            from analysis.collect_spd_activations import load_spd_model
-            spd_model, _ = load_spd_model("goodfire/spd/s-55ea3f9b")
+            spd_model, _ = load_spd_model(SPD_BASELINE_RUN)
             spd_model.to(DEVICE)
             spd_model.eval()
             self._base_model = spd_model.target_model

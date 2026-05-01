@@ -19,8 +19,7 @@ Usage:
 
 import json
 import re
-import sys
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -30,129 +29,47 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import wandb
-from datasets import load_dataset
 from tqdm import tqdm
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-sys.path.insert(0, str(Path("/workspace/spd")))
-
-from nn_decompositions.transcoder import BatchTopKTranscoder
-from nn_decompositions.config import EncoderConfig, CLTConfig
-from nn_decompositions.clt import CrossLayerTranscoder
+from nn_decompositions.eval_utils import (
+    cleanup_cuda,
+    collect_mlp_inputs,
+    compute_ce_from_logits,
+    compute_ce_loss,
+    get_pile_batches,
+    load_clt,
+    load_spd_model,
+    load_transcoder,
+    patched_forward,
+)
+from nn_decompositions.transcoder import BatchTopKTranscoder  # for type hints
+from nn_decompositions.paper_runs import (
+    JOSE_BASE_MODEL,
+    JOSE_BASE_MODEL_CACHE,
+    PROJECT_E2E_4K,
+    PROJECT_E2E_32K,
+    PROJECT_LOCAL_4K,
+    PROJECT_LOCAL_32K,
+    SPD_BASELINE_RUN,
+)
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 LAYERS = [0, 1, 2, 3]
-JOSE_MODEL_CACHE = Path("experiments/jose_base_model")
 CHECKPOINT_DIR = Path("checkpoints/jose_v2")
 OUTPUT_DIR = Path("experiments/pareto_plot_local/output")
 
 PROJECTS = {
-    "4k": {
-        "e2e": "mats-sprint/pile_e2e_sweep_jose",
-        "local": "mats-sprint/pile_local_sweep_jose",
-    },
-    "32k": {
-        "e2e": "mats-sprint/pile_e2e_sweep_jose_32k",
-        "local": "mats-sprint/pile_local_sweep_jose_32k",
-    },
+    "4k":  {"e2e": PROJECT_E2E_4K,  "local": PROJECT_LOCAL_4K},
+    "32k": {"e2e": PROJECT_E2E_32K, "local": PROJECT_LOCAL_32K},
 }
 
 
-# =============================================================================
-# Data loading
-# =============================================================================
-
-
 def get_eval_batches(n_batches: int, batch_size: int, seq_len: int) -> list[torch.Tensor]:
-    dataset = load_dataset("danbraunai/pile-uncopyrighted-tok", split="train", streaming=True)
-    dataset = dataset.shuffle(seed=0, buffer_size=10000)
-    data_iter = iter(dataset)
-    batches = []
-    for _ in tqdm(range(n_batches), desc="Loading batches"):
-        batch_ids = []
-        for _ in range(batch_size):
-            sample = next(data_iter)
-            ids = sample["input_ids"]
-            if not isinstance(ids, torch.Tensor):
-                ids = torch.tensor(ids, dtype=torch.long)
-            batch_ids.append(ids[:seq_len])
-        batches.append(torch.stack(batch_ids).to(DEVICE))
-    return batches
-
-
-# =============================================================================
-# Helpers
-# =============================================================================
-
-
-@contextmanager
-def patched_forward(module: nn.Module, patched_fn):
-    original = module.forward
-    module.forward = patched_fn
-    try:
-        yield
-    finally:
-        module.forward = original
-
-
-def compute_ce_loss(model, input_ids: torch.Tensor) -> float:
-    logits, _ = model(input_ids)
-    targets = input_ids[:, 1:].contiguous()
-    shift_logits = logits[:, :-1].contiguous()
-    return F.cross_entropy(shift_logits.view(-1, shift_logits.size(-1)), targets.view(-1)).item()
-
-
-def compute_ce_from_logits(logits: torch.Tensor, input_ids: torch.Tensor) -> float:
-    targets = input_ids[:, 1:].contiguous()
-    shift_logits = logits[:, :-1].contiguous()
-    return F.cross_entropy(shift_logits.view(-1, shift_logits.size(-1)), targets.view(-1)).item()
+    return get_pile_batches(n_batches, batch_size, seq_len, device=DEVICE)
 
 
 def _collect_rms2_outputs(base_model, input_ids):
-    captured = {}
-    hooks = []
-    for layer_idx in LAYERS:
-        def _make_hook(li):
-            def _hook(_mod, _inp, out):
-                captured[li] = out.detach()
-            return _hook
-        hooks.append(base_model.h[layer_idx].rms_2.register_forward_hook(_make_hook(layer_idx)))
-    base_model(input_ids)
-    for h in hooks:
-        h.remove()
-    return captured
-
-
-# =============================================================================
-# Model loading
-# =============================================================================
-
-
-def load_transcoder(checkpoint_dir: Path) -> BatchTopKTranscoder:
-    with open(checkpoint_dir / "config.json") as f:
-        cfg_dict = json.load(f)
-    dtype_str = cfg_dict.get("dtype", "torch.float32")
-    cfg_dict["dtype"] = getattr(torch, dtype_str.replace("torch.", ""))
-    cfg_dict["device"] = DEVICE
-    cfg = EncoderConfig(**cfg_dict)
-    tc = BatchTopKTranscoder(cfg)
-    tc.load_state_dict(torch.load(checkpoint_dir / "encoder.pt", map_location=DEVICE))
-    tc.eval()
-    return tc
-
-
-def load_clt(checkpoint_dir: Path) -> CrossLayerTranscoder:
-    with open(checkpoint_dir / "config.json") as f:
-        cfg_dict = json.load(f)
-    cfg_dict["layers"] = json.loads(cfg_dict["layers"])
-    dtype_str = cfg_dict.get("dtype", "torch.float32")
-    cfg_dict["dtype"] = getattr(torch, dtype_str.replace("torch.", ""))
-    cfg_dict["device"] = DEVICE
-    cfg = CLTConfig(**cfg_dict)
-    clt = CrossLayerTranscoder(cfg)
-    clt.load_state_dict(torch.load(checkpoint_dir / "encoder.pt", map_location=DEVICE))
-    clt.eval()
-    return clt
+    return collect_mlp_inputs(base_model, input_ids, LAYERS)
 
 
 # =============================================================================
@@ -523,20 +440,20 @@ def main():
     # Load jose base model. Auto-downloads from wandb on first run.
     from spd.pretrain.models.llama_simple_mlp import LlamaSimpleMLP, LlamaSimpleMLPConfig
 
-    JOSE_MODEL_CACHE.mkdir(parents=True, exist_ok=True)
-    if not (JOSE_MODEL_CACHE / "state_dict.pt").exists():
+    JOSE_BASE_MODEL_CACHE.mkdir(parents=True, exist_ok=True)
+    if not (JOSE_BASE_MODEL_CACHE / "state_dict.pt").exists():
         print("Downloading jose target model from wandb (first run)...")
-        model = LlamaSimpleMLP.from_pretrained("goodfire/spd/runs/t-9d2b8f02")
-        torch.save(model.state_dict(), JOSE_MODEL_CACHE / "state_dict.pt")
-        with open(JOSE_MODEL_CACHE / "config.json", "w") as f:
+        model = LlamaSimpleMLP.from_pretrained(JOSE_BASE_MODEL)
+        torch.save(model.state_dict(), JOSE_BASE_MODEL_CACHE / "state_dict.pt")
+        with open(JOSE_BASE_MODEL_CACHE / "config.json", "w") as f:
             json.dump(model.config.__dict__, f)
         del model
 
     print("Loading jose base model...")
-    with open(JOSE_MODEL_CACHE / "config.json") as f:
+    with open(JOSE_BASE_MODEL_CACHE / "config.json") as f:
         model_cfg = LlamaSimpleMLPConfig(**json.load(f))
     base_model = LlamaSimpleMLP(model_cfg)
-    sd = torch.load(JOSE_MODEL_CACHE / "state_dict.pt", map_location="cpu", weights_only=True)
+    sd = torch.load(JOSE_BASE_MODEL_CACHE / "state_dict.pt", map_location="cpu", weights_only=True)
     base_model.load_state_dict(sd)
     base_model.to(DEVICE)
     base_model.eval()
@@ -569,7 +486,7 @@ def main():
         print(f"\nFound {len(tc_models)} TC model sets")
         for mode, k, layer_paths in tc_models:
             print(f"\n--- TC {mode} k={k} ---")
-            transcoders = {layer: load_transcoder(layer_paths[layer]) for layer in LAYERS}
+            transcoders = {layer: load_transcoder(layer_paths[layer], DEVICE) for layer in LAYERS}
 
             l0 = compute_tc_l0(transcoders, base_model, batches)
             ce_cascading = eval_tc_all_cascading(base_model, transcoders, batches)
@@ -591,7 +508,7 @@ def main():
         print(f"\nFound {len(clt_models)} CLT models")
         for mode, k, path in clt_models:
             print(f"\n--- CLT {mode} k={k} ---")
-            clt = load_clt(path)
+            clt = load_clt(path, DEVICE)
 
             l0 = compute_clt_l0(clt, base_model, batches)
             ce_cascading = eval_clt_all_cascading(base_model, clt, batches)
@@ -612,8 +529,7 @@ def main():
         spd_results = []
         if not args.skip_spd:
             print("\nLoading jose SPD model...")
-            from analysis.collect_spd_activations import load_spd_model
-            spd_model, _ = load_spd_model("goodfire/spd/s-55ea3f9b")
+            spd_model, _ = load_spd_model(SPD_BASELINE_RUN)
             spd_model.to(DEVICE)
             all_module_names = [f"h.{l}.mlp.c_fc" for l in LAYERS] + [f"h.{l}.mlp.down_proj" for l in LAYERS]
 

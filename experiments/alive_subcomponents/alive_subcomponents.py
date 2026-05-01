@@ -13,7 +13,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import gc
 import json
 import re
 from dataclasses import dataclass
@@ -27,8 +26,21 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 import wandb
-from datasets import load_dataset
 from tqdm import tqdm
+
+from nn_decompositions.eval_utils import (
+    cleanup_cuda,
+    collect_mlp_inputs,
+    get_pile_batches,
+    load_spd_model,
+    parse_torch_dtype,
+)
+from nn_decompositions.paper_runs import (
+    HEADLINE_CLT_RUNS,
+    HEADLINE_TC_RUNS,
+    SPD_BASELINE_RUN,
+    SPD_CAPACITY_RUNS,
+)
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 LAYERS = [0, 1, 2, 3]
@@ -42,22 +54,16 @@ OUTPUT_DIR = Path("experiments/alive_subcomponents/output")
 SPD_ALIVE_FILE = OUTPUT_DIR / "alive_components_mean_ci.json"
 LINE_DATA_FILE = OUTPUT_DIR / "alive_line_data.json"
 
+# Plot labels are pretty-printed; the underlying runs come from paper_runs.
 SPD_RUNS = {
-    "0.5x": "goodfire/spd/s-b2b37c4e",
-    "1x (jose)": "goodfire/spd/s-55ea3f9b",
-    "2x": "goodfire/spd/s-266cb440",
-    "4x": "goodfire/spd/s-d3834f54",
+    "0.5x":      SPD_CAPACITY_RUNS["0.5x"],
+    "1x (jose)": SPD_CAPACITY_RUNS["1x"],
+    "2x":        SPD_CAPACITY_RUNS["2x"],
+    "4x":        SPD_CAPACITY_RUNS["4x"],
 }
 
-TC_RUNS = {
-    4096: {"project": "mats-sprint/pile_local_sweep_jose", "run_id": "4ziu27fn"},
-    32768: {"project": "mats-sprint/pile_local_sweep_jose_32k", "run_id": "c4o8i98k"},
-}
-
-CLT_RUNS = {
-    4096: {"project": "mats-sprint/pile_local_sweep_jose", "run_id": "77sgz1pe"},
-    32768: {"project": "mats-sprint/pile_local_sweep_jose_32k", "run_id": "j20m9hzr"},
-}
+TC_RUNS  = {ds: {"project": p, "run_id": r} for ds, (p, r) in HEADLINE_TC_RUNS.items()}
+CLT_RUNS = {ds: {"project": p, "run_id": r} for ds, (p, r) in HEADLINE_CLT_RUNS.items()}
 
 MLP_MODULE_PATTERNS = ["h.{}.mlp.c_fc", "h.{}.mlp.down_proj"]
 
@@ -110,39 +116,15 @@ def _normalize_state_dict_keys(state_dict: dict[str, torch.Tensor]) -> dict[str,
     return normalized
 
 
-def _to_torch_dtype(dtype_str: str) -> torch.dtype:
-    return getattr(torch, dtype_str.replace("torch.", ""))
-
-
-def cleanup_cuda() -> None:
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-
 def get_eval_batches(n_batches: int) -> list[torch.Tensor]:
-    dataset = load_dataset("danbraunai/pile-uncopyrighted-tok", split="train", streaming=True)
-    dataset = dataset.shuffle(seed=0, buffer_size=10000)
-    data_iter = iter(dataset)
-    batches: list[torch.Tensor] = []
-
-    for _ in tqdm(range(n_batches), desc="Loading eval batches"):
-        batch_ids = []
-        for _ in range(BATCH_SIZE):
-            sample = next(data_iter)
-            ids = sample["input_ids"]
-            if not isinstance(ids, torch.Tensor):
-                ids = torch.tensor(ids, dtype=torch.long)
-            batch_ids.append(ids[:SEQ_LEN])
-        batches.append(torch.stack(batch_ids).to(DEVICE))
-    return batches
+    return get_pile_batches(n_batches, BATCH_SIZE, SEQ_LEN, device=DEVICE)
 
 
 def load_transcoder(checkpoint_dir: Path) -> SimpleBatchTopKTranscoder:
     with open(checkpoint_dir / "config.json") as f:
         cfg_dict = json.load(f)
     state_dict = _normalize_state_dict_keys(torch.load(checkpoint_dir / "encoder.pt", map_location=DEVICE))
-    model_dtype = _to_torch_dtype(cfg_dict.get("dtype", "torch.float32"))
+    model_dtype = parse_torch_dtype(cfg_dict.get("dtype", "torch.float32"))
 
     return SimpleBatchTopKTranscoder(
         input_size=int(cfg_dict["input_size"]),
@@ -157,7 +139,7 @@ def load_clt(checkpoint_dir: Path) -> SimpleCrossLayerTranscoder:
     with open(checkpoint_dir / "config.json") as f:
         cfg_dict = json.load(f)
     state_dict = _normalize_state_dict_keys(torch.load(checkpoint_dir / "encoder.pt", map_location=DEVICE))
-    model_dtype = _to_torch_dtype(cfg_dict.get("dtype", "torch.float32"))
+    model_dtype = parse_torch_dtype(cfg_dict.get("dtype", "torch.float32"))
 
     w_enc_by_idx: dict[int, torch.Tensor] = {}
     b_enc_by_idx: dict[int, torch.Tensor] = {}
@@ -226,27 +208,6 @@ def download_clt_artifact(run_info: dict) -> Path:
     return dest
 
 
-def collect_mlp_inputs(base_model, input_ids: torch.Tensor) -> dict[int, torch.Tensor]:
-    captured: dict[int, torch.Tensor] = {}
-    hooks = []
-
-    for layer_idx in LAYERS:
-        rms2 = base_model.h[layer_idx].rms_2
-
-        def _make_hook(li: int):
-            def _hook(_mod, _inp, out):
-                captured[li] = out.detach()
-
-            return _hook
-
-        hooks.append(rms2.register_forward_hook(_make_hook(layer_idx)))
-
-    base_model(input_ids)
-    for hook in hooks:
-        hook.remove()
-    return captured
-
-
 @torch.no_grad()
 def count_spd_alive_mean_ci(spd_model, batches: list[torch.Tensor], threshold: float) -> dict[str, dict[str, int]]:
     mlp_modules = []
@@ -290,7 +251,7 @@ def count_tc_alive(transcoders: dict[int, SimpleBatchTopKTranscoder], base_model
     n_tokens = 0
 
     for input_ids in tqdm(batches, desc="TC alive count"):
-        mlp_inputs = collect_mlp_inputs(base_model, input_ids)
+        mlp_inputs = collect_mlp_inputs(base_model, input_ids, LAYERS)
         bsz, seq = input_ids.shape
         n_tokens += bsz * seq
 
@@ -316,7 +277,7 @@ def count_clt_alive(clt: SimpleCrossLayerTranscoder, base_model, batches: list[t
     n_tokens = 0
 
     for input_ids in tqdm(batches, desc="CLT alive count"):
-        mlp_inputs = collect_mlp_inputs(base_model, input_ids)
+        mlp_inputs = collect_mlp_inputs(base_model, input_ids, LAYERS)
         bsz, seq = input_ids.shape
         n_tokens += bsz * seq
 
@@ -334,8 +295,6 @@ def count_clt_alive(clt: SimpleCrossLayerTranscoder, base_model, batches: list[t
 
 
 def compute_spd_results(batches: list[torch.Tensor], reuse_cache: bool) -> dict[str, dict[str, dict[str, int]]]:
-    from analysis.collect_spd_activations import load_spd_model
-
     if reuse_cache and SPD_ALIVE_FILE.exists():
         with open(SPD_ALIVE_FILE) as f:
             existing = json.load(f)
@@ -442,9 +401,7 @@ def main(plot_only: bool, reuse_cache: bool) -> None:
     spd_points = build_plot_points(spd_raw)
 
     print("\nStage 2/3: Load base model from Jose SPD checkpoint")
-    from analysis.collect_spd_activations import load_spd_model
-
-    spd_model, _ = load_spd_model("goodfire/spd/s-55ea3f9b")
+    spd_model, _ = load_spd_model(SPD_BASELINE_RUN)
     spd_model.to(DEVICE)
     spd_model.eval()
     base_model = spd_model.target_model
