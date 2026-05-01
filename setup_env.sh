@@ -38,6 +38,12 @@ if ! command -v uv &>/dev/null; then
 fi
 echo "Using uv: $(uv --version)"
 
+# Some images (RunPod, Colab) preset `UV_SYSTEM_PYTHON=1`, which makes
+# `uv pip` ignore the venv and dump packages into the host Python.
+# Clear it so every `uv pip install` below targets our venv.
+unset UV_SYSTEM_PYTHON
+unset UV_PYTHON
+
 # --------------------------------------------------------------------------
 # 2-3. Install Python 3.13 if needed and create the venv.
 # --------------------------------------------------------------------------
@@ -45,14 +51,16 @@ uv python install 3.13
 echo "Creating venv at $NN_DIR/.venv (Python 3.13)..."
 uv venv --python 3.13 "$NN_DIR/.venv"
 
-# Use the venv for everything below.
+# Pass --python explicitly to every `uv pip install` so it targets the venv
+# regardless of any host Python on PATH.
+VENV_PY="$NN_DIR/.venv/bin/python"
 export VIRTUAL_ENV="$NN_DIR/.venv"
 export PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # --------------------------------------------------------------------------
 # 4. Install PyTorch (CUDA 12.4) + the upstream `spd` package + this repo.
 # --------------------------------------------------------------------------
-uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+uv pip install --python "$VENV_PY" torch torchvision --index-url https://download.pytorch.org/whl/cu124
 
 echo "Cloning upstream spd into $SPD_DIR (branch $SPD_BRANCH)..."
 mkdir -p "$(dirname "$SPD_DIR")"
@@ -61,10 +69,10 @@ if [ ! -d "$SPD_DIR" ]; then
 else
     (cd "$SPD_DIR" && git fetch origin "$SPD_BRANCH" && git checkout "$SPD_BRANCH")
 fi
-uv pip install -e "$SPD_DIR"
+uv pip install --python "$VENV_PY" -e "$SPD_DIR"
 
 echo "Installing nn_decompositions (editable)..."
-uv pip install -e "$NN_DIR"
+uv pip install --python "$VENV_PY" -e "$NN_DIR"
 
 # Experiment scripts have `sys.path.insert(0, "/workspace/spd")` left over
 # from the original RunPod layout. If you cloned spd anywhere else, either
@@ -75,9 +83,10 @@ if [ ! -e /workspace/spd ] && [ -w /workspace ]; then
 fi
 
 # --------------------------------------------------------------------------
-# 5. Smoke test.
+# 5. Smoke test (use the venv interpreter explicitly so the result is
+#    independent of whatever Python happens to be first on PATH).
 # --------------------------------------------------------------------------
-python -c "
+"$VENV_PY" -c "
 import sys; print(f'python {sys.version.split()[0]}')
 import torch
 print(f'torch {torch.__version__}, CUDA available: {torch.cuda.is_available()}')
