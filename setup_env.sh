@@ -74,14 +74,6 @@ uv pip install --python "$VENV_PY" -e "$SPD_DIR"
 echo "Installing nn_decompositions (editable)..."
 uv pip install --python "$VENV_PY" -e "$NN_DIR"
 
-# Experiment scripts have `sys.path.insert(0, "/workspace/spd")` left over
-# from the original RunPod layout. If you cloned spd anywhere else, either
-# symlink it into place...
-if [ ! -e /workspace/spd ] && [ -w /workspace ]; then
-    ln -s "$SPD_DIR" /workspace/spd
-    echo "Created symlink /workspace/spd -> $SPD_DIR"
-fi
-
 # --------------------------------------------------------------------------
 # 5. Smoke test (use the venv interpreter explicitly so the result is
 #    independent of whatever Python happens to be first on PATH).
