@@ -5,14 +5,14 @@ transcoder (CLT) training and evaluation code used in the VPD paper. It
 is a minimal slice that exactly reproduces the four headline figures
 (plus their underlying training runs).
 
-> **You don't need to retrain anything to reproduce the figures.** The
+> It's not necessary to retrain anything to reproduce the figures. The
 > four eval scripts under `experiments/` pull pre-trained PLT, CLT, and
 > VPD checkpoints from the public wandb projects listed in
 > [`experiments/paper_runs.py`](experiments/paper_runs.py) and stream
 > them into the analysis on demand. The training scripts
 > (`experiments/train_local_mse/`, `experiments/train_e2e/`) are
 > included for completeness — run them only if you want to reproduce
-> the training sweeps end-to-end (~40 GPU-hours on H100s).
+> the training sweeps end-to-end.
 
 The PLT and CLT decomposition baselines were trained here; VPD itself
 is loaded from public artifacts on the [SPD repository](https://github.com/goodfire-ai/spd).
@@ -77,8 +77,7 @@ variants are also trained. The four wandb projects are:
 | `pile_e2e_sweep_jose`       | `train_e2e/train_e2e.py` | default `--dict_size 4096` |
 | `pile_e2e_sweep_jose_32k`   | `train_e2e/train_e2e.py --dict_size 32768` | same script, 32k variant |
 
-Each script polls GPU memory and launches one job per free device. Full
-sweeps require ≈ 40 GPU-hours on H100s.
+Each script polls GPU memory and launches one job per free device.
 
 ## Replicating the four figures
 
