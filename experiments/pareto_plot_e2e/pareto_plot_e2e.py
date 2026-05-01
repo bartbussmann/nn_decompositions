@@ -528,24 +528,19 @@ def _plot_on_ax(ax, points, baselines, x_key, y_key):
     ax.tick_params(direction="in", which="both")
 
 
-def plot_pareto(points, baselines, xlabel, ylabel, save_path, x_key="l0", y_key="ce"):
-    fig, ax = plt.subplots(figsize=(7, 4.5))
-    _plot_on_ax(ax, points, baselines, x_key, y_key)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.legend(frameon=True, fancybox=False, edgecolor="#cccccc", framealpha=0.95)
-    fig.tight_layout()
-    fig.savefig(save_path)
-    fig.savefig(str(save_path).replace(".png", ".pdf"))
-    plt.close(fig)
-    print(f"Plot saved to {save_path}")
+# Three-panel x-axes for the headline Pareto figure.
+AXIS_CONFIGS = [
+    ("x_per_component", "Active subcomponents per module"),
+    ("x_per_mlp",       "Active subcomponents per MLP reconstruction"),
+    ("x_total_params",  "Total active parameters"),
+]
 
 
 def plot_pareto_combined(points, baselines, axis_configs, y_key, ylabel, save_path):
     fig, axes = plt.subplots(1, 3, figsize=(16, 4.2), sharey=True)
 
     subplot_labels = ["(a)", "(b)", "(c)"]
-    for ax, (x_key, xlabel, _suffix), panel_label in zip(axes, axis_configs, subplot_labels):
+    for ax, (x_key, xlabel), panel_label in zip(axes, axis_configs, subplot_labels):
         _plot_on_ax(ax, points, baselines, x_key, y_key)
         ax.set_xlabel(xlabel)
         ax.text(0.03, 0.97, panel_label, transform=ax.transAxes,
@@ -590,26 +585,9 @@ def main():
         all_points = saved["all_points"]
         baselines = saved["baselines"]
 
-        axis_configs = [
-            ("x_per_component", "Active subcomponents per module", ""),
-            ("x_per_mlp", "Active subcomponents per MLP reconstruction", "_per_mlp"),
-            ("x_total_params", "Total active parameters", "_total_params"),
-        ]
-        base_path = str(OUTPUT_DIR / "pareto_combined.png")
-        for x_key, xlabel, suffix in axis_configs:
-            for y_key, ylabel, metric_suffix in [
-                ("ce", "CE degradation (\u03b4 from baseline)", ""),
-                ("mse", "MLP reconstruction MSE", "_mse"),
-            ]:
-                save = base_path.replace(".png", f"{suffix}{metric_suffix}.png")
-                plot_pareto(all_points, baselines, xlabel=xlabel, ylabel=ylabel,
-                            save_path=save, x_key=x_key, y_key=y_key)
-        plot_pareto_combined(all_points, baselines, axis_configs,
+        plot_pareto_combined(all_points, baselines, AXIS_CONFIGS,
                              y_key="ce", ylabel="CE degradation (\u03b4 from baseline)",
-                             save_path=base_path.replace(".png", "_combined_ce.png"))
-        plot_pareto_combined(all_points, baselines, axis_configs,
-                             y_key="mse", ylabel="MLP reconstruction MSE",
-                             save_path=base_path.replace(".png", "_combined_mse.png"))
+                             save_path=str(OUTPUT_DIR / "pareto_combined_combined_ce.png"))
         return
 
     print("Loading VPD model...")
@@ -748,37 +726,10 @@ def main():
     with open(OUTPUT_DIR / "pareto_data.json", "w") as f:
         json.dump({"all_points": all_points, "baselines": baselines}, f, indent=2, default=str)
 
-    axis_configs = [
-        ("x_per_component", "Active subcomponents per module", ""),
-        ("x_per_mlp", "Active subcomponents per MLP reconstruction", "_per_mlp"),
-        ("x_total_params", "Total active parameters", "_total_params"),
-    ]
-
-    base_path = str(OUTPUT_DIR / "pareto_combined.png")
-    for x_key, xlabel, suffix in axis_configs:
-        for y_key, ylabel, metric_suffix in [
-            ("ce", "CE degradation (\u03b4 from baseline)", ""),
-            ("mse", "MLP reconstruction MSE", "_mse"),
-        ]:
-            save = base_path.replace(".png", f"{suffix}{metric_suffix}.png")
-            plot_pareto(
-                all_points, baselines,
-                xlabel=xlabel, ylabel=ylabel,
-                save_path=save,
-                x_key=x_key,
-                y_key=y_key,
-            )
-
-    # Combined 3-subplot figures
     plot_pareto_combined(
-        all_points, baselines, axis_configs,
+        all_points, baselines, AXIS_CONFIGS,
         y_key="ce", ylabel="CE degradation (\u03b4 from baseline)",
-        save_path=base_path.replace(".png", "_combined_ce.png"),
-    )
-    plot_pareto_combined(
-        all_points, baselines, axis_configs,
-        y_key="mse", ylabel="MLP reconstruction MSE",
-        save_path=base_path.replace(".png", "_combined_mse.png"),
+        save_path=str(OUTPUT_DIR / "pareto_combined_combined_ce.png"),
     )
 
     # Print summary table
