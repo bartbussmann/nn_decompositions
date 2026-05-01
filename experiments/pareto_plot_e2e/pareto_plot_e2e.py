@@ -1,15 +1,22 @@
-"""Combined Pareto plot: 4k + 32k dict sizes on the base LLM.
+"""End-to-end Pareto: CE / L0 evaluation of trained PLTs and CLTs on the base LLM.
 
-Single figure showing CE / MSE vs three capacity definitions for
-PLT (BatchTopK Transcoders) and CLTs at both 4k and 32k dict sizes,
-overlaid with VPD baselines (three CI thresholds) and the neuron baseline.
+For each trained PLT (BatchTopK Transcoder) and CLT — at dict_size 4k
+and 32k, both local-MSE and end-to-end KL — patch the base model's MLPs
+with the model's reconstructions and report:
+  - average L0 (per-token feature density)
+  - cross-entropy under three patching modes: cascading, parallel, single-MLP
+
+Also evaluates VPD baselines at three CI thresholds (0.5, 0.1, 0.0).
+
+Results land in `output/results_4k.json` and `output/results_32k.json`,
+which `plot.py` then turns into the end-to-end Pareto figure.
 
 Usage:
     python experiments/pareto_plot_e2e/pareto_plot_e2e.py
-    python experiments/pareto_plot_e2e/pareto_plot_e2e.py --plot-only
+    python experiments/pareto_plot_e2e/pareto_plot_e2e.py --dict_sizes 4k
+    python experiments/pareto_plot_e2e/pareto_plot_e2e.py --skip_vpd
 """
 
-import argparse
 import json
 import re
 from contextlib import ExitStack
@@ -18,11 +25,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import wandb
 
 from experiments.eval_utils import (
@@ -35,529 +38,378 @@ from experiments.eval_utils import (
     load_transcoder,
     patched_forward,
 )
-from experiments.paper_runs import VPD_BASELINE_RUN
-from nn_decompositions.clt import CrossLayerTranscoder  # for type hints
-from spd.models.components import make_mask_infos
+from nn_decompositions.transcoder import BatchTopKTranscoder  # for type hints
+from experiments.paper_runs import (
+    LLM_BASE_MODEL,
+    LLM_BASE_MODEL_CACHE,
+    PROJECT_E2E_4K,
+    PROJECT_E2E_32K,
+    PROJECT_LOCAL_4K,
+    PROJECT_LOCAL_32K,
+    VPD_BASELINE_RUN,
+)
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 LAYERS = [0, 1, 2, 3]
-
+CHECKPOINT_DIR = Path("checkpoints/pareto_plot_e2e")
 OUTPUT_DIR = Path("experiments/pareto_plot_e2e/output")
 
-
-# =============================================================================
-# Artifact downloading
-# =============================================================================
-
-
-def download_wandb_artifact(project: str, artifact_name: str, dest: Path) -> Path:
-    if dest.exists() and (dest / "encoder.pt").exists():
-        print(f"  Using cached {dest}")
-        return dest
-    api = wandb.Api()
-    artifact = api.artifact(f"{project}/{artifact_name}")
-    artifact.download(root=str(dest))
-    print(f"  Downloaded {artifact_name} -> {dest}")
-    return dest
-
-
-def download_transcoders(project: str, prefix: str) -> dict[int, dict[int, Path]]:
-    api = wandb.Api()
-    runs = api.runs(project)
-
-    tc_paths: dict[int, dict[int, Path]] = {}
-    for run in runs:
-        if run.state != "finished":
-            continue
-        name = run.name
-        if not name.startswith("tc_k"):
-            continue
-
-        top_k = run.config.get("top_k")
-        if top_k is None:
-            m = re.search(r"tc_k(\d+)", name)
-            assert m, f"Cannot parse top_k from run name: {name}"
-            top_k = int(m.group(1))
-
-        arts = [a for a in run.logged_artifacts() if a.type == "model"]
-        layer_arts = {}
-        for a in arts:
-            aname = a.name.split(":")[0]
-            for layer_idx in LAYERS:
-                if f"layer{layer_idx}_final" in aname:
-                    layer_arts[layer_idx] = a
-                    break
-
-        if set(layer_arts.keys()) != set(LAYERS):
-            print(f"  Skipping {name}: only got layers {set(layer_arts.keys())}")
-            continue
-
-        layer_paths = {}
-        for layer_idx in LAYERS:
-            dest = Path(f"checkpoints/{prefix}_tc_{name}_layer{layer_idx}")
-            download_wandb_artifact(project, layer_arts[layer_idx].name, dest)
-            layer_paths[layer_idx] = dest
-
-        tc_paths[top_k] = layer_paths
-
-    return tc_paths
-
-
-def download_clts(project: str, prefix: str) -> list[tuple[int, Path]]:
-    api = wandb.Api()
-    runs = api.runs(project)
-
-    clt_paths = []
-    for run in runs:
-        if run.state != "finished":
-            continue
-        name = run.name
-        if not name.startswith("clt_k"):
-            continue
-
-        top_k = run.config.get("top_k")
-        if top_k is None:
-            m = re.search(r"clt_k(\d+)", name)
-            assert m, f"Cannot parse top_k from run name: {name}"
-            top_k = int(m.group(1))
-
-        arts = [a for a in run.logged_artifacts() if a.type == "model"]
-        final_arts = [a for a in arts if "final" in a.name]
-        assert len(final_arts) == 1, (
-            f"Expected 1 final artifact for CLT run {name}, got {len(final_arts)}"
-        )
-
-        dest = Path(f"checkpoints/{prefix}_clt_{name}")
-        download_wandb_artifact(project, final_arts[0].name, dest)
-        clt_paths.append((top_k, dest))
-
-    clt_paths.sort(key=lambda x: x[0])
-    return clt_paths
-
-
-# =============================================================================
-# Data loading
-# =============================================================================
+PROJECTS = {
+    "4k":  {"e2e": PROJECT_E2E_4K,  "local": PROJECT_LOCAL_4K},
+    "32k": {"e2e": PROJECT_E2E_32K, "local": PROJECT_LOCAL_32K},
+}
 
 
 def get_eval_batches(n_batches: int, batch_size: int, seq_len: int) -> list[torch.Tensor]:
     return get_pile_batches(n_batches, batch_size, seq_len, device=DEVICE)
 
 
-# =============================================================================
-# Helpers
-# =============================================================================
-
-
-# =============================================================================
-# MLP activation collection (for MSE)
-# =============================================================================
-
-
-@torch.no_grad()
-def get_mlp_activations(model, batches):
-    all_pairs = {layer_idx: [] for layer_idx in LAYERS}
-    for input_ids in batches:
-        captured = {}
-        hooks = []
-        for layer_idx in LAYERS:
-            rms2 = model.h[layer_idx].rms_2
-            mlp = model.h[layer_idx].mlp
-
-            def _make_hooks(li):
-                def _capture_rms2(_mod, _inp, out):
-                    captured[f"mlp_in_{li}"] = out.detach()
-                def _capture_mlp(_mod, _inp, out):
-                    captured[f"mlp_out_{li}"] = out.detach()
-                return _capture_rms2, _capture_mlp
-
-            h_rms, h_mlp = _make_hooks(layer_idx)
-            hooks.append(rms2.register_forward_hook(h_rms))
-            hooks.append(mlp.register_forward_hook(h_mlp))
-
-        model(input_ids)
-        for h in hooks:
-            h.remove()
-
-        for layer_idx in LAYERS:
-            mlp_in = captured[f"mlp_in_{layer_idx}"].reshape(-1, captured[f"mlp_in_{layer_idx}"].shape[-1])
-            mlp_out = captured[f"mlp_out_{layer_idx}"].reshape(-1, captured[f"mlp_out_{layer_idx}"].shape[-1])
-            all_pairs[layer_idx].append((mlp_in, mlp_out))
-    return all_pairs
-
-
-# =============================================================================
-# Transcoder loading & eval
-# =============================================================================
-
-
-@torch.no_grad()
-def eval_transcoder_batchtopk(
-    base_model, transcoders: dict[int, nn.Module], batches, mlp_activations,
-) -> dict:
-    total_ce, total_mse = 0.0, 0.0
-    layer_l0_totals = {l: 0.0 for l in LAYERS}
-
-    for batch_idx, input_ids in enumerate(batches):
-        with ExitStack() as stack:
-            for layer_idx in LAYERS:
-                mlp = base_model.h[layer_idx].mlp
-                tc = transcoders[layer_idx]
-
-                def _make_patched(tc_):
-                    def _patched(hidden_states):
-                        flat = hidden_states.reshape(-1, tc_.cfg.input_size)
-                        acts = tc_.encode(flat)
-                        recon = tc_.decode(acts)
-                        return recon.reshape(hidden_states.shape)
-                    return _patched
-
-                stack.enter_context(patched_forward(mlp, _make_patched(tc)))
-            total_ce += compute_ce_loss(base_model, input_ids)
-
-        batch_mse = 0.0
-        for layer_idx in LAYERS:
-            tc = transcoders[layer_idx]
-            mlp_in, mlp_out = mlp_activations[layer_idx][batch_idx]
-            acts = tc.encode(mlp_in)
-            recon = tc.decode(acts)
-            layer_l0_totals[layer_idx] += (acts > 0).float().sum(-1).mean().item()
-            batch_mse += F.mse_loss(recon, mlp_out).item()
-        total_mse += batch_mse / len(LAYERS)
-
-    n = len(batches)
-    layer_l0s = {l: layer_l0_totals[l] / n for l in LAYERS}
-    avg_l0 = sum(layer_l0s.values()) / len(LAYERS)
-    return {"l0": avg_l0, "ce": total_ce / n, "mse": total_mse / n, "layer_l0s": layer_l0s}
-
-
-# =============================================================================
-# CLT loading & eval
-# =============================================================================
-
-
 def _collect_rms2_outputs(base_model, input_ids):
     return collect_mlp_inputs(base_model, input_ids, LAYERS)
 
 
-def _clt_batchtopk_acts(clt, inputs, k):
-    all_acts = []
-    for i in range(clt.cfg.n_layers):
-        pre_acts = F.relu(inputs[i] @ clt.W_enc[i] + clt.b_enc[i])
-        n_keep = k * pre_acts.shape[0]
-        if n_keep < pre_acts.numel():
-            topk = torch.topk(pre_acts.flatten(), n_keep, dim=-1)
-            acts = torch.zeros_like(pre_acts.flatten()).scatter(-1, topk.indices, topk.values).reshape(pre_acts.shape)
-        else:
-            acts = pre_acts
-        all_acts.append(acts)
-    return all_acts
+# =============================================================================
+# TC eval modes (using encode/decode)
+# =============================================================================
 
 
 @torch.no_grad()
-def eval_clt_batchtopk(
-    base_model, clt: CrossLayerTranscoder, batches, mlp_activations,
-) -> dict:
-    total_ce, total_mse = 0.0, 0.0
-    layer_l0_totals = {i: 0.0 for i in range(len(LAYERS))}
-    k = clt.cfg.top_k
+def compute_tc_l0(transcoders: dict[int, BatchTopKTranscoder], base_model, batches) -> float:
+    layer_l0_totals = {l: 0.0 for l in LAYERS}
+    for input_ids in batches:
+        captured = _collect_rms2_outputs(base_model, input_ids)
+        for layer_idx in LAYERS:
+            tc = transcoders[layer_idx]
+            flat = captured[layer_idx].reshape(-1, tc.cfg.input_size)
+            acts = tc.encode(flat)
+            layer_l0_totals[layer_idx] += (acts > 0).float().sum(-1).mean().item()
+    return sum(v / len(batches) for v in layer_l0_totals.values()) / len(LAYERS)
 
-    for batch_idx, input_ids in enumerate(batches):
+
+@torch.no_grad()
+def eval_tc_all_parallel(base_model, transcoders, batches) -> float:
+    total_ce = 0.0
+    for input_ids in batches:
+        captured = _collect_rms2_outputs(base_model, input_ids)
+        recons_shaped = {}
+        for layer_idx in LAYERS:
+            tc = transcoders[layer_idx]
+            flat = captured[layer_idx].reshape(-1, tc.cfg.input_size)
+            recon = tc.decode(tc.encode(flat))
+            recons_shaped[layer_idx] = recon.reshape(captured[layer_idx].shape)
+
+        def _make_const(tensor):
+            return lambda *a, **kw: tensor
+
+        with ExitStack() as stack:
+            for layer_idx in LAYERS:
+                stack.enter_context(patched_forward(base_model.h[layer_idx].mlp, _make_const(recons_shaped[layer_idx])))
+            total_ce += compute_ce_loss(base_model, input_ids)
+    return total_ce / len(batches)
+
+
+@torch.no_grad()
+def eval_tc_all_cascading(base_model, transcoders, batches) -> float:
+    total_ce = 0.0
+    for input_ids in batches:
+        hooks = []
+        for layer_idx in LAYERS:
+            tc = transcoders[layer_idx]
+
+            def _make_hook(tc_):
+                def _hook(_module, inp, _output):
+                    flat = inp[0].reshape(-1, tc_.cfg.input_size)
+                    recon = tc_.decode(tc_.encode(flat))
+                    return recon.reshape(inp[0].shape)
+                return _hook
+
+            hooks.append(base_model.h[layer_idx].mlp.register_forward_hook(_make_hook(tc)))
+        total_ce += compute_ce_loss(base_model, input_ids)
+        for h in hooks:
+            h.remove()
+    return total_ce / len(batches)
+
+
+@torch.no_grad()
+def eval_tc_single_mlp(base_model, transcoders, batches) -> float:
+    total_ce = 0.0
+    for layer_idx in LAYERS:
+        tc = transcoders[layer_idx]
+        layer_ce = 0.0
+        for input_ids in batches:
+            def _make_patched(tc_):
+                def _patched(hidden_states):
+                    flat = hidden_states.reshape(-1, tc_.cfg.input_size)
+                    recon = tc_.decode(tc_.encode(flat))
+                    return recon.reshape(hidden_states.shape)
+                return _patched
+
+            with patched_forward(base_model.h[layer_idx].mlp, _make_patched(tc)):
+                layer_ce += compute_ce_loss(base_model, input_ids)
+        total_ce += layer_ce / len(batches)
+    return total_ce / len(LAYERS)
+
+
+# =============================================================================
+# CLT eval modes
+# =============================================================================
+
+
+@torch.no_grad()
+def compute_clt_l0(clt, base_model, batches) -> float:
+    layer_l0_totals = [0.0] * clt.cfg.n_layers
+    for input_ids in batches:
+        captured = _collect_rms2_outputs(base_model, input_ids)
+        for i in range(clt.cfg.n_layers):
+            flat = captured[LAYERS[i]].reshape(-1, clt.cfg.input_size)
+            acts = clt.encode_layer(flat, i)
+            layer_l0_totals[i] += (acts > 0).float().sum(-1).mean().item()
+    return sum(v / len(batches) for v in layer_l0_totals) / clt.cfg.n_layers
+
+
+@torch.no_grad()
+def eval_clt_all_parallel(base_model, clt, batches) -> float:
+    total_ce = 0.0
+    for input_ids in batches:
         captured = _collect_rms2_outputs(base_model, input_ids)
         seq_shape = captured[LAYERS[0]].shape
-
-        clt_inputs = [captured[l].reshape(-1, clt.cfg.input_size) for l in LAYERS]
-        all_acts = _clt_batchtopk_acts(clt, clt_inputs, k)
+        flat_inputs = [captured[l].reshape(-1, clt.cfg.input_size) for l in LAYERS]
+        all_acts = [clt.encode_layer(flat_inputs[i], i) for i in range(clt.cfg.n_layers)]
         recons = clt.decode(all_acts)
         recons_shaped = [r.reshape(seq_shape) for r in recons]
 
-        for i, a in enumerate(all_acts):
-            layer_l0_totals[i] += (a > 0).float().sum(-1).mean().item()
+        def _make_const(tensor):
+            return lambda *a, **kw: tensor
 
         with ExitStack() as stack:
             for i, layer_idx in enumerate(LAYERS):
-                mlp = base_model.h[layer_idx].mlp
-
-                def _make_patched(recon):
-                    def _patched(hidden_states):
-                        return recon
-                    return _patched
-
-                stack.enter_context(patched_forward(mlp, _make_patched(recons_shaped[i])))
+                stack.enter_context(patched_forward(base_model.h[layer_idx].mlp, _make_const(recons_shaped[i])))
             total_ce += compute_ce_loss(base_model, input_ids)
-
-        targets = [mlp_activations[l][batch_idx][1] for l in LAYERS]
-        batch_mse = sum(F.mse_loss(recons[i], targets[i]).item() for i in range(len(LAYERS))) / len(LAYERS)
-        total_mse += batch_mse
-
-    n_batches = len(batches)
-    layer_l0s = {i: layer_l0_totals[i] / n_batches for i in range(len(LAYERS))}
-    avg_l0 = sum(layer_l0s.values()) / len(LAYERS)
-    return {"l0": avg_l0, "ce": total_ce / n_batches, "mse": total_mse / n_batches, "layer_l0s": layer_l0s}
-
-
-# =============================================================================
-# VPD (thresholded)
-# =============================================================================
-
-
-def _capture_all_layer_mlp_outputs(vpd_model, input_ids, **model_kwargs):
-    captured = {}
-    hooks = []
-    for layer_idx in LAYERS:
-        target_mlp = vpd_model.target_model.h[layer_idx].mlp
-
-        def _make_hook(li):
-            def _capture(_mod, _inp, out):
-                captured[li] = out.detach()
-            return _capture
-
-        hooks.append(target_mlp.register_forward_hook(_make_hook(layer_idx)))
-    vpd_model(input_ids, **model_kwargs)
-    for h in hooks:
-        h.remove()
-    return captured
+    return total_ce / len(batches)
 
 
 @torch.no_grad()
-def eval_vpd_thresholded(
-    vpd_model, batches, module_names, mlp_activations, threshold: float,
-) -> dict:
-    total_ce, total_mse = 0.0, 0.0
-    module_l0_totals = {name: 0.0 for name in module_names}
+def eval_clt_all_cascading(base_model, clt, batches) -> float:
+    total_ce = 0.0
+    for input_ids in batches:
+        all_acts: list[torch.Tensor] = []
 
-    for batch_idx, input_ids in enumerate(batches):
+        def _make_cascading_hook(layer_idx: int):
+            def _hook(_module, inp, _output):
+                flat = inp[0].reshape(-1, clt.cfg.input_size)
+                acts = clt.encode_layer(flat, layer_idx)
+                all_acts.append(acts)
+                recon = clt.b_dec[layer_idx].unsqueeze(0).expand(flat.shape[0], -1).clone()
+                for i in range(layer_idx + 1):
+                    recon = recon + all_acts[i] @ clt.W_dec[i][layer_idx - i]
+                return recon.reshape(inp[0].shape)
+            return _hook
+
+        hooks = []
+        for layer_idx in range(clt.cfg.n_layers):
+            h = base_model.h[LAYERS[layer_idx]].mlp.register_forward_hook(_make_cascading_hook(layer_idx))
+            hooks.append(h)
+        total_ce += compute_ce_loss(base_model, input_ids)
+        for h in hooks:
+            h.remove()
+    return total_ce / len(batches)
+
+
+@torch.no_grad()
+def eval_clt_single_mlp(base_model, clt, batches) -> float:
+    total_ce = 0.0
+    for target in range(clt.cfg.n_layers):
+        layer_ce = 0.0
+        for input_ids in batches:
+            captured = _collect_rms2_outputs(base_model, input_ids)
+            seq_shape = captured[LAYERS[0]].shape
+            flat_inputs = [captured[LAYERS[i]].reshape(-1, clt.cfg.input_size) for i in range(target + 1)]
+            source_acts = [clt.encode_layer(flat_inputs[i], i) for i in range(target + 1)]
+            recon = clt.b_dec[target].unsqueeze(0).expand(source_acts[0].shape[0], -1).clone()
+            for i in range(target + 1):
+                recon = recon + source_acts[i] @ clt.W_dec[i][target - i]
+            recon_shaped = recon.reshape(seq_shape)
+
+            def _make_const(tensor):
+                return lambda *a, **kw: tensor
+
+            with patched_forward(base_model.h[LAYERS[target]].mlp, _make_const(recon_shaped)):
+                layer_ce += compute_ce_loss(base_model, input_ids)
+        total_ce += layer_ce / len(batches)
+    return total_ce / clt.cfg.n_layers
+
+
+# =============================================================================
+# VPD eval
+# =============================================================================
+
+
+@torch.no_grad()
+def eval_vpd_all(vpd_model, batches, module_names, threshold) -> tuple[float, float]:
+    from spd.models.components import make_mask_infos
+    total_ce = 0.0
+    module_l0_totals = {name: 0.0 for name in module_names}
+    for input_ids in batches:
         out = vpd_model(input_ids, cache_type="input")
         ci = vpd_model.calc_causal_importances(out.cache, sampling="continuous")
         masks = {}
         for mod_name in module_names:
-            ci_post = ci.lower_leaky[mod_name]
-            mask = (ci_post > threshold).float()
+            mask = (ci.lower_leaky[mod_name] > threshold).float()
             masks[mod_name] = mask
             module_l0_totals[mod_name] += mask.sum(-1).mean().item()
-
         mask_infos = make_mask_infos(masks)
         logits = vpd_model(input_ids, mask_infos=mask_infos)
         total_ce += compute_ce_from_logits(logits, input_ids)
-
-        captured_orig = _capture_all_layer_mlp_outputs(vpd_model, input_ids)
-        captured_masked = _capture_all_layer_mlp_outputs(vpd_model, input_ids, mask_infos=mask_infos)
-        batch_mse = 0.0
-        for layer_idx in LAYERS:
-            batch_mse += F.mse_loss(captured_masked[layer_idx], captured_orig[layer_idx]).item()
-        total_mse += batch_mse / len(LAYERS)
-
     n = len(batches)
-    module_l0s = {name: module_l0_totals[name] / n for name in module_names}
-    avg_l0 = sum(module_l0s.values()) / len(module_names)
-    return {"l0": avg_l0, "ce": total_ce / n, "mse": total_mse / n, "module_l0s": module_l0s}
-
-
-# =============================================================================
-# Baselines
-# =============================================================================
+    avg_l0 = sum(v / n for v in module_l0_totals.values()) / len(module_names)
+    return total_ce / n, avg_l0
 
 
 @torch.no_grad()
-def eval_baselines(base_model, batches) -> dict[str, float]:
-    original_loss, zero_loss = 0.0, 0.0
+def eval_vpd_all_parallel(vpd_model, batches, module_names, threshold) -> float:
+    """Clean-input VPD: compute masked MLP outputs from clean residual streams."""
+    from spd.models.components import make_mask_infos
+    base_model = vpd_model.target_model
+    total_ce = 0.0
     for input_ids in batches:
-        original_loss += compute_ce_loss(base_model, input_ids)
+        # Get clean MLP inputs from original model
+        clean_inputs = _collect_rms2_outputs(base_model, input_ids)
+
+        # Compute CI from clean forward pass
+        out = vpd_model(input_ids, cache_type="input")
+        ci = vpd_model.calc_causal_importances(out.cache, sampling="continuous")
+        masks = {m: (ci.lower_leaky[m] > threshold).float() for m in module_names}
+        mask_infos = make_mask_infos(masks)
+
+        # For each layer, compute masked MLP output from clean input
+        recons = {}
+        for layer_idx in LAYERS:
+            x = clean_inputs[layer_idx]  # (batch, seq, d_model)
+            cfc_name = f"h.{layer_idx}.mlp.c_fc"
+            down_name = f"h.{layer_idx}.mlp.down_proj"
+
+            cfc_components = vpd_model.components[cfc_name]
+            down_components = vpd_model.components[down_name]
+
+            # c_fc: x -> hidden (with mask)
+            hidden = cfc_components(
+                x, mask=mask_infos[cfc_name].component_mask,
+                weight_delta_and_mask=mask_infos[cfc_name].weight_delta_and_mask,
+            )
+            # GELU activation
+            hidden = base_model.h[layer_idx].mlp.gelu(hidden)
+            # down_proj: hidden -> output (with mask)
+            mlp_out = down_components(
+                hidden, mask=mask_infos[down_name].component_mask,
+                weight_delta_and_mask=mask_infos[down_name].weight_delta_and_mask,
+            )
+            recons[layer_idx] = mlp_out
+
+        # Patch MLPs and compute CE
+        def _make_const(tensor):
+            return lambda *a, **kw: tensor
+
         with ExitStack() as stack:
             for layer_idx in LAYERS:
-                mlp = base_model.h[layer_idx].mlp
-                orig_fwd = mlp.forward
-
-                def _make_zero(fwd):
-                    def _zero(hidden_states):
-                        return torch.zeros_like(fwd(hidden_states))
-                    return _zero
-
-                stack.enter_context(patched_forward(mlp, _make_zero(orig_fwd)))
-            zero_loss += compute_ce_loss(base_model, input_ids)
-    n = len(batches)
-    return {"original_ce": original_loss / n, "zero_ablation_ce": zero_loss / n}
-
-
-# =============================================================================
-# Neuron baseline (top-k neurons)
-# =============================================================================
-
-
-def neuron_topk_reconstruction(mlp: nn.Module, x_in: torch.Tensor, k: int) -> torch.Tensor:
-    h = mlp.gelu(mlp.c_fc(x_in))
-    if k < h.shape[-1]:
-        topk = torch.topk(h.abs(), k, dim=-1)
-        mask = torch.zeros_like(h)
-        mask.scatter_(-1, topk.indices, 1.0)
-        h = h * mask
-    return mlp.down_proj(h)
+                stack.enter_context(patched_forward(
+                    base_model.h[layer_idx].mlp, _make_const(recons[layer_idx])
+                ))
+            total_ce += compute_ce_loss(base_model, input_ids)
+    return total_ce / len(batches)
 
 
 @torch.no_grad()
-def eval_neuron_topk(base_model, batches, mlp_activations, k: int) -> dict:
-    total_ce, total_mse = 0.0, 0.0
-
-    for batch_idx, input_ids in enumerate(batches):
-        with ExitStack() as stack:
-            for layer_idx in LAYERS:
-                mlp = base_model.h[layer_idx].mlp
-
-                def _make_patched(mlp_):
-                    def _patched(hidden_states):
-                        return neuron_topk_reconstruction(mlp_, hidden_states, k)
-                    return _patched
-
-                stack.enter_context(patched_forward(mlp, _make_patched(mlp)))
-            total_ce += compute_ce_loss(base_model, input_ids)
-
-        batch_mse = 0.0
-        for layer_idx in LAYERS:
-            mlp = base_model.h[layer_idx].mlp
-            mlp_in, mlp_out = mlp_activations[layer_idx][batch_idx]
-            recon = neuron_topk_reconstruction(mlp, mlp_in, k)
-            batch_mse += F.mse_loss(recon, mlp_out).item()
-        total_mse += batch_mse / len(LAYERS)
-
-    n = len(batches)
-    layer_l0s = {l: float(k) for l in LAYERS}
-    return {"l0": float(k), "ce": total_ce / n, "mse": total_mse / n, "layer_l0s": layer_l0s}
+def eval_vpd_single_mlp(vpd_model, batches, threshold) -> float:
+    from spd.models.components import make_mask_infos
+    total_ce = 0.0
+    for layer_idx in LAYERS:
+        layer_mods = [f"h.{layer_idx}.mlp.c_fc", f"h.{layer_idx}.mlp.down_proj"]
+        layer_ce = 0.0
+        for input_ids in batches:
+            out = vpd_model(input_ids, cache_type="input")
+            ci = vpd_model.calc_causal_importances(out.cache, sampling="continuous")
+            masks = {m: (ci.lower_leaky[m] > threshold).float() for m in layer_mods}
+            mask_infos = make_mask_infos(masks)
+            logits = vpd_model(input_ids, mask_infos=mask_infos)
+            layer_ce += compute_ce_from_logits(logits, input_ids)
+        total_ce += layer_ce / len(batches)
+    return total_ce / len(LAYERS)
 
 
 # =============================================================================
-# X-axis value computation
+# Download from wandb
 # =============================================================================
 
 
-def compute_x_values(method: str, result: dict, d_in: int, d_out: int, d_hidden: int) -> dict:
-    n = len(LAYERS)
-    if method in ("Transcoders", "Neurons"):
-        ll = result["layer_l0s"]
-        per_component = sum(ll.values()) / n
-        per_mlp = per_component
-        total_params = sum(ll[l] * (d_in + d_out) for l in LAYERS)
-    elif method == "CLT":
-        ll = result["layer_l0s"]
-        per_component = sum(ll.values()) / n
-        per_mlp = sum(ll[i] * (n - i) for i in range(n)) / n
-        total_params = sum(ll[i] * (d_in + (n - i) * d_out) for i in range(n))
-    elif method == "VPD":
-        ml = result["module_l0s"]
-        per_component = sum(ml.values()) / len(ml)
-        per_mlp = sum(
-            ml[f"h.{l}.mlp.c_fc"] + ml[f"h.{l}.mlp.down_proj"] for l in LAYERS
-        ) / n
-        total_params = sum(
-            ml[f"h.{l}.mlp.c_fc"] * (d_in + d_hidden)
-            + ml[f"h.{l}.mlp.down_proj"] * (d_hidden + d_out)
-            for l in LAYERS
-        )
-    else:
-        assert False, f"Unknown method: {method}"
-    return {"x_per_component": per_component, "x_per_mlp": per_mlp, "x_total_params": total_params}
+def download_artifacts(dict_size_label: str) -> dict:
+    """Download all finished runs for a dict size. Returns {(type, mode, k): path_or_layer_paths}."""
+    api = wandb.Api()
+    models = {}
 
+    for project_type in ("e2e", "local"):
+        project = PROJECTS[dict_size_label][project_type]
+        runs = api.runs(project)
 
-# =============================================================================
-# Plotting
-# =============================================================================
+        for run in runs:
+            if run.state != "finished":
+                continue
+            arts = [a for a in run.logged_artifacts() if a.type == "model"]
+            if not arts:
+                continue
 
-plt.rcParams.update({
-    "font.family": "serif",
-    "font.serif": ["Times New Roman", "DejaVu Serif"],
-    "mathtext.fontset": "dejavuserif",
-    "font.size": 11,
-    "axes.titlesize": 12,
-    "axes.labelsize": 12,
-    "xtick.labelsize": 10,
-    "ytick.labelsize": 10,
-    "legend.fontsize": 10,
-    "figure.dpi": 150,
-    "savefig.dpi": 300,
-    "savefig.bbox": "tight",
-    "savefig.pad_inches": 0.05,
-    "axes.spines.top": False,
-    "axes.spines.right": False,
-})
+            name = run.name
+            top_k = run.config.get("top_k")
+            # Fallback: extract k from run name (e.g. tc_cascading_k16 -> 16)
+            if top_k is None:
+                m = re.search(r"_k(\d+)", name)
+                if m:
+                    top_k = int(m.group(1))
 
-METHOD_STYLES = {
-    "PLT (4k)":      dict(marker="o", color="#2b6cb0", linestyle="-", linewidth=1.8, markersize=8,  zorder=5),
-    "PLT (32k)":     dict(marker="o", color="#63b3ed", linestyle="-", linewidth=1.8, markersize=8,  zorder=5),
-    "CLT (4k)":     dict(marker="X", color="#dd6b20", linestyle="-", linewidth=1.8, markersize=9,  zorder=5),
-    "CLT (32k)":    dict(marker="X", color="#f6ad55", linestyle="-", linewidth=1.8, markersize=9,  zorder=5),
-    "VPD (CI>0.5)": dict(marker="P", color="#6b21a8", linestyle="none", markersize=11, zorder=6),
-    "VPD (CI>0.1)": dict(marker="X", color="#6b21a8", linestyle="none", markersize=10, zorder=6),
-    "VPD (CI>0)":   dict(marker="D", color="#6b21a8", linestyle="none", markersize=9,  zorder=6),
-    "Neurons":      dict(marker="d", color="#d62728", linestyle="-",    linewidth=1.8, markersize=8,  zorder=4),
-}
+            if name.startswith("tc_"):
+                # e2e: tc_cascading_k16, tc_parallel_k8, tc_independent_k32
+                # local: tc_k8, tc_k16, etc.
+                if project_type == "local":
+                    mode = "local_mse"
+                else:
+                    parts = name.split("_")
+                    mode = parts[1]  # cascading, parallel, independent
 
-PLOT_ORDER = ["Neurons", "PLT (4k)", "PLT (32k)", "CLT (4k)", "CLT (32k)", "VPD (CI>0.5)", "VPD (CI>0.1)", "VPD (CI>0)"]
+                layer_paths = {}
+                for art in arts:
+                    dest = CHECKPOINT_DIR / dict_size_label / f"{name}_{art.name.split(':')[0]}"
+                    if not (dest / "encoder.pt").exists():
+                        art.download(root=str(dest))
+                        print(f"  Downloaded {art.name} -> {dest}")
+                    else:
+                        print(f"  Cached {dest}")
+                    art_base = art.name.split(":")[0]
+                    for layer in LAYERS:
+                        if f"layer{layer}_final" in art_base:
+                            layer_paths[layer] = dest
+                            break
 
+                if len(layer_paths) == len(LAYERS):
+                    models[("tc", mode, top_k)] = layer_paths
 
-def _plot_on_ax(ax, points, baselines, x_key, y_key):
-    ce_degradation = y_key == "ce" and baselines
-    baseline_ce = baselines["original_ce"] if ce_degradation else 0.0
+            elif name.startswith("clt_"):
+                if project_type == "local":
+                    mode = "local_mse"
+                else:
+                    parts = name.split("_")
+                    mode = parts[1]
 
-    for label in PLOT_ORDER:
-        pts = points.get(label, [])
-        if not pts:
-            continue
-        pts_sorted = sorted(pts, key=lambda p: p[x_key])
-        xs = [p[x_key] for p in pts_sorted]
-        ys = [p[y_key] - baseline_ce for p in pts_sorted] if ce_degradation else [p[y_key] for p in pts_sorted]
-        style = METHOD_STYLES[label]
-        ax.plot(xs, ys, label=label, markeredgecolor="white", markeredgewidth=0.8, **style)
+                final_arts = [a for a in arts if "final" in a.name]
+                if not final_arts:
+                    continue
+                dest = CHECKPOINT_DIR / dict_size_label / f"{name}_final"
+                if not (dest / "encoder.pt").exists():
+                    final_arts[0].download(root=str(dest))
+                    print(f"  Downloaded {final_arts[0].name} -> {dest}")
+                else:
+                    print(f"  Cached {dest}")
+                models[("clt", mode, top_k)] = dest
 
-    if ce_degradation:
-        zero_abl_deg = baselines["zero_ablation_ce"] - baseline_ce
-        ax.axhline(zero_abl_deg, color="#d62728", linestyle=":",
-                    linewidth=1.0, alpha=0.5, label="Zero ablation", zorder=1)
-        ax.set_yscale("log")
-        ax.yaxis.set_major_locator(ticker.FixedLocator(
-            [0.1, 0.15, 0.2, 0.3, 0.5, 0.7, 1.0, 1.5, 2.0, 3.0, 5.0, 7.0, 10.0]
-        ))
-        ax.yaxis.set_major_formatter(ticker.FuncFormatter(
-            lambda y, _: f"{y:g}"
-        ))
-
-    ax.set_xscale("log", base=2)
-    ax.xaxis.set_major_formatter(ticker.FuncFormatter(
-        lambda x, _: f"{int(x)}" if x == int(x) else f"{x:g}"
-    ))
-    ax.xaxis.set_minor_formatter(ticker.NullFormatter())
-    ax.grid(True, alpha=0.15, linewidth=0.5)
-    ax.tick_params(direction="in", which="both")
-
-
-# Three-panel x-axes for the headline Pareto figure.
-AXIS_CONFIGS = [
-    ("x_per_component", "Active subcomponents per module"),
-    ("x_per_mlp",       "Active subcomponents per MLP reconstruction"),
-    ("x_total_params",  "Total active parameters"),
-]
-
-
-def plot_pareto_combined(points, baselines, axis_configs, y_key, ylabel, save_path):
-    fig, axes = plt.subplots(1, 3, figsize=(16, 4.2), sharey=True)
-
-    subplot_labels = ["(a)", "(b)", "(c)"]
-    for ax, (x_key, xlabel), panel_label in zip(axes, axis_configs, subplot_labels):
-        _plot_on_ax(ax, points, baselines, x_key, y_key)
-        ax.set_xlabel(xlabel)
-        ax.text(0.03, 0.97, panel_label, transform=ax.transAxes,
-                fontsize=12, fontweight="bold", va="top", ha="left")
-
-    axes[0].set_ylabel(ylabel)
-
-    handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=len(labels),
-               frameon=True, fancybox=False, edgecolor="#cccccc", framealpha=0.95,
-               bbox_to_anchor=(0.5, 1.02), fontsize=10)
-
-    fig.tight_layout(rect=[0, 0, 1, 0.90])
-    fig.savefig(save_path)
-    fig.savefig(str(save_path).replace(".png", ".pdf"))
-    plt.close(fig)
-    print(f"Combined plot saved to {save_path}")
+    return models
 
 
 # =============================================================================
@@ -566,186 +418,154 @@ def plot_pareto_combined(points, baselines, axis_configs, y_key, ylabel, save_pa
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Combined Pareto plot (4k + 32k)")
-    parser.add_argument("--project_4k", type=str, default="mats-sprint/pile_local_sweep_jose")
-    parser.add_argument("--project_32k", type=str, default="mats-sprint/pile_local_sweep_jose_32k")
-    parser.add_argument("--vpd_run", type=str, default=VPD_BASELINE_RUN)
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Evaluate PLT/CLT models on the base LLM")
+    parser.add_argument("--dict_sizes", nargs="+", default=["4k", "32k"], choices=["4k", "32k"])
     parser.add_argument("--n_eval_batches", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--seq_len", type=int, default=512)
-    parser.add_argument("--neuron_ks", type=int, nargs="+", default=[8, 16, 32, 64, 128])
-    parser.add_argument("--plot-only", action="store_true", help="Replot from cached data")
+    parser.add_argument("--vpd_thresholds", type=float, nargs="+", default=[0.5, 0.1, 0.0])
+    parser.add_argument("--skip_vpd", action="store_true")
+    parser.add_argument("--skip_download", action="store_true")
     args = parser.parse_args()
 
-    if args.plot_only:
-        data_path = OUTPUT_DIR / "pareto_data.json"
-        assert data_path.exists(), f"No cached data at {data_path}"
-        with open(data_path) as f:
-            saved = json.load(f)
-        all_points = saved["all_points"]
-        baselines = saved["baselines"]
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-        plot_pareto_combined(all_points, baselines, AXIS_CONFIGS,
-                             y_key="ce", ylabel="CE degradation (\u03b4 from baseline)",
-                             save_path=str(OUTPUT_DIR / "pareto_combined_combined_ce.png"))
-        return
+    # Load base LLM. Auto-downloads from wandb on first run.
+    from spd.pretrain.models.llama_simple_mlp import LlamaSimpleMLP, LlamaSimpleMLPConfig
 
-    print("Loading VPD model...")
-    vpd_model, raw_config = load_vpd_model(args.vpd_run)
-    vpd_model.to(DEVICE)
-    base_model = vpd_model.target_model
+    LLM_BASE_MODEL_CACHE.mkdir(parents=True, exist_ok=True)
+    if not (LLM_BASE_MODEL_CACHE / "state_dict.pt").exists():
+        print("Downloading base LLM from wandb (first run)...")
+        model = LlamaSimpleMLP.from_pretrained(LLM_BASE_MODEL)
+        torch.save(model.state_dict(), LLM_BASE_MODEL_CACHE / "state_dict.pt")
+        with open(LLM_BASE_MODEL_CACHE / "config.json", "w") as f:
+            json.dump(model.config.__dict__, f)
+        del model
+
+    print("Loading base LLM...")
+    with open(LLM_BASE_MODEL_CACHE / "config.json") as f:
+        model_cfg = LlamaSimpleMLPConfig(**json.load(f))
+    base_model = LlamaSimpleMLP(model_cfg)
+    sd = torch.load(LLM_BASE_MODEL_CACHE / "state_dict.pt", map_location="cpu", weights_only=True)
+    base_model.load_state_dict(sd)
+    base_model.to(DEVICE)
     base_model.eval()
+    del sd
 
-    all_cfc_names = [f"h.{l}.mlp.c_fc" for l in LAYERS]
-    all_down_names = [f"h.{l}.mlp.down_proj" for l in LAYERS]
-    all_module_names = all_cfc_names + all_down_names
-
-    d_in = base_model.config.n_embd
-    d_out = base_model.config.n_embd
-    d_hidden = base_model.h[0].mlp.c_fc.weight.shape[0]
-
-    # Download transcoders and CLTs from both projects
-    print(f"\nDownloading 4k transcoders from {args.project_4k}...")
-    tc_paths_4k = download_transcoders(args.project_4k, "plt")
-    print(f"  Found top_k values: {sorted(tc_paths_4k.keys())}")
-
-    print(f"\nDownloading 32k transcoders from {args.project_32k}...")
-    tc_paths_32k = download_transcoders(args.project_32k, "plt32k")
-    print(f"  Found top_k values: {sorted(tc_paths_32k.keys())}")
-
-    print(f"\nDownloading 4k CLTs from {args.project_4k}...")
-    clt_paths_4k = download_clts(args.project_4k, "plt")
-    print(f"  Found CLTs: {[(k, str(p)) for k, p in clt_paths_4k]}")
-
-    print(f"\nDownloading 32k CLTs from {args.project_32k}...")
-    clt_paths_32k = download_clts(args.project_32k, "plt32k")
-    print(f"  Found CLTs: {[(k, str(p)) for k, p in clt_paths_32k]}")
-
-    # Load eval data
-    print(f"\nLoading {args.n_eval_batches} eval batches (seq_len={args.seq_len})...")
+    print(f"Loading {args.n_eval_batches} eval batches...")
     batches = get_eval_batches(args.n_eval_batches, args.batch_size, args.seq_len)
 
-    # Baselines
-    print("Computing baselines...")
-    baselines = eval_baselines(base_model, batches)
-    print(f"  Original CE: {baselines['original_ce']:.4f}")
-    print(f"  Zero-ablation CE: {baselines['zero_ablation_ce']:.4f}")
+    print("Computing baseline CE...")
+    baseline_ce = sum(compute_ce_loss(base_model, b) for b in batches) / len(batches)
+    print(f"  Baseline CE: {baseline_ce:.4f}")
 
-    # MLP activations for MSE
-    print("Collecting MLP activations for MSE...")
-    mlp_activations = get_mlp_activations(base_model, batches)
+    for dict_label in args.dict_sizes:
+        print(f"\n{'='*80}")
+        print(f"  Evaluating {dict_label} models")
+        print(f"{'='*80}")
 
-    # Evaluate 4k transcoders
-    tc_points_4k = []
-    for top_k in sorted(tc_paths_4k.keys()):
-        layer_paths = tc_paths_4k[top_k]
-        transcoders = {l: load_transcoder(layer_paths[l], DEVICE) for l in LAYERS}
-        for tc in transcoders.values():
-            tc.to(DEVICE)
+        if not args.skip_download:
+            print(f"\nDownloading {dict_label} artifacts...")
+            models = download_artifacts(dict_label)
+        else:
+            # Discover from cache
+            models = {}
+            print("Skipping download, discovering from cache...")
 
-        print(f"\nEvaluating TC 4k k={top_k}...")
-        result = eval_transcoder_batchtopk(base_model, transcoders, batches, mlp_activations)
-        result["top_k"] = top_k
-        result.update(compute_x_values("Transcoders", result, d_in, d_out, d_hidden))
-        tc_points_4k.append(result)
-        print(f"  L0={result['l0']:.1f}, CE={result['ce']:.4f}, MSE={result['mse']:.6f}")
+        results = []
 
-    # Evaluate 32k transcoders
-    tc_points_32k = []
-    for top_k in sorted(tc_paths_32k.keys()):
-        layer_paths = tc_paths_32k[top_k]
-        transcoders = {l: load_transcoder(layer_paths[l], DEVICE) for l in LAYERS}
-        for tc in transcoders.values():
-            tc.to(DEVICE)
+        # Evaluate TC models
+        tc_models = sorted([(m, k, p) for (t, m, k), p in models.items() if t == "tc"], key=lambda x: (x[0], x[1]))
+        print(f"\nFound {len(tc_models)} TC model sets")
+        for mode, k, layer_paths in tc_models:
+            print(f"\n--- TC {mode} k={k} ---")
+            transcoders = {layer: load_transcoder(layer_paths[layer], DEVICE) for layer in LAYERS}
 
-        print(f"\nEvaluating TC 32k k={top_k}...")
-        result = eval_transcoder_batchtopk(base_model, transcoders, batches, mlp_activations)
-        result["top_k"] = top_k
-        result.update(compute_x_values("Transcoders", result, d_in, d_out, d_hidden))
-        tc_points_32k.append(result)
-        print(f"  L0={result['l0']:.1f}, CE={result['ce']:.4f}, MSE={result['mse']:.6f}")
+            l0 = compute_tc_l0(transcoders, base_model, batches)
+            ce_cascading = eval_tc_all_cascading(base_model, transcoders, batches)
+            ce_parallel = eval_tc_all_parallel(base_model, transcoders, batches)
+            ce_single = eval_tc_single_mlp(base_model, transcoders, batches)
 
-    # Evaluate 4k CLTs
-    clt_points_4k = []
-    for top_k, path in clt_paths_4k:
-        clt = load_clt(path, DEVICE)
-        clt.to(DEVICE)
+            print(f"  L0={l0:.1f}  casc={ce_cascading:.4f} ({ce_cascading-baseline_ce:+.4f})  "
+                  f"para={ce_parallel:.4f} ({ce_parallel-baseline_ce:+.4f})  "
+                  f"single={ce_single:.4f} ({ce_single-baseline_ce:+.4f})")
 
-        print(f"\nEvaluating CLT 4k k={top_k}...")
-        result = eval_clt_batchtopk(base_model, clt, batches, mlp_activations)
-        result["top_k"] = top_k
-        result.update(compute_x_values("CLT", result, d_in, d_out, d_hidden))
-        clt_points_4k.append(result)
-        print(f"  L0={result['l0']:.1f}, CE={result['ce']:.4f}, MSE={result['mse']:.6f}")
+            results.append({
+                "type": "tc", "mode": mode, "top_k": k, "l0": l0,
+                "ce_cascading": ce_cascading, "ce_parallel": ce_parallel, "ce_single": ce_single,
+            })
+            del transcoders; torch.cuda.empty_cache()
 
-    # Evaluate 32k CLTs
-    clt_points_32k = []
-    for top_k, path in clt_paths_32k:
-        clt = load_clt(path, DEVICE)
-        clt.to(DEVICE)
+        # Evaluate CLT models
+        clt_models = sorted([(m, k, p) for (t, m, k), p in models.items() if t == "clt"], key=lambda x: (x[0], x[1]))
+        print(f"\nFound {len(clt_models)} CLT models")
+        for mode, k, path in clt_models:
+            print(f"\n--- CLT {mode} k={k} ---")
+            clt = load_clt(path, DEVICE)
 
-        print(f"\nEvaluating CLT 32k k={top_k}...")
-        result = eval_clt_batchtopk(base_model, clt, batches, mlp_activations)
-        result["top_k"] = top_k
-        result.update(compute_x_values("CLT", result, d_in, d_out, d_hidden))
-        clt_points_32k.append(result)
-        print(f"  L0={result['l0']:.1f}, CE={result['ce']:.4f}, MSE={result['mse']:.6f}")
+            l0 = compute_clt_l0(clt, base_model, batches)
+            ce_cascading = eval_clt_all_cascading(base_model, clt, batches)
+            ce_parallel = eval_clt_all_parallel(base_model, clt, batches)
+            ce_single = eval_clt_single_mlp(base_model, clt, batches)
 
-    # Evaluate VPD
-    vpd_points = []
-    for threshold, label in [(0.5, "CI>0.5"), (0.1, "CI>0.1"), (0.0, "CI>0")]:
-        print(f"\nEvaluating VPD ({label})...")
-        result = eval_vpd_thresholded(vpd_model, batches, all_module_names, mlp_activations, threshold)
-        result["threshold"] = threshold
-        result.update(compute_x_values("VPD", result, d_in, d_out, d_hidden))
-        vpd_points.append(result)
-        print(f"  L0={result['l0']:.1f}, CE={result['ce']:.4f}, MSE={result['mse']:.6f}")
+            print(f"  L0={l0:.1f}  casc={ce_cascading:.4f} ({ce_cascading-baseline_ce:+.4f})  "
+                  f"para={ce_parallel:.4f} ({ce_parallel-baseline_ce:+.4f})  "
+                  f"single={ce_single:.4f} ({ce_single-baseline_ce:+.4f})")
 
-    # Evaluate neurons
-    neuron_points = []
-    for k in args.neuron_ks:
-        print(f"\nEvaluating Neuron top-k={k}...")
-        result = eval_neuron_topk(base_model, batches, mlp_activations, k)
-        result["top_k"] = k
-        result.update(compute_x_values("Neurons", result, d_in, d_out, d_hidden))
-        neuron_points.append(result)
-        print(f"  L0={result['l0']:.1f}, CE={result['ce']:.4f}, MSE={result['mse']:.6f}")
+            results.append({
+                "type": "clt", "mode": mode, "top_k": k, "l0": l0,
+                "ce_cascading": ce_cascading, "ce_parallel": ce_parallel, "ce_single": ce_single,
+            })
+            del clt; torch.cuda.empty_cache()
 
-    all_points = {
-        "PLT (4k)": tc_points_4k,
-        "PLT (32k)": tc_points_32k,
-        "CLT (4k)": clt_points_4k,
-        "CLT (32k)": clt_points_32k,
-        "VPD (CI>0.5)": [vpd_points[0]],
-        "VPD (CI>0.1)": [vpd_points[1]],
-        "VPD (CI>0)": [vpd_points[2]],
-        "Neurons": neuron_points,
-    }
+        # VPD
+        vpd_results = []
+        if not args.skip_vpd:
+            print("\nLoading VPD model...")
+            vpd_model, _ = load_vpd_model(VPD_BASELINE_RUN)
+            vpd_model.to(DEVICE)
+            all_module_names = [f"h.{l}.mlp.c_fc" for l in LAYERS] + [f"h.{l}.mlp.down_proj" for l in LAYERS]
 
-    # Save data for --plot-only reruns
-    with open(OUTPUT_DIR / "pareto_data.json", "w") as f:
-        json.dump({"all_points": all_points, "baselines": baselines}, f, indent=2, default=str)
+            for threshold in args.vpd_thresholds:
+                label = f"CI>{threshold}"
+                print(f"\n--- VPD ({label}) ---")
+                ce_cascading, l0 = eval_vpd_all(vpd_model, batches, all_module_names, threshold)
+                ce_parallel = eval_vpd_all_parallel(vpd_model, batches, all_module_names, threshold)
+                ce_single = eval_vpd_single_mlp(vpd_model, batches, threshold)
+                print(f"  L0={l0:.1f}  casc={ce_cascading:.4f} ({ce_cascading-baseline_ce:+.4f})  "
+                      f"para={ce_parallel:.4f} ({ce_parallel-baseline_ce:+.4f})  "
+                      f"single={ce_single:.4f} ({ce_single-baseline_ce:+.4f})")
+                vpd_results.append({
+                    "type": "vpd", "mode": label, "threshold": threshold, "l0": l0,
+                    "ce_all": ce_cascading, "ce_cascading": ce_cascading,
+                    "ce_parallel": ce_parallel, "ce_single": ce_single,
+                })
+            del vpd_model; torch.cuda.empty_cache()
 
-    plot_pareto_combined(
-        all_points, baselines, AXIS_CONFIGS,
-        y_key="ce", ylabel="CE degradation (\u03b4 from baseline)",
-        save_path=str(OUTPUT_DIR / "pareto_combined_combined_ce.png"),
-    )
+        # Save results
+        output_path = OUTPUT_DIR / f"results_{dict_label}.json"
+        with open(output_path, "w") as f:
+            json.dump({"baseline_ce": baseline_ce, "results": results, "vpd_results": vpd_results}, f, indent=2)
+        print(f"\nResults saved to {output_path}")
 
-    # Print summary table
-    print("\n" + "=" * 80)
-    print("Summary (per-component L0)")
-    print(f"{'Method':<20} {'k':>6} {'L0':>8} {'CE':>10} {'MSE':>12}")
-    print("-" * 60)
-    for label, pts in [("PLT (4k)", tc_points_4k), ("PLT (32k)", tc_points_32k),
-                       ("CLT (4k)", clt_points_4k), ("CLT (32k)", clt_points_32k)]:
-        for p in pts:
-            print(f"{label:<20} {p['top_k']:>6} {p['l0']:>8.1f} {p['ce']:>10.4f} {p['mse']:>12.6f}")
-    for p in vpd_points:
-        label = f"VPD (CI>{p['threshold']})"
-        print(f"{label:<20} {'':>6} {p['l0']:>8.1f} {p['ce']:>10.4f} {p['mse']:>12.6f}")
-    for p in neuron_points:
-        print(f"{'Neurons':<20} {p['top_k']:>6} {p['l0']:>8.1f} {p['ce']:>10.4f} {p['mse']:>12.6f}")
+        # Summary table
+        print(f"\n{'Model':<25} {'k':>4} {'L0':>6}  {'Casc':>10}  {'Para':>10}  {'Single':>10}  | {'Δ Casc':>8}  {'Δ Para':>8}  {'Δ Sing':>8}")
+        print("-" * 100)
+        for r in results:
+            label = f"{r['type']}_{r['mode']}"
+            k_str = str(r['top_k']) if r['top_k'] is not None else "?"
+            print(f"{label:<25} {k_str:>4} {r['l0']:>6.1f}"
+                  f"  {r['ce_cascading']:>10.4f}  {r['ce_parallel']:>10.4f}  {r['ce_single']:>10.4f}"
+                  f"  | {r['ce_cascading']-baseline_ce:>8.4f}  {r['ce_parallel']-baseline_ce:>8.4f}  {r['ce_single']-baseline_ce:>8.4f}")
+        for r in vpd_results:
+            label = f"vpd_{r['mode']}"
+            print(f"{label:<25} {'':>4} {r['l0']:>6.1f}"
+                  f"  {r['ce_cascading']:>10.4f}  {r['ce_parallel']:>10.4f}  {r['ce_single']:>10.4f}"
+                  f"  | {r['ce_cascading']-baseline_ce:>8.4f}  {r['ce_parallel']-baseline_ce:>8.4f}  {r['ce_single']-baseline_ce:>8.4f}")
+        print(f"\nBaseline CE: {baseline_ce:.4f}")
 
 
 if __name__ == "__main__":

@@ -33,8 +33,8 @@ and is auto-downloaded on first use.
 │   ├── llm_base_model/                   # auto-populated cache (gitignored)
 │   ├── train_local_mse/                  # PLT + CLT local-MSE training (4k or 32k)
 │   ├── train_e2e/                        # PLT + CLT end-to-end training (4k or 32k)
-│   ├── pareto_plot_local/                # local-MSE Pareto plot (CE / L0)
-│   ├── pareto_plot_e2e/                  # end-to-end Pareto plot (CE / MSE vs capacity)
+│   ├── pareto_plot_local/                # local-MSE Pareto plot (CE / MSE vs capacity)
+│   ├── pareto_plot_e2e/                  # end-to-end Pareto plot (CE / L0)
 │   ├── alive_subcomponents/              # alive-subcomponent scaling figure
 │   └── feature_splitting_heatmap/        # cross-model feature-splitting heatmaps
 ├── setup_env.sh
@@ -78,8 +78,8 @@ above), run each experiment from the repository root:
 
 | Figure | Script | Output JSON | Wall-clock |
 |---|---|---|---|
-| Local-MSE Pareto | `python experiments/pareto_plot_local/pareto_plot_local.py` then `python experiments/pareto_plot_local/plot.py` | `pareto_plot_local/output/results_{4k,32k}.json` | ≈ 20 min |
-| End-to-end Pareto | `python experiments/pareto_plot_e2e/pareto_plot_e2e.py` | `pareto_plot_e2e/output/pareto_data.json` | ≈ 30 min |
+| Local-MSE Pareto | `python experiments/pareto_plot_local/pareto_plot_local.py` | `pareto_plot_local/output/pareto_data.json` | ≈ 30 min |
+| End-to-end Pareto | `python experiments/pareto_plot_e2e/pareto_plot_e2e.py` then `python experiments/pareto_plot_e2e/plot.py` | `pareto_plot_e2e/output/results_{4k,32k}.json` | ≈ 20 min |
 | Alive-subcomponent scaling | `python experiments/alive_subcomponents/alive_subcomponents.py` | `alive_subcomponents/output/alive_line_data.json` | ≈ 15 min |
 | Feature-splitting heatmaps | `python experiments/feature_splitting_heatmap/feature_splitting_heatmap.py` | `feature_splitting_heatmap/output/heatmap_data_{input,output,matrix}_t0p5.json` | ≈ 25 min |
 
