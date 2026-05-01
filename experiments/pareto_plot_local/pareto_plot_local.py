@@ -43,7 +43,7 @@ from nn_decompositions.eval_utils import (
     patched_forward,
 )
 from nn_decompositions.transcoder import BatchTopKTranscoder  # for type hints
-from nn_decompositions.paper_runs import (
+from experiments.paper_runs import (
     JOSE_BASE_MODEL,
     JOSE_BASE_MODEL_CACHE,
     PROJECT_E2E_4K,

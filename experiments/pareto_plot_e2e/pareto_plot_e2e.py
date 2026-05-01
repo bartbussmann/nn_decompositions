@@ -36,7 +36,7 @@ from nn_decompositions.eval_utils import (
     load_transcoder,
     patched_forward,
 )
-from nn_decompositions.paper_runs import SPD_BASELINE_RUN
+from experiments.paper_runs import SPD_BASELINE_RUN
 from nn_decompositions.clt import CrossLayerTranscoder  # for type hints
 from spd.models.components import make_mask_infos
 

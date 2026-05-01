@@ -27,9 +27,9 @@ and is auto-downloaded on first use.
 │   ├── activation_store.py
 │   ├── training.py
 │   ├── logs.py
-│   ├── eval_utils.py                     # shared helpers (data, hooks, CE, model loaders)
-│   └── paper_runs.py                     # wandb / SPD run-IDs used in the paper
+│   └── eval_utils.py                     # shared helpers (data, hooks, CE, model loaders)
 ├── experiments/
+│   ├── paper_runs.py                     # wandb / SPD run-IDs used in the paper
 │   ├── jose_base_model/                  # auto-populated cache (gitignored)
 │   ├── jose_training_runs.md             # wandb run-id table for every PLT/CLT
 │   ├── train_local_mse/                  # PLT + CLT local-MSE training (4k or 32k)
@@ -106,7 +106,7 @@ These are loaded via `nn_decompositions.eval_utils.load_spd_model` and
 require the [SPD repository](https://github.com/goodfire-ai/spd) on the
 branch installed by `setup_env.sh`. All run IDs (SPD baselines, headline
 PLT/CLT runs, base-model path, wandb projects) live in
-`nn_decompositions/paper_runs.py` — edit there to swap in your own
+`experiments/paper_runs.py` — edit there to swap in your own
 checkpoints.
 
 ## License

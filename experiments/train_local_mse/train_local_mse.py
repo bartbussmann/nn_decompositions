@@ -27,7 +27,7 @@ load_dotenv()
 import torch
 
 from nn_decompositions.eval_utils import get_free_gpus
-from nn_decompositions.paper_runs import (
+from experiments.paper_runs import (
     JOSE_BASE_MODEL,
     JOSE_BASE_MODEL_CACHE,
     LOCAL_PROJECT_BY_DICT_SIZE as PROJECT_BY_DICT_SIZE,

@@ -62,7 +62,7 @@ from nn_decompositions.eval_utils import (
     load_spd_model,
     load_transcoder,
 )
-from nn_decompositions.paper_runs import (
+from experiments.paper_runs import (
     HEADLINE_CLT_RUNS,
     HEADLINE_TC_RUNS,
     SPD_BASELINE_RUN,
