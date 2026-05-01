@@ -32,4 +32,4 @@ Thumbs.db
 
 # Auto-populated caches
 experiments/jose_base_model/
-experiments/cross_model_heatmaps/output/direction_cache/
+experiments/feature_splitting_heatmap/output/direction_cache/

@@ -5,8 +5,8 @@ PLT (BatchTopK Transcoders) and CLTs at both 4k and 32k dict sizes,
 overlaid with SPD baselines (three CI thresholds) and the neuron baseline.
 
 Usage:
-    python experiments/pareto_plot/pareto_plot.py
-    python experiments/pareto_plot/pareto_plot.py --plot-only
+    python experiments/pareto_plot_e2e/pareto_plot_e2e.py
+    python experiments/pareto_plot_e2e/pareto_plot_e2e.py --plot-only
 """
 
 import argparse
@@ -39,7 +39,7 @@ from spd.models.components import make_mask_infos
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 LAYERS = [0, 1, 2, 3]
 
-OUTPUT_DIR = Path("experiments/pareto_plot/output")
+OUTPUT_DIR = Path("experiments/pareto_plot_e2e/output")
 
 
 # =============================================================================

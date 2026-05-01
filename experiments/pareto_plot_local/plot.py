@@ -1,11 +1,11 @@
-"""Plot results from eval_ce_l0.py.
+"""Plot the local Pareto figure from `pareto_plot_local.py`'s output JSON.
 
 Produces a 1x3 three-panel figure per dict_size: one subplot per eval mode
 (cascading / parallel / single-MLP), showing CE degradation vs L0.
 
 Usage:
-    python experiments/eval_ce_l0/plot_ce_l0.py
-    python experiments/eval_ce_l0/plot_ce_l0.py --dict_sizes 4k
+    python experiments/pareto_plot_local/plot.py
+    python experiments/pareto_plot_local/plot.py --dict_sizes 4k
 """
 
 import argparse
@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.lines import Line2D
 
-OUTPUT_DIR = Path("experiments/eval_ce_l0/output")
+OUTPUT_DIR = Path("experiments/pareto_plot_local/output")
 
 plt.rcParams.update({
     "font.family": "serif",

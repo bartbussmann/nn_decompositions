@@ -35,10 +35,10 @@ and is auto-downloaded on first use.
 │   ├── train_local_mse/                  # PLT + CLT local-MSE training (4k or 32k)
 │   ├── train_e2e_4k/                     # PLT + CLT end-to-end training (4k)
 │   ├── train_e2e_32k/                    # PLT + CLT end-to-end training (32k)
-│   ├── eval_ce_l0/                       # CE / L0 evaluation + figure
-│   ├── pareto_plot/                      # Pareto plot (CE / MSE vs capacity)
+│   ├── pareto_plot_local/                # local-MSE Pareto plot (CE / L0)
+│   ├── pareto_plot_e2e/                  # end-to-end Pareto plot (CE / MSE vs capacity)
 │   ├── alive_subcomponents/              # alive-subcomponent scaling figure
-│   └── cross_model_heatmaps/             # cross-model feature-matching heatmaps
+│   └── feature_splitting_heatmap/        # cross-model feature-splitting heatmaps
 ├── setup_env.sh
 └── pyproject.toml
 ```
@@ -77,10 +77,10 @@ above), run each experiment from the repository root:
 
 | Figure | Script | Wall-clock |
 |---|---|---|
-| CE / L0 evaluation | `python experiments/eval_ce_l0/eval_ce_l0.py` then `python experiments/eval_ce_l0/plot_ce_l0.py` | ≈ 20 min |
-| Pareto plot | `python experiments/pareto_plot/pareto_plot.py` | ≈ 30 min |
+| Local-MSE Pareto | `python experiments/pareto_plot_local/pareto_plot_local.py` then `python experiments/pareto_plot_local/plot.py` | ≈ 20 min |
+| End-to-end Pareto | `python experiments/pareto_plot_e2e/pareto_plot_e2e.py` | ≈ 30 min |
 | Alive-subcomponent scaling | `python experiments/alive_subcomponents/alive_subcomponents.py` | ≈ 15 min |
-| Cross-model heatmaps | `python experiments/cross_model_heatmaps/cross_model_heatmaps.py` | ≈ 25 min |
+| Feature-splitting heatmaps | `python experiments/feature_splitting_heatmap/feature_splitting_heatmap.py` | ≈ 25 min |
 
 Each script supports `--plot-only` to re-render figures from the cached
 JSON in its `output/` directory without re-running the heavy compute.
@@ -92,7 +92,7 @@ extraction.
 
 ## Reference VPD checkpoints
 
-`pareto_plot`, `alive_subcomponents`, and `cross_model_heatmaps` also load four VPD (SPD) checkpoints from
+`pareto_plot_local`, `pareto_plot_e2e`, `alive_subcomponents`, and `feature_splitting_heatmap` also load four VPD (SPD) checkpoints from
 the public `goodfire/spd` wandb project:
 
 | Capacity | wandb run |

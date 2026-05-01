@@ -1,4 +1,4 @@
-"""CE / L0 evaluation of trained PLTs and CLTs on jose's target model.
+"""Local Pareto: CE / L0 evaluation of trained PLTs and CLTs on jose's target model.
 
 For each trained PLT (BatchTopK Transcoder) and CLT — at dict_size 4k
 and 32k, both local-MSE and end-to-end KL — patch the base model's MLPs
@@ -9,12 +9,12 @@ with the model's reconstructions and report:
 Also evaluates SPD baselines at three CI thresholds (0.5, 0.1, 0.0).
 
 Results land in `output/results_4k.json` and `output/results_32k.json`,
-which `plot_ce_l0.py` then turns into a publication figure.
+which `plot.py` then turns into the local Pareto figure.
 
 Usage:
-    python experiments/eval_ce_l0/eval_ce_l0.py
-    python experiments/eval_ce_l0/eval_ce_l0.py --dict_sizes 4k
-    python experiments/eval_ce_l0/eval_ce_l0.py --skip_spd
+    python experiments/pareto_plot_local/pareto_plot_local.py
+    python experiments/pareto_plot_local/pareto_plot_local.py --dict_sizes 4k
+    python experiments/pareto_plot_local/pareto_plot_local.py --skip_spd
 """
 
 import json
@@ -44,7 +44,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 LAYERS = [0, 1, 2, 3]
 JOSE_MODEL_CACHE = Path("experiments/jose_base_model")
 CHECKPOINT_DIR = Path("checkpoints/jose_v2")
-OUTPUT_DIR = Path("experiments/eval_ce_l0/output")
+OUTPUT_DIR = Path("experiments/pareto_plot_local/output")
 
 PROJECTS = {
     "4k": {
