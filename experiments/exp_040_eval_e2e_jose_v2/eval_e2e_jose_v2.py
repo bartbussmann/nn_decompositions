@@ -348,6 +348,59 @@ def eval_spd_all(spd_model, batches, module_names, threshold) -> tuple[float, fl
 
 
 @torch.no_grad()
+def eval_spd_all_parallel(spd_model, batches, module_names, threshold) -> float:
+    """Clean-input SPD: compute masked MLP outputs from clean residual streams."""
+    from spd.models.components import make_mask_infos
+    base_model = spd_model.target_model
+    total_ce = 0.0
+    for input_ids in batches:
+        # Get clean MLP inputs from original model
+        clean_inputs = _collect_rms2_outputs(base_model, input_ids)
+
+        # Compute CI from clean forward pass
+        out = spd_model(input_ids, cache_type="input")
+        ci = spd_model.calc_causal_importances(out.cache, sampling="continuous")
+        masks = {m: (ci.lower_leaky[m] > threshold).float() for m in module_names}
+        mask_infos = make_mask_infos(masks)
+
+        # For each layer, compute masked MLP output from clean input
+        recons = {}
+        for layer_idx in LAYERS:
+            x = clean_inputs[layer_idx]  # (batch, seq, d_model)
+            cfc_name = f"h.{layer_idx}.mlp.c_fc"
+            down_name = f"h.{layer_idx}.mlp.down_proj"
+
+            cfc_components = spd_model.components[cfc_name]
+            down_components = spd_model.components[down_name]
+
+            # c_fc: x -> hidden (with mask)
+            hidden = cfc_components(
+                x, mask=mask_infos[cfc_name].component_mask,
+                weight_delta_and_mask=mask_infos[cfc_name].weight_delta_and_mask,
+            )
+            # GELU activation
+            hidden = base_model.h[layer_idx].mlp.gelu(hidden)
+            # down_proj: hidden -> output (with mask)
+            mlp_out = down_components(
+                hidden, mask=mask_infos[down_name].component_mask,
+                weight_delta_and_mask=mask_infos[down_name].weight_delta_and_mask,
+            )
+            recons[layer_idx] = mlp_out
+
+        # Patch MLPs and compute CE
+        def _make_const(tensor):
+            return lambda *a, **kw: tensor
+
+        with ExitStack() as stack:
+            for layer_idx in LAYERS:
+                stack.enter_context(patched_forward(
+                    base_model.h[layer_idx].mlp, _make_const(recons[layer_idx])
+                ))
+            total_ce += compute_ce_loss(base_model, input_ids)
+    return total_ce / len(batches)
+
+
+@torch.no_grad()
 def eval_spd_single_mlp(spd_model, batches, threshold) -> float:
     from spd.models.components import make_mask_infos
     total_ce = 0.0
@@ -454,7 +507,7 @@ def main():
     parser.add_argument("--n_eval_batches", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--seq_len", type=int, default=512)
-    parser.add_argument("--spd_thresholds", type=float, nargs="+", default=[0.5, 0.0])
+    parser.add_argument("--spd_thresholds", type=float, nargs="+", default=[0.5, 0.1, 0.0])
     parser.add_argument("--skip_spd", action="store_true")
     parser.add_argument("--skip_download", action="store_true")
     args = parser.parse_args()
@@ -553,13 +606,16 @@ def main():
             for threshold in args.spd_thresholds:
                 label = f"CI>{threshold}"
                 print(f"\n--- SPD ({label}) ---")
-                ce_all, l0 = eval_spd_all(spd_model, batches, all_module_names, threshold)
+                ce_cascading, l0 = eval_spd_all(spd_model, batches, all_module_names, threshold)
+                ce_parallel = eval_spd_all_parallel(spd_model, batches, all_module_names, threshold)
                 ce_single = eval_spd_single_mlp(spd_model, batches, threshold)
-                print(f"  L0={l0:.1f}  all={ce_all:.4f} ({ce_all-baseline_ce:+.4f})  "
+                print(f"  L0={l0:.1f}  casc={ce_cascading:.4f} ({ce_cascading-baseline_ce:+.4f})  "
+                      f"para={ce_parallel:.4f} ({ce_parallel-baseline_ce:+.4f})  "
                       f"single={ce_single:.4f} ({ce_single-baseline_ce:+.4f})")
                 spd_results.append({
                     "type": "jose", "mode": label, "threshold": threshold, "l0": l0,
-                    "ce_all": ce_all, "ce_single": ce_single,
+                    "ce_all": ce_cascading, "ce_cascading": ce_cascading,
+                    "ce_parallel": ce_parallel, "ce_single": ce_single,
                 })
             del spd_model; torch.cuda.empty_cache()
 
@@ -581,8 +637,8 @@ def main():
         for r in spd_results:
             label = f"spd_{r['mode']}"
             print(f"{label:<25} {'':>4} {r['l0']:>6.1f}"
-                  f"  {'n/a':>10}  {r['ce_all']:>10.4f}  {r['ce_single']:>10.4f}"
-                  f"  | {'n/a':>8}  {r['ce_all']-baseline_ce:>8.4f}  {r['ce_single']-baseline_ce:>8.4f}")
+                  f"  {r['ce_cascading']:>10.4f}  {r['ce_parallel']:>10.4f}  {r['ce_single']:>10.4f}"
+                  f"  | {r['ce_cascading']-baseline_ce:>8.4f}  {r['ce_parallel']-baseline_ce:>8.4f}  {r['ce_single']-baseline_ce:>8.4f}")
         print(f"\nBaseline CE: {baseline_ce:.4f}")
 
 

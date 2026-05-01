@@ -1,0 +1,203 @@
+{
+  "baseline_ce": 2.6283206143340125,
+  "spd_per_token_threshold": 0.1,
+  "alive_threshold": 1e-06,
+  "spd": [
+    {
+      "label": "0.5x",
+      "total": 13312,
+      "alive": 6489,
+      "ce": 2.9923652723187306,
+      "l0": 16.306937045738344,
+      "alive_per_module": {
+        "h.0.mlp.c_fc": {
+          "alive": 1226,
+          "total": 1536
+        },
+        "h.0.mlp.down_proj": {
+          "alive": 1138,
+          "total": 1792
+        },
+        "h.1.mlp.c_fc": {
+          "alive": 401,
+          "total": 1536
+        },
+        "h.1.mlp.down_proj": {
+          "alive": 395,
+          "total": 1792
+        },
+        "h.2.mlp.c_fc": {
+          "alive": 427,
+          "total": 1536
+        },
+        "h.2.mlp.down_proj": {
+          "alive": 578,
+          "total": 1792
+        },
+        "h.3.mlp.c_fc": {
+          "alive": 918,
+          "total": 1536
+        },
+        "h.3.mlp.down_proj": {
+          "alive": 1406,
+          "total": 1792
+        }
+      }
+    },
+    {
+      "label": "1x (jose)",
+      "total": 26624,
+      "alive": 6507,
+      "ce": 3.0547881634508975,
+      "l0": 15.055422673459912,
+      "alive_per_module": {
+        "h.0.mlp.c_fc": {
+          "alive": 1380,
+          "total": 3072
+        },
+        "h.0.mlp.down_proj": {
+          "alive": 1133,
+          "total": 3584
+        },
+        "h.1.mlp.c_fc": {
+          "alive": 251,
+          "total": 3072
+        },
+        "h.1.mlp.down_proj": {
+          "alive": 211,
+          "total": 3584
+        },
+        "h.2.mlp.c_fc": {
+          "alive": 292,
+          "total": 3072
+        },
+        "h.2.mlp.down_proj": {
+          "alive": 359,
+          "total": 3584
+        },
+        "h.3.mlp.c_fc": {
+          "alive": 1031,
+          "total": 3072
+        },
+        "h.3.mlp.down_proj": {
+          "alive": 1850,
+          "total": 3584
+        }
+      }
+    },
+    {
+      "label": "2x",
+      "total": 53248,
+      "alive": 7187,
+      "ce": 3.0620778369121866,
+      "l0": 14.927436953685323,
+      "alive_per_module": {
+        "h.0.mlp.c_fc": {
+          "alive": 1306,
+          "total": 6144
+        },
+        "h.0.mlp.down_proj": {
+          "alive": 1390,
+          "total": 7168
+        },
+        "h.1.mlp.c_fc": {
+          "alive": 184,
+          "total": 6144
+        },
+        "h.1.mlp.down_proj": {
+          "alive": 186,
+          "total": 7168
+        },
+        "h.2.mlp.c_fc": {
+          "alive": 208,
+          "total": 6144
+        },
+        "h.2.mlp.down_proj": {
+          "alive": 340,
+          "total": 7168
+        },
+        "h.3.mlp.c_fc": {
+          "alive": 1105,
+          "total": 6144
+        },
+        "h.3.mlp.down_proj": {
+          "alive": 2468,
+          "total": 7168
+        }
+      }
+    },
+    {
+      "label": "4x",
+      "total": 106496,
+      "alive": 6520,
+      "ce": 3.0480643344707175,
+      "l0": 16.193724085073,
+      "alive_per_module": {
+        "h.0.mlp.c_fc": {
+          "alive": 1192,
+          "total": 12288
+        },
+        "h.0.mlp.down_proj": {
+          "alive": 1142,
+          "total": 14336
+        },
+        "h.1.mlp.c_fc": {
+          "alive": 189,
+          "total": 12288
+        },
+        "h.1.mlp.down_proj": {
+          "alive": 224,
+          "total": 14336
+        },
+        "h.2.mlp.c_fc": {
+          "alive": 262,
+          "total": 12288
+        },
+        "h.2.mlp.down_proj": {
+          "alive": 442,
+          "total": 14336
+        },
+        "h.3.mlp.c_fc": {
+          "alive": 675,
+          "total": 12288
+        },
+        "h.3.mlp.down_proj": {
+          "alive": 2394,
+          "total": 14336
+        }
+      }
+    }
+  ],
+  "tc": [
+    {
+      "dict_size": 4096,
+      "total": 16384,
+      "alive": 10229,
+      "ce": 3.649271945484349,
+      "l0": 16.0
+    },
+    {
+      "dict_size": 32768,
+      "total": 131072,
+      "alive": 58765,
+      "ce": 3.2598446461020925,
+      "l0": 16.0
+    }
+  ],
+  "clt": [
+    {
+      "dict_size": 4096,
+      "total": 16384,
+      "alive": 10827,
+      "ce": 3.513697332046071,
+      "l0": 16.0
+    },
+    {
+      "dict_size": 32768,
+      "total": 131072,
+      "alive": 61085,
+      "ce": 3.2978377361766626,
+      "l0": 16.0
+    }
+  ]
+}

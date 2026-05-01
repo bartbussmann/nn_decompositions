@@ -89,13 +89,60 @@ Training mode: end-to-end KL divergence on logits. Three TC modes (cascading, pa
 | [clt_parallel_k32](https://wandb.ai/mats-sprint/pile_e2e_sweep_jose_32k/runs/a05z1kta) | CLT | parallel | 32768 | 32 | **running** | 0 |
 | [clt_parallel_k64](https://wandb.ai/mats-sprint/pile_e2e_sweep_jose_32k/runs/juotwt3p) | CLT | parallel | 32768 | 64 | **running** | 0 |
 
+## Multi-Seed Training (Stability Analysis)
+
+Training mode: 5 seeds × 4 modes, k=16, 4k dict. For comparison with SPD component stability.
+
+### [pile_multiseed_jose2](https://wandb.ai/mats-sprint/pile_multiseed_jose2)
+
+**Transcoders (local MSE)**
+
+| Run | Type | Dict Size | Top-k | Seed | Status |
+|-----|------|-----------|-------|------|--------|
+| [local_mse_k16_seed0](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/mrwfwu8f) | Transcoder | 4096 | 16 | 0 | finished |
+| [local_mse_k16_seed1](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/g79l9mdy) | Transcoder | 4096 | 16 | 1 | finished |
+| [local_mse_k16_seed2](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/4aye18d8) | Transcoder | 4096 | 16 | 2 | finished |
+| [local_mse_k16_seed3](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/jos97f9i) | Transcoder | 4096 | 16 | 3 | finished |
+| [local_mse_k16_seed4](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/qy13k51o) | Transcoder | 4096 | 16 | 4 | finished |
+
+**Transcoders (e2e independent)**
+
+| Run | Type | Dict Size | Top-k | Seed | Status |
+|-----|------|-----------|-------|------|--------|
+| [e2e_independent_k16_seed0](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/z9567vuy) | Transcoder | 4096 | 16 | 0 | finished |
+| [e2e_independent_k16_seed1](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/kxpwcbdx) | Transcoder | 4096 | 16 | 1 | finished |
+| [e2e_independent_k16_seed2](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/abat1svk) | Transcoder | 4096 | 16 | 2 | finished |
+| [e2e_independent_k16_seed3](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/uuboaw36) | Transcoder | 4096 | 16 | 3 | finished |
+| [e2e_independent_k16_seed4](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/xbusz9qi) | Transcoder | 4096 | 16 | 4 | finished |
+
+**CLTs (local MSE)**
+
+| Run | Type | Dict Size | Top-k | Seed | Status |
+|-----|------|-----------|-------|------|--------|
+| [clt_local_mse_k16_seed0](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/17sbdath) | CLT | 4096 | 16 | 0 | finished |
+| [clt_local_mse_k16_seed1](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/xmzt89pl) | CLT | 4096 | 16 | 1 | finished |
+| [clt_local_mse_k16_seed2](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/tqyguqn0) | CLT | 4096 | 16 | 2 | finished |
+| [clt_local_mse_k16_seed3](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/ft6ljijh) | CLT | 4096 | 16 | 3 | finished |
+| [clt_local_mse_k16_seed4](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/iajwsefm) | CLT | 4096 | 16 | 4 | finished |
+
+**CLTs (e2e parallel)**
+
+| Run | Type | Dict Size | Top-k | Seed | Status |
+|-----|------|-----------|-------|------|--------|
+| [clt_e2e_parallel_k16_seed0](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/wf7mbave) | CLT | 4096 | 16 | 0 | finished |
+| [clt_e2e_parallel_k16_seed1](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/7o579nw1) | CLT | 4096 | 16 | 1 | finished |
+| [clt_e2e_parallel_k16_seed2](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/uj5xomc0) | CLT | 4096 | 16 | 2 | finished |
+| [clt_e2e_parallel_k16_seed3](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/st70dv8u) | CLT | 4096 | 16 | 3 | finished |
+| [clt_e2e_parallel_k16_seed4](https://wandb.ai/mats-sprint/pile_multiseed_jose2/runs/ewotesmm) | CLT | 4096 | 16 | 4 | finished |
+
 ## Summary
 
-| Project | Dict | Training | Finished | Running | Total |
-|---------|------|----------|----------|---------|-------|
-| [pile_local_sweep_jose](https://wandb.ai/mats-sprint/pile_local_sweep_jose) | 4k | local MSE | 8 | 0 | 8 |
-| [pile_local_sweep_jose_32k](https://wandb.ai/mats-sprint/pile_local_sweep_jose_32k) | 32k | local MSE | 7 | 1 | 8 |
-| [pile_e2e_sweep_jose](https://wandb.ai/mats-sprint/pile_e2e_sweep_jose) | 4k | e2e KL | 20 | 0 | 20 |
-| [pile_e2e_sweep_jose_32k](https://wandb.ai/mats-sprint/pile_e2e_sweep_jose_32k) | 32k | e2e KL | 10 | 9 | 19 |
+| Project | Dict | Training | Finished | Running | Failed | Total |
+|---------|------|----------|----------|---------|--------|-------|
+| [pile_local_sweep_jose](https://wandb.ai/mats-sprint/pile_local_sweep_jose) | 4k | local MSE | 8 | 0 | 0 | 8 |
+| [pile_local_sweep_jose_32k](https://wandb.ai/mats-sprint/pile_local_sweep_jose_32k) | 32k | local MSE | 7 | 1 | 0 | 8 |
+| [pile_e2e_sweep_jose](https://wandb.ai/mats-sprint/pile_e2e_sweep_jose) | 4k | e2e KL | 20 | 0 | 0 | 20 |
+| [pile_e2e_sweep_jose_32k](https://wandb.ai/mats-sprint/pile_e2e_sweep_jose_32k) | 32k | e2e KL | 10 | 9 | 0 | 19 |
+| [pile_multiseed_jose2](https://wandb.ai/mats-sprint/pile_multiseed_jose2) | 4k | multi-seed (4 modes × 5 seeds) | 20 | 0 | 0 | 20 |
 
 All runs use: LR=3e-4, batch_size=4096, seq_len=512, 500M tokens, BatchTopK activation.

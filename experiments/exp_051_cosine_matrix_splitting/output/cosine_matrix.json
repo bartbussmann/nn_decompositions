@@ -1,0 +1,354 @@
+{
+  "spd_0.5x": {
+    "h.0.mlp.c_fc": {
+      "alive": 1226,
+      "total": 1536,
+      "mean_max_cosine_matrix": 0.026787981390953064,
+      "mean_max_cosine_encoder": 0.22083373367786407,
+      "mean_max_cosine_decoder": 0.20931173861026764
+    },
+    "h.0.mlp.down_proj": {
+      "alive": 1138,
+      "total": 1792,
+      "mean_max_cosine_matrix": 0.023391911759972572,
+      "mean_max_cosine_encoder": 0.21129655838012695,
+      "mean_max_cosine_decoder": 0.1750202625989914
+    },
+    "h.1.mlp.c_fc": {
+      "alive": 401,
+      "total": 1536,
+      "mean_max_cosine_matrix": 0.03841125965118408,
+      "mean_max_cosine_encoder": 0.186889186501503,
+      "mean_max_cosine_decoder": 0.2614644467830658
+    },
+    "h.1.mlp.down_proj": {
+      "alive": 395,
+      "total": 1792,
+      "mean_max_cosine_matrix": 0.030789323151111603,
+      "mean_max_cosine_encoder": 0.1949463039636612,
+      "mean_max_cosine_decoder": 0.1937171071767807
+    },
+    "h.2.mlp.c_fc": {
+      "alive": 427,
+      "total": 1536,
+      "mean_max_cosine_matrix": 0.025426238775253296,
+      "mean_max_cosine_encoder": 0.2731320559978485,
+      "mean_max_cosine_decoder": 0.14946535229682922
+    },
+    "h.2.mlp.down_proj": {
+      "alive": 578,
+      "total": 1792,
+      "mean_max_cosine_matrix": 0.016478896141052246,
+      "mean_max_cosine_encoder": 0.19180956482887268,
+      "mean_max_cosine_decoder": 0.15787149965763092
+    },
+    "h.3.mlp.c_fc": {
+      "alive": 918,
+      "total": 1536,
+      "mean_max_cosine_matrix": 0.02836264669895172,
+      "mean_max_cosine_encoder": 0.32312971353530884,
+      "mean_max_cosine_decoder": 0.13681937754154205
+    },
+    "h.3.mlp.down_proj": {
+      "alive": 1406,
+      "total": 1792,
+      "mean_max_cosine_matrix": 0.025403128936886787,
+      "mean_max_cosine_encoder": 0.19424855709075928,
+      "mean_max_cosine_decoder": 0.1992335468530655
+    }
+  },
+  "spd_1x": {
+    "h.0.mlp.c_fc": {
+      "alive": 1380,
+      "total": 3072,
+      "mean_max_cosine_matrix": 0.060204483568668365,
+      "mean_max_cosine_encoder": 0.3074190616607666,
+      "mean_max_cosine_decoder": 0.24174804985523224
+    },
+    "h.0.mlp.down_proj": {
+      "alive": 1133,
+      "total": 3584,
+      "mean_max_cosine_matrix": 0.04675300419330597,
+      "mean_max_cosine_encoder": 0.270020991563797,
+      "mean_max_cosine_decoder": 0.2120789885520935
+    },
+    "h.1.mlp.c_fc": {
+      "alive": 251,
+      "total": 3072,
+      "mean_max_cosine_matrix": 0.08394541591405869,
+      "mean_max_cosine_encoder": 0.22261598706245422,
+      "mean_max_cosine_decoder": 0.36494964361190796
+    },
+    "h.1.mlp.down_proj": {
+      "alive": 211,
+      "total": 3584,
+      "mean_max_cosine_matrix": 0.06502409279346466,
+      "mean_max_cosine_encoder": 0.24600021541118622,
+      "mean_max_cosine_decoder": 0.24111154675483704
+    },
+    "h.2.mlp.c_fc": {
+      "alive": 292,
+      "total": 3072,
+      "mean_max_cosine_matrix": 0.04282600060105324,
+      "mean_max_cosine_encoder": 0.30978161096572876,
+      "mean_max_cosine_decoder": 0.1775776743888855
+    },
+    "h.2.mlp.down_proj": {
+      "alive": 359,
+      "total": 3584,
+      "mean_max_cosine_matrix": 0.021426109597086906,
+      "mean_max_cosine_encoder": 0.19814464449882507,
+      "mean_max_cosine_decoder": 0.1817459613084793
+    },
+    "h.3.mlp.c_fc": {
+      "alive": 1031,
+      "total": 3072,
+      "mean_max_cosine_matrix": 0.048366423696279526,
+      "mean_max_cosine_encoder": 0.37904107570648193,
+      "mean_max_cosine_decoder": 0.15989556908607483
+    },
+    "h.3.mlp.down_proj": {
+      "alive": 1850,
+      "total": 3584,
+      "mean_max_cosine_matrix": 0.0499597005546093,
+      "mean_max_cosine_encoder": 0.2455333024263382,
+      "mean_max_cosine_decoder": 0.246883824467659
+    }
+  },
+  "spd_2x": {
+    "h.0.mlp.c_fc": {
+      "alive": 1306,
+      "total": 6144,
+      "mean_max_cosine_matrix": 0.08184182643890381,
+      "mean_max_cosine_encoder": 0.328708678483963,
+      "mean_max_cosine_decoder": 0.294599711894989
+    },
+    "h.0.mlp.down_proj": {
+      "alive": 1390,
+      "total": 7168,
+      "mean_max_cosine_matrix": 0.07203332334756851,
+      "mean_max_cosine_encoder": 0.33026009798049927,
+      "mean_max_cosine_decoder": 0.2430172711610794
+    },
+    "h.1.mlp.c_fc": {
+      "alive": 184,
+      "total": 6144,
+      "mean_max_cosine_matrix": 0.10945100337266922,
+      "mean_max_cosine_encoder": 0.24370479583740234,
+      "mean_max_cosine_decoder": 0.47581931948661804
+    },
+    "h.1.mlp.down_proj": {
+      "alive": 186,
+      "total": 7168,
+      "mean_max_cosine_matrix": 0.08499158918857574,
+      "mean_max_cosine_encoder": 0.27048152685165405,
+      "mean_max_cosine_decoder": 0.2753218412399292
+    },
+    "h.2.mlp.c_fc": {
+      "alive": 208,
+      "total": 6144,
+      "mean_max_cosine_matrix": 0.02949962392449379,
+      "mean_max_cosine_encoder": 0.24490128457546234,
+      "mean_max_cosine_decoder": 0.17330826818943024
+    },
+    "h.2.mlp.down_proj": {
+      "alive": 340,
+      "total": 7168,
+      "mean_max_cosine_matrix": 0.041229166090488434,
+      "mean_max_cosine_encoder": 0.22947509586811066,
+      "mean_max_cosine_decoder": 0.2063009887933731
+    },
+    "h.3.mlp.c_fc": {
+      "alive": 1105,
+      "total": 6144,
+      "mean_max_cosine_matrix": 0.06419089436531067,
+      "mean_max_cosine_encoder": 0.4091506600379944,
+      "mean_max_cosine_decoder": 0.18412216007709503
+    },
+    "h.3.mlp.down_proj": {
+      "alive": 2468,
+      "total": 7168,
+      "mean_max_cosine_matrix": 0.07047413289546967,
+      "mean_max_cosine_encoder": 0.2839840352535248,
+      "mean_max_cosine_decoder": 0.2766859531402588
+    }
+  },
+  "spd_4x": {
+    "h.0.mlp.c_fc": {
+      "alive": 1192,
+      "total": 12288,
+      "mean_max_cosine_matrix": 0.08953969925642014,
+      "mean_max_cosine_encoder": 0.3764547109603882,
+      "mean_max_cosine_decoder": 0.28679177165031433
+    },
+    "h.0.mlp.down_proj": {
+      "alive": 1142,
+      "total": 14336,
+      "mean_max_cosine_matrix": 0.0723481997847557,
+      "mean_max_cosine_encoder": 0.31588953733444214,
+      "mean_max_cosine_decoder": 0.24680013954639435
+    },
+    "h.1.mlp.c_fc": {
+      "alive": 189,
+      "total": 12288,
+      "mean_max_cosine_matrix": 0.10362659394741058,
+      "mean_max_cosine_encoder": 0.1907355785369873,
+      "mean_max_cosine_decoder": 0.4818728268146515
+    },
+    "h.1.mlp.down_proj": {
+      "alive": 224,
+      "total": 14336,
+      "mean_max_cosine_matrix": 0.0694328173995018,
+      "mean_max_cosine_encoder": 0.24879173934459686,
+      "mean_max_cosine_decoder": 0.22547413408756256
+    },
+    "h.2.mlp.c_fc": {
+      "alive": 262,
+      "total": 12288,
+      "mean_max_cosine_matrix": 0.0230046808719635,
+      "mean_max_cosine_encoder": 0.20038510859012604,
+      "mean_max_cosine_decoder": 0.16364583373069763
+    },
+    "h.2.mlp.down_proj": {
+      "alive": 442,
+      "total": 14336,
+      "mean_max_cosine_matrix": 0.02767060324549675,
+      "mean_max_cosine_encoder": 0.21582764387130737,
+      "mean_max_cosine_decoder": 0.18436817824840546
+    },
+    "h.3.mlp.c_fc": {
+      "alive": 675,
+      "total": 12288,
+      "mean_max_cosine_matrix": 0.04741838201880455,
+      "mean_max_cosine_encoder": 0.3930910527706146,
+      "mean_max_cosine_decoder": 0.154575914144516
+    },
+    "h.3.mlp.down_proj": {
+      "alive": 2394,
+      "total": 14336,
+      "mean_max_cosine_matrix": 0.080177903175354,
+      "mean_max_cosine_encoder": 0.29703256487846375,
+      "mean_max_cosine_decoder": 0.29927772283554077
+    }
+  },
+  "tc_4096": {
+    "h.0.mlp.down_proj": {
+      "alive": 3561,
+      "total": 4096,
+      "mean_max_cosine_matrix": 0.07187803834676743,
+      "mean_max_cosine_encoder": 0.3021804392337799,
+      "mean_max_cosine_decoder": 0.32293134927749634
+    },
+    "h.1.mlp.down_proj": {
+      "alive": 964,
+      "total": 4096,
+      "mean_max_cosine_matrix": 0.07092007994651794,
+      "mean_max_cosine_encoder": 0.27862343192100525,
+      "mean_max_cosine_decoder": 0.27629515528678894
+    },
+    "h.2.mlp.down_proj": {
+      "alive": 1621,
+      "total": 4096,
+      "mean_max_cosine_matrix": 0.06159394979476929,
+      "mean_max_cosine_encoder": 0.2687191069126129,
+      "mean_max_cosine_decoder": 0.28275805711746216
+    },
+    "h.3.mlp.down_proj": {
+      "alive": 4084,
+      "total": 4096,
+      "mean_max_cosine_matrix": 0.12357983738183975,
+      "mean_max_cosine_encoder": 0.34760645031929016,
+      "mean_max_cosine_decoder": 0.42607736587524414
+    }
+  },
+  "tc_32768": {
+    "h.0.mlp.down_proj": {
+      "alive": 18633,
+      "total": 32768,
+      "mean_max_cosine_matrix": 0.10154988616704941,
+      "mean_max_cosine_encoder": 0.4087259769439697,
+      "mean_max_cosine_decoder": 0.330929696559906
+    },
+    "h.1.mlp.down_proj": {
+      "alive": 2285,
+      "total": 32768,
+      "mean_max_cosine_matrix": 0.0715850442647934,
+      "mean_max_cosine_encoder": 0.2666599452495575,
+      "mean_max_cosine_decoder": 0.32543620467185974
+    },
+    "h.2.mlp.down_proj": {
+      "alive": 9117,
+      "total": 32768,
+      "mean_max_cosine_matrix": 0.09527823328971863,
+      "mean_max_cosine_encoder": 0.3263653814792633,
+      "mean_max_cosine_decoder": 0.3729962110519409
+    },
+    "h.3.mlp.down_proj": {
+      "alive": 28742,
+      "total": 32768,
+      "mean_max_cosine_matrix": 0.14509201049804688,
+      "mean_max_cosine_encoder": 0.3959033787250519,
+      "mean_max_cosine_decoder": 0.4451940655708313
+    }
+  },
+  "clt_4096": {
+    "h.0.mlp.down_proj": {
+      "alive": 3054,
+      "total": 4096,
+      "mean_max_cosine_matrix": 0.10117854177951813,
+      "mean_max_cosine_encoder": 0.38173210620880127,
+      "mean_max_cosine_decoder": 0.3767198920249939
+    },
+    "h.1.mlp.down_proj": {
+      "alive": 1948,
+      "total": 4096,
+      "mean_max_cosine_matrix": 0.13496647775173187,
+      "mean_max_cosine_encoder": 0.3761903941631317,
+      "mean_max_cosine_decoder": 0.5469171404838562
+    },
+    "h.2.mlp.down_proj": {
+      "alive": 1732,
+      "total": 4096,
+      "mean_max_cosine_matrix": 0.09145665913820267,
+      "mean_max_cosine_encoder": 0.3408050835132599,
+      "mean_max_cosine_decoder": 0.35981905460357666
+    },
+    "h.3.mlp.down_proj": {
+      "alive": 4094,
+      "total": 4096,
+      "mean_max_cosine_matrix": 0.12185807526111603,
+      "mean_max_cosine_encoder": 0.38440874218940735,
+      "mean_max_cosine_decoder": 0.35693782567977905
+    }
+  },
+  "clt_32768": {
+    "h.0.mlp.down_proj": {
+      "alive": 3027,
+      "total": 32768,
+      "mean_max_cosine_matrix": 0.08338745683431625,
+      "mean_max_cosine_encoder": 0.35521388053894043,
+      "mean_max_cosine_decoder": 0.3185058534145355
+    },
+    "h.1.mlp.down_proj": {
+      "alive": 2324,
+      "total": 32768,
+      "mean_max_cosine_matrix": 0.10267733037471771,
+      "mean_max_cosine_encoder": 0.33483293652534485,
+      "mean_max_cosine_decoder": 0.4005952775478363
+    },
+    "h.2.mlp.down_proj": {
+      "alive": 23388,
+      "total": 32768,
+      "mean_max_cosine_matrix": 0.10252337902784348,
+      "mean_max_cosine_encoder": 0.43339022994041443,
+      "mean_max_cosine_decoder": 0.3178122937679291
+    },
+    "h.3.mlp.down_proj": {
+      "alive": 32459,
+      "total": 32768,
+      "mean_max_cosine_matrix": 0.13033127784729004,
+      "mean_max_cosine_encoder": 0.41972118616104126,
+      "mean_max_cosine_decoder": 0.35734954476356506
+    }
+  }
+}

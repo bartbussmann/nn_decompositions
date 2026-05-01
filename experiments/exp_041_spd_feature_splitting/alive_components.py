@@ -31,10 +31,10 @@ SEQ_LEN = 512
 N_BATCHES = N_TOKENS // (BATCH_SIZE * SEQ_LEN)  # ~244 batches for 1M tokens
 
 SPD_RUNS = {
-    "1x (jose)": "goodfire/spd/s-55ea3f9b",
     "0.5x": "goodfire/spd/s-b2b37c4e",
-    "2x": "goodfire/spd/s-8f968bd7",
-    "4x": "goodfire/spd/s-f336f91c",
+    "1x (jose)": "goodfire/spd/s-55ea3f9b",
+    "2x": "goodfire/spd/s-266cb440",
+    "4x": "goodfire/spd/s-d3834f54",
 }
 
 # Focus on MLP modules
@@ -182,7 +182,7 @@ def main():
 
     ax.set_xlabel("Layer")
     ax.set_ylabel("Alive MLP components")
-    ax.set_title("Alive SPD components per layer (MLP c_fc + down_proj)")
+    ax.set_title("Alive VPD components per layer (MLP c_fc + down_proj)")
     ax.set_xticks(x)
     ax.set_xticklabels([f"Layer {l}" for l in LAYERS])
     ax.legend(frameon=True, fancybox=False, edgecolor="#cccccc")

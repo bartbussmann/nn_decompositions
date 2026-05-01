@@ -260,16 +260,30 @@
       "mode": "CI>0.5",
       "threshold": 0.5,
       "l0": 11.835263061523438,
-      "ce_all": 3.23665075302124,
-      "ce_single": 3.279685455560684
+      "ce_all": 3.2367,
+      "ce_cascading": 3.2367,
+      "ce_parallel": 3.3241,
+      "ce_single": 3.2797
+    },
+    {
+      "type": "jose",
+      "mode": "CI>0.1",
+      "threshold": 0.1,
+      "l0": 15.0,
+      "ce_all": 3.1578,
+      "ce_cascading": 3.1578,
+      "ce_parallel": 3.2553,
+      "ce_single": 3.2443
     },
     {
       "type": "jose",
       "mode": "CI>0.0",
       "threshold": 0.0,
       "l0": 16.111325073242188,
-      "ce_all": 3.149070715904236,
-      "ce_single": 3.2405235230922695
+      "ce_all": 3.1491,
+      "ce_cascading": 3.1491,
+      "ce_parallel": 3.2477,
+      "ce_single": 3.2405
     }
   ]
 }

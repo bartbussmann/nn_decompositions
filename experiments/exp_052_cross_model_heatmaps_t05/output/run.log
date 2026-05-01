@@ -1,0 +1,35 @@
+Loading direction caches...
+  Loaded 8 models, layers [0, 1, 2, 3]
+
+=== input space (cosine > 0.5) ===
+  VPD 0.5x     done — diag mean=0.13, split=2.4%
+  VPD 1x       done — diag mean=0.32, split=6.8%
+  VPD 2x       done — diag mean=0.40, split=7.9%
+  VPD 4x       done — diag mean=0.40, split=8.4%
+  PLT 4k       done — diag mean=1.22, split=2.5%
+  PLT 32k      done — diag mean=0.73, split=3.1%
+  CLT 4k       done — diag mean=0.44, split=3.4%
+  CLT 32k      done — diag mean=56.83, split=6.1%
+  wrote experiments/exp_052_cross_model_heatmaps_t05/output/heatmap_data_input_t0p5.json
+  Saved experiments/exp_052_cross_model_heatmaps_t05/output/cross_model_heatmap_input_t0p5.png and .pdf
+
+=== output space (cosine > 0.5) ===
+  VPD 0.5x     done — diag mean=0.03, split=0.7%
+  VPD 1x       done — diag mean=0.08, split=1.8%
+  VPD 2x       done — diag mean=0.15, split=3.6%
+  VPD 4x       done — diag mean=0.16, split=3.6%
+  PLT 4k       done — diag mean=0.24, split=4.3%
+  PLT 32k      done — diag mean=0.38, split=5.4%
+  CLT 4k       done — diag mean=4.61, split=18.2%
+  CLT 32k      done — diag mean=1.27, split=5.9%
+  wrote experiments/exp_052_cross_model_heatmaps_t05/output/heatmap_data_output_t0p5.json
+  Saved experiments/exp_052_cross_model_heatmaps_t05/output/cross_model_heatmap_output_t0p5.png and .pdf
+
+=== matrix space (cosine > 0.5) ===
+  Restricted to paired models (TC/CLT): ['PLT 4k', 'PLT 32k', 'CLT 4k', 'CLT 32k']
+  PLT 4k       done — diag mean=0.01, split=0.2%
+  PLT 32k      done — diag mean=0.01, split=0.1%
+  CLT 4k       done — diag mean=0.13, split=0.5%
+  CLT 32k      done — diag mean=0.11, split=0.4%
+  wrote experiments/exp_052_cross_model_heatmaps_t05/output/heatmap_data_matrix_t0p5.json
+  Saved experiments/exp_052_cross_model_heatmaps_t05/output/cross_model_heatmap_matrix_t0p5.png and .pdf

@@ -1,0 +1,138 @@
+{
+  "0.5x": {
+    "h.0.mlp.c_fc": {
+      "alive": 1530,
+      "total": 1536
+    },
+    "h.0.mlp.down_proj": {
+      "alive": 1768,
+      "total": 1792
+    },
+    "h.1.mlp.c_fc": {
+      "alive": 1492,
+      "total": 1536
+    },
+    "h.1.mlp.down_proj": {
+      "alive": 1716,
+      "total": 1792
+    },
+    "h.2.mlp.c_fc": {
+      "alive": 1483,
+      "total": 1536
+    },
+    "h.2.mlp.down_proj": {
+      "alive": 1733,
+      "total": 1792
+    },
+    "h.3.mlp.c_fc": {
+      "alive": 1513,
+      "total": 1536
+    },
+    "h.3.mlp.down_proj": {
+      "alive": 1783,
+      "total": 1792
+    }
+  },
+  "1x (jose)": {
+    "h.0.mlp.c_fc": {
+      "alive": 2882,
+      "total": 3072
+    },
+    "h.0.mlp.down_proj": {
+      "alive": 3209,
+      "total": 3584
+    },
+    "h.1.mlp.c_fc": {
+      "alive": 2685,
+      "total": 3072
+    },
+    "h.1.mlp.down_proj": {
+      "alive": 3029,
+      "total": 3584
+    },
+    "h.2.mlp.c_fc": {
+      "alive": 2714,
+      "total": 3072
+    },
+    "h.2.mlp.down_proj": {
+      "alive": 3124,
+      "total": 3584
+    },
+    "h.3.mlp.c_fc": {
+      "alive": 2798,
+      "total": 3072
+    },
+    "h.3.mlp.down_proj": {
+      "alive": 3302,
+      "total": 3584
+    }
+  },
+  "2x": {
+    "h.0.mlp.c_fc": {
+      "alive": 4979,
+      "total": 6144
+    },
+    "h.0.mlp.down_proj": {
+      "alive": 5615,
+      "total": 7168
+    },
+    "h.1.mlp.c_fc": {
+      "alive": 4880,
+      "total": 6144
+    },
+    "h.1.mlp.down_proj": {
+      "alive": 5183,
+      "total": 7168
+    },
+    "h.2.mlp.c_fc": {
+      "alive": 4983,
+      "total": 6144
+    },
+    "h.2.mlp.down_proj": {
+      "alive": 5552,
+      "total": 7168
+    },
+    "h.3.mlp.c_fc": {
+      "alive": 5142,
+      "total": 6144
+    },
+    "h.3.mlp.down_proj": {
+      "alive": 5786,
+      "total": 7168
+    }
+  },
+  "4x": {
+    "h.0.mlp.c_fc": {
+      "alive": 9295,
+      "total": 12288
+    },
+    "h.0.mlp.down_proj": {
+      "alive": 9684,
+      "total": 14336
+    },
+    "h.1.mlp.c_fc": {
+      "alive": 8057,
+      "total": 12288
+    },
+    "h.1.mlp.down_proj": {
+      "alive": 8448,
+      "total": 14336
+    },
+    "h.2.mlp.c_fc": {
+      "alive": 8686,
+      "total": 12288
+    },
+    "h.2.mlp.down_proj": {
+      "alive": 9302,
+      "total": 14336
+    },
+    "h.3.mlp.c_fc": {
+      "alive": 8956,
+      "total": 12288
+    },
+    "h.3.mlp.down_proj": {
+      "alive": 8955,
+      "total": 14336
+    }
+  }
+}

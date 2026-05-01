@@ -35,7 +35,7 @@ plt.rcParams.update({
 })
 
 LAYERS = [0, 1, 2, 3]
-LIFT_THRESHOLD = 5.0  # minimum lift to count as a "match"
+LIFT_THRESHOLD = 10.0  # minimum lift to count as a "match"
 
 
 def load_data():
@@ -48,33 +48,52 @@ def load_data():
 # =============================================================================
 
 def plot_cross_layer_heatmap(components: dict, save_path: Path):
-    """Heatmap: how often do SPD components at layer X match SAE features at layer Y?"""
-    # Count matches above lift threshold
-    counts = np.zeros((len(LAYERS), len(LAYERS)), dtype=int)
-    # Separate by module type
-    counts_cfc = np.zeros((len(LAYERS), len(LAYERS)), dtype=int)
-    counts_down = np.zeros((len(LAYERS), len(LAYERS)), dtype=int)
+    """Heatmap: % of SPD components at layer X that have a match at SAE layer Y."""
+    # Count SPD components per layer per module type
+    n_comps = np.zeros(len(LAYERS), dtype=int)
+    n_comps_cfc = np.zeros(len(LAYERS), dtype=int)
+    n_comps_down = np.zeros(len(LAYERS), dtype=int)
+
+    # Count components with at least one match at each SAE layer
+    has_match = np.zeros((len(LAYERS), len(LAYERS)), dtype=int)
+    has_match_cfc = np.zeros((len(LAYERS), len(LAYERS)), dtype=int)
+    has_match_down = np.zeros((len(LAYERS), len(LAYERS)), dtype=int)
 
     for comp_key, comp in components.items():
         spd_layer = comp["spd_layer"]
         mod_type = comp["spd_mod_type"]
+        n_comps[spd_layer] += 1
+        if mod_type == "c_fc":
+            n_comps_cfc[spd_layer] += 1
+        else:
+            n_comps_down[spd_layer] += 1
+
+        # Which SAE layers does this component match?
+        matched_sae_layers = set()
         for match in comp["sae_matches"]:
             if match["combined_lift"] >= LIFT_THRESHOLD:
-                sae_layer = match["sae_layer"]
-                counts[spd_layer][sae_layer] += 1
-                if mod_type == "c_fc":
-                    counts_cfc[spd_layer][sae_layer] += 1
-                else:
-                    counts_down[spd_layer][sae_layer] += 1
+                matched_sae_layers.add(match["sae_layer"])
+
+        for sae_layer in matched_sae_layers:
+            has_match[spd_layer][sae_layer] += 1
+            if mod_type == "c_fc":
+                has_match_cfc[spd_layer][sae_layer] += 1
+            else:
+                has_match_down[spd_layer][sae_layer] += 1
+
+    # Convert to percentages
+    pct = 100 * has_match / n_comps[:, None].clip(min=1)
+    pct_cfc = 100 * has_match_cfc / n_comps_cfc[:, None].clip(min=1)
+    pct_down = 100 * has_match_down / n_comps_down[:, None].clip(min=1)
 
     fig, axes = plt.subplots(1, 3, figsize=(16, 4.5))
 
     for ax, data, title in [
-        (axes[0], counts, "All MLP modules"),
-        (axes[1], counts_cfc, "c_fc only"),
-        (axes[2], counts_down, "down_proj only"),
+        (axes[0], pct, "All MLP modules"),
+        (axes[1], pct_cfc, "c_fc only"),
+        (axes[2], pct_down, "down_proj only"),
     ]:
-        im = ax.imshow(data, cmap="YlOrRd", aspect="auto")
+        im = ax.imshow(data, cmap="YlOrRd", aspect="auto", vmin=0, vmax=100)
         ax.set_xticks(range(len(LAYERS)))
         ax.set_yticks(range(len(LAYERS)))
         ax.set_xticklabels([f"SAE L{l}" for l in LAYERS])
@@ -84,12 +103,12 @@ def plot_cross_layer_heatmap(components: dict, save_path: Path):
         ax.set_title(title)
         for i in range(len(LAYERS)):
             for j in range(len(LAYERS)):
-                ax.text(j, i, str(data[i][j]), ha="center", va="center",
-                        fontsize=12, fontweight="bold",
-                        color="white" if data[i][j] > data.max() * 0.6 else "black")
-        fig.colorbar(im, ax=ax, shrink=0.8)
+                ax.text(j, i, f"{data[i][j]:.0f}%", ha="center", va="center",
+                        fontsize=11, fontweight="bold",
+                        color="white" if data[i][j] > 50 else "black")
+        fig.colorbar(im, ax=ax, shrink=0.8, label="%")
 
-    fig.suptitle(f"SPD-SAE cross-layer matches (lift ≥ {LIFT_THRESHOLD})", fontsize=14, fontweight="bold")
+    fig.suptitle(f"% of SPD components with ≥1 SAE match (lift ≥ {LIFT_THRESHOLD})", fontsize=14, fontweight="bold")
     fig.tight_layout()
     fig.savefig(save_path)
     plt.close(fig)
@@ -323,7 +342,7 @@ def plot_lift_by_layer_pair(components: dict, save_path: Path):
             patch.set_facecolor("#66c2a5")
         else:
             patch.set_facecolor("#8da0cb")
-    ax.set_yscale("log")
+    ax.set_yscale("linear")
     ax.set_ylabel("Combined lift")
     ax.set_title("Lift distribution by SPD-SAE layer pair")
     ax.tick_params(axis="x", rotation=45)
