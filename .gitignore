@@ -16,6 +16,7 @@ wandb/
 wandb_*/
 
 # Environment
+.venv
 .venv/
 .env
 .env.*
