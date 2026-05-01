@@ -32,13 +32,13 @@ and is auto-downloaded on first use.
 ├── experiments/
 │   ├── jose_base_model/                  # auto-populated cache (gitignored)
 │   ├── jose_training_runs.md             # wandb run-id table for every PLT/CLT
-│   ├── exp_020_e2e_sweep_jose/           # PLT + CLT end-to-end training (4k)
-│   ├── exp_032_local_sweep_jose/         # PLT + CLT local-MSE training (4k or 32k)
-│   ├── exp_033_e2e_sweep_jose_32k/       # PLT + CLT end-to-end training (32k)
-│   ├── exp_040_eval_e2e_jose_v2/         # CE / L0 evaluation + figure
-│   ├── exp_045_pareto_combined/          # Pareto plot (CE / MSE vs capacity)
-│   ├── exp_049_spd_feature_splitting/    # alive-component scaling figure
-│   └── exp_052_cross_model_heatmaps_t05/ # cross-model feature-matching heatmaps
+│   ├── train_local_mse/                  # PLT + CLT local-MSE training (4k or 32k)
+│   ├── train_e2e_4k/                     # PLT + CLT end-to-end training (4k)
+│   ├── train_e2e_32k/                    # PLT + CLT end-to-end training (32k)
+│   ├── eval_ce_l0/                       # CE / L0 evaluation + figure
+│   ├── pareto_plot/                      # Pareto plot (CE / MSE vs capacity)
+│   ├── alive_subcomponents/              # alive-subcomponent scaling figure
+│   └── cross_model_heatmaps/             # cross-model feature-matching heatmaps
 ├── setup_env.sh
 └── pyproject.toml
 ```
@@ -62,10 +62,10 @@ are listed in `experiments/jose_training_runs.md`.
 
 | project | script | notes |
 |---|---|---|
-| `pile_local_sweep_jose`     | `exp_032_local_sweep_jose/local_sweep_jose.py` | default `--dict_size 4096` |
-| `pile_local_sweep_jose_32k` | `exp_032_local_sweep_jose/local_sweep_jose.py --dict_size 32768` | same script, 32k variant |
-| `pile_e2e_sweep_jose`       | `exp_020_e2e_sweep_jose/e2e_sweep_jose.py` | 4k end-to-end KL |
-| `pile_e2e_sweep_jose_32k`   | `exp_033_e2e_sweep_jose_32k/e2e_sweep_jose_32k.py` | 32k end-to-end KL |
+| `pile_local_sweep_jose`     | `train_local_mse/train_local_mse.py` | default `--dict_size 4096` |
+| `pile_local_sweep_jose_32k` | `train_local_mse/train_local_mse.py --dict_size 32768` | same script, 32k variant |
+| `pile_e2e_sweep_jose`       | `train_e2e_4k/train_e2e_4k.py` | 4k end-to-end KL |
+| `pile_e2e_sweep_jose_32k`   | `train_e2e_32k/train_e2e_32k.py` | 32k end-to-end KL |
 
 Each script polls GPU memory and launches one job per free device. Full
 sweeps require ≈ 40 GPU-hours on H100s.
@@ -77,10 +77,10 @@ above), run each experiment from the repository root:
 
 | Figure | Script | Wall-clock |
 |---|---|---|
-| **exp_040** — CE / L0 evaluation | `python experiments/exp_040_eval_e2e_jose_v2/eval_e2e_jose_v2.py` then `python experiments/exp_040_eval_e2e_jose_v2/plot_e2e_jose_v2.py` | ≈ 20 min |
-| **exp_045** — Pareto plot | `python experiments/exp_045_pareto_combined/pareto_combined.py` | ≈ 30 min |
-| **exp_049** — alive-subcomponent scaling | `python experiments/exp_049_spd_feature_splitting/alive_line_plot.py` | ≈ 15 min |
-| **exp_052** — cross-model heatmaps | `python experiments/exp_052_cross_model_heatmaps_t05/cross_model_heatmaps.py` | ≈ 25 min |
+| CE / L0 evaluation | `python experiments/eval_ce_l0/eval_ce_l0.py` then `python experiments/eval_ce_l0/plot_ce_l0.py` | ≈ 20 min |
+| Pareto plot | `python experiments/pareto_plot/pareto_plot.py` | ≈ 30 min |
+| Alive-subcomponent scaling | `python experiments/alive_subcomponents/alive_subcomponents.py` | ≈ 15 min |
+| Cross-model heatmaps | `python experiments/cross_model_heatmaps/cross_model_heatmaps.py` | ≈ 25 min |
 
 Each script supports `--plot-only` to re-render figures from the cached
 JSON in its `output/` directory without re-running the heavy compute.
@@ -92,7 +92,7 @@ extraction.
 
 ## Reference VPD checkpoints
 
-exp_045, exp_049, and exp_052 also load four VPD (SPD) checkpoints from
+`pareto_plot`, `alive_subcomponents`, and `cross_model_heatmaps` also load four VPD (SPD) checkpoints from
 the public `goodfire/spd` wandb project:
 
 | Capacity | wandb run |

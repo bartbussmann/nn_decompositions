@@ -31,8 +31,8 @@ Pipeline (single self-contained script, no subprocesses):
   4. Compute the three heatmaps and save JSON + reference plot.
 
 Usage:
-  python experiments/exp_052_cross_model_heatmaps_t05/cross_model_heatmaps.py
-  python experiments/exp_052_cross_model_heatmaps_t05/cross_model_heatmaps.py --plot-only
+  python experiments/cross_model_heatmaps/cross_model_heatmaps.py
+  python experiments/cross_model_heatmaps/cross_model_heatmaps.py --plot-only
 """
 
 from __future__ import annotations
@@ -73,9 +73,9 @@ SEQ_LEN = 512
 N_BATCHES = N_TOKENS // (BATCH_SIZE * SEQ_LEN)
 CHUNK = 512  # rows of A processed per cosine block
 
-OUTPUT_DIR = Path("experiments/exp_052_cross_model_heatmaps_t05/output")
+OUTPUT_DIR = Path("experiments/cross_model_heatmaps/output")
 DIR_CACHE = OUTPUT_DIR / "direction_cache"
-CHECKPOINT_DIR = Path("checkpoints/exp_052")
+CHECKPOINT_DIR = Path("checkpoints/cross_model_heatmaps")
 
 
 @dataclass(frozen=True)

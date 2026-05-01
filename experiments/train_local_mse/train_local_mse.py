@@ -1,16 +1,17 @@
-"""E2E training sweep on jose's target model (t-9d2b8f02).
+"""Local MSE training sweep on jose's target model (t-9d2b8f02).
 
-Same as exp_018 but using jose's target model instead of t-32d1bb3b.
-Transcoders and CLTs, cascading and parallel, k=16/32/64.
+Per-layer MSE reconstruction (no end-to-end KL). Trains BatchTopK Transcoders
+and CLTs at k = 8, 16, 32, 64. Polls GPU memory to find free devices and
+launches jobs as capacity allows.
 
-Polls GPU memory to find free devices and launches jobs as capacity allows.
-All runs go to a single wandb project with descriptive run names.
+Use --dict_size 4096 (default) to log to `pile_local_sweep_jose`, or
+--dict_size 32768 to log to `pile_local_sweep_jose_32k`.
 
 Usage:
-    python experiments/exp_020_e2e_sweep_jose/e2e_sweep_jose.py
-    python experiments/exp_020_e2e_sweep_jose/e2e_sweep_jose.py --top_ks 32 64
-    python experiments/exp_020_e2e_sweep_jose/e2e_sweep_jose.py --types tc_parallel clt_cascading
-    python experiments/exp_020_e2e_sweep_jose/e2e_sweep_jose.py --min_free_gb 12
+    python experiments/train_local_mse/train_local_mse.py
+    python experiments/train_local_mse/train_local_mse.py --dict_size 32768
+    python experiments/train_local_mse/train_local_mse.py --top_ks 32 64
+    python experiments/train_local_mse/train_local_mse.py --types tc clt
 """
 
 import os
@@ -25,22 +26,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import torch
-import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 sys.path.insert(0, str(Path("/workspace/spd")))
 
 WANDB_MODEL_PATH = "goodfire/spd/runs/t-9d2b8f02"
-WANDB_PROJECT = "pile_e2e_sweep_jose"
+PROJECT_BY_DICT_SIZE = {4096: "pile_local_sweep_jose", 32768: "pile_local_sweep_jose_32k"}
 LAYERS = [0, 1, 2, 3]
-DICT_SIZE = 4096
 NUM_TOKENS = int(5e8)
 LR = 3e-4
 MODEL_BATCH_SIZE = 16
 SEQ_LEN = 512
 DATASET = "danbraunai/pile-uncopyrighted-tok-shuffled"
 
-ALL_TYPES = ["tc_independent", "tc_parallel", "tc_cascading", "clt_parallel", "clt_cascading"]
+ALL_TYPES = ["tc", "clt"]
 ALL_TOP_KS = [8, 16, 32, 64]
 
 
@@ -52,18 +51,14 @@ class Job:
 
 
 def compute_loss_llama(model, tokenizer, input_ids, attention_mask):
+    import torch.nn.functional as F
     targets = input_ids[:, 1:].contiguous()
     logits, _ = model(input_ids)
     logits = logits[:, :-1].contiguous()
     return F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1)).item()
 
 
-def get_logits_llama(model, input_ids, attention_mask):
-    logits, _ = model(input_ids)
-    return logits
-
-
-def train_one(job: Job, device: str, model_cache_path: str):
+def train_one(job: Job, device: str, model_cache_path: str, dict_size: int, wandb_project: str):
     """Train a single job. Runs in a subprocess."""
     try:
         wandb_dir = Path(f"wandb_{job.name}").resolve()
@@ -78,7 +73,7 @@ def train_one(job: Job, device: str, model_cache_path: str):
         from nn_decompositions.config import CLTConfig, EncoderConfig
         from nn_decompositions.clt import CrossLayerTranscoder
         from nn_decompositions.transcoder import BatchTopKTranscoder
-        from nn_decompositions.training import train_encoder, train_encoder_cascading
+        from nn_decompositions.training import train_encoder, train_encoder_multilayer_local
 
         print(f"[{job.name}] Loading model on {device}...")
         with open(os.path.join(model_cache_path, "config.json")) as f:
@@ -120,64 +115,58 @@ def train_one(job: Job, device: str, model_cache_path: str):
             output_size=d_model,
         )
 
-        if job.job_type.startswith("tc_"):
-            mode = job.job_type.removeprefix("tc_")
+        if job.job_type == "tc":
             cfgs = []
             encoders = []
             for layer in LAYERS:
                 cfg = EncoderConfig(
                     input_size=d_model,
                     output_size=d_model,
-                    dict_size=DICT_SIZE,
+                    dict_size=dict_size,
                     encoder_type="batchtopk",
                     top_k=job.top_k,
                     l1_coeff=0.0,
                     batch_size=4096,
                     num_tokens=NUM_TOKENS,
                     lr=LR,
-                    wandb_project=WANDB_PROJECT,
+                    wandb_project=wandb_project,
                     device=device,
-                    e2e=True,
+                    e2e=False,
                     run_name=job.name,
                 )
                 cfgs.append(cfg)
                 encoders.append(BatchTopKTranscoder(cfg))
 
-            print(f"[{job.name}] Training {len(encoders)} transcoders (mode={mode})...")
-            train_encoder_cascading(
+            print(f"[{job.name}] Training {len(encoders)} transcoders (local MSE)...")
+            train_encoder_multilayer_local(
                 encoders, activation_store, cfgs,
                 compute_loss_fn=compute_loss_llama,
-                get_logits_fn=get_logits_llama,
-                mode=mode,
             )
 
-        else:  # clt_parallel or clt_cascading
-            cascading = job.job_type == "clt_cascading"
+        else:  # clt
             cfg = CLTConfig(
                 layers=LAYERS,
                 input_size=d_model,
                 output_size=d_model,
-                dict_size=DICT_SIZE,
+                dict_size=dict_size,
                 encoder_type="batchtopk",
                 top_k=job.top_k,
                 l1_coeff=0.0,
                 batch_size=4096,
                 num_tokens=NUM_TOKENS,
                 lr=LR,
-                wandb_project=WANDB_PROJECT,
+                wandb_project=wandb_project,
                 run_name=job.name,
                 device=device,
-                e2e=True,
-                e2e_cascading=cascading,
+                e2e=False,
             )
 
             clt = CrossLayerTranscoder(cfg)
 
-            print(f"[{job.name}] Training CLT ({'cascading' if cascading else 'parallel'})...")
+            print(f"[{job.name}] Training CLT (local MSE)...")
             train_encoder(
                 clt, activation_store, cfg,
                 compute_loss_fn=compute_loss_llama,
-                get_logits_fn=get_logits_llama,
             )
 
         print(f"[{job.name}] DONE")
@@ -198,13 +187,17 @@ def get_free_gpus(min_free_bytes: float) -> list[int]:
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="E2E training sweep (jose target model) with GPU queue")
+    parser = argparse.ArgumentParser(description="Local MSE training sweep (jose target model) with GPU queue")
+    parser.add_argument("--dict_size", type=int, default=4096, choices=[4096, 32768],
+                        help="Dictionary size; selects which wandb project to log to")
     parser.add_argument("--top_ks", type=int, nargs="+", default=ALL_TOP_KS)
     parser.add_argument("--types", type=str, nargs="+", default=ALL_TYPES,
                         choices=ALL_TYPES)
     parser.add_argument("--min_free_gb", type=float, default=12.0,
                         help="Minimum free GPU memory (GB) to start a job")
     args = parser.parse_args()
+
+    wandb_project = PROJECT_BY_DICT_SIZE[args.dict_size]
 
     jobs = [
         Job(name=f"{jtype}_k{k}", job_type=jtype, top_k=k)
@@ -230,8 +223,9 @@ def main():
         del model
 
     print(f"Model cached at {model_cache_path}")
+    print(f"Logging to wandb project: {wandb_project} (dict_size={args.dict_size})")
 
-    print(f"\n=== E2E Sweep (jose): {len(jobs)} jobs ===")
+    print(f"\n=== Local MSE Sweep (jose): {len(jobs)} jobs ===")
     for j in jobs:
         print(f"  {j.name}")
     print(f"GPUs available: {n_gpus}")
@@ -264,7 +258,10 @@ def main():
                 job = pending.pop(0)
                 device = f"cuda:{gpu_id}"
                 print(f"[{job.name}] Launching on {device}")
-                p = ctx.Process(target=train_one, args=(job, device, model_cache_path))
+                p = ctx.Process(
+                    target=train_one,
+                    args=(job, device, model_cache_path, args.dict_size, wandb_project),
+                )
                 p.start()
                 running.append((p, job.name, gpu_id))
                 busy_gpus.add(gpu_id)

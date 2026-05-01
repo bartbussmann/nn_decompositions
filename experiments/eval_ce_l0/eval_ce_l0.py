@@ -1,15 +1,20 @@
-"""Evaluate e2e-trained transcoders/CLTs on jose's target model (v2).
+"""CE / L0 evaluation of trained PLTs and CLTs on jose's target model.
 
-Same as exp_021 but:
-  - Evaluates both 4k and 32k dict_size models
-  - Also includes local_mse models from pile_local_sweep_jose[_32k]
-  - Uses tc.encode()/tc.decode() directly (no hand-rolled forward pass)
-  - Produces separate results files per dict_size
+For each trained PLT (BatchTopK Transcoder) and CLT — at dict_size 4k
+and 32k, both local-MSE and end-to-end KL — patch the base model's MLPs
+with the model's reconstructions and report:
+  - average L0 (per-token feature density)
+  - cross-entropy under three patching modes: cascading, parallel, single-MLP
+
+Also evaluates SPD baselines at three CI thresholds (0.5, 0.1, 0.0).
+
+Results land in `output/results_4k.json` and `output/results_32k.json`,
+which `plot_ce_l0.py` then turns into a publication figure.
 
 Usage:
-    python experiments/exp_040_eval_e2e_jose_v2/eval_e2e_jose_v2.py
-    python experiments/exp_040_eval_e2e_jose_v2/eval_e2e_jose_v2.py --dict_sizes 4k
-    python experiments/exp_040_eval_e2e_jose_v2/eval_e2e_jose_v2.py --skip_spd
+    python experiments/eval_ce_l0/eval_ce_l0.py
+    python experiments/eval_ce_l0/eval_ce_l0.py --dict_sizes 4k
+    python experiments/eval_ce_l0/eval_ce_l0.py --skip_spd
 """
 
 import json
@@ -39,7 +44,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 LAYERS = [0, 1, 2, 3]
 JOSE_MODEL_CACHE = Path("experiments/jose_base_model")
 CHECKPOINT_DIR = Path("checkpoints/jose_v2")
-OUTPUT_DIR = Path("experiments/exp_040_eval_e2e_jose_v2/output")
+OUTPUT_DIR = Path("experiments/eval_ce_l0/output")
 
 PROJECTS = {
     "4k": {

@@ -1,8 +1,13 @@
-"""
+"""Alive-subcomponent scaling figure.
+
+For each model (SPD at 4 capacities, PLT at 4k and 32k, CLT at 4k and 32k)
+streams 1M Pile tokens, computes per-feature alive masks, and plots
+alive subcomponents vs total subcomponent capacity (log-log).
+
 Usage:
-  python experiments/exp_049_spd_feature_splitting/alive_line_plot.py
-  python experiments/exp_049_spd_feature_splitting/alive_line_plot.py --plot-only
-  python experiments/exp_049_spd_feature_splitting/alive_line_plot.py --reuse-cache
+  python experiments/alive_subcomponents/alive_subcomponents.py
+  python experiments/alive_subcomponents/alive_subcomponents.py --plot-only
+  python experiments/alive_subcomponents/alive_subcomponents.py --reuse-cache
 """
 
 from __future__ import annotations
@@ -33,7 +38,7 @@ SEQ_LEN = 512
 N_BATCHES = N_TOKENS // (BATCH_SIZE * SEQ_LEN)
 ALIVE_THRESHOLD = 1e-6
 
-OUTPUT_DIR = Path("experiments/exp_049_spd_feature_splitting/output")
+OUTPUT_DIR = Path("experiments/alive_subcomponents/output")
 SPD_ALIVE_FILE = OUTPUT_DIR / "alive_components_mean_ci.json"
 LINE_DATA_FILE = OUTPUT_DIR / "alive_line_data.json"
 

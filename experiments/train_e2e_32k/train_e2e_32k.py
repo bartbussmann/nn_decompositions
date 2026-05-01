@@ -1,16 +1,16 @@
-"""E2E training sweep on jose's target model (t-9d2b8f02) with dict_size=32768.
+"""End-to-end KL training sweep on jose's target model at dict_size=32768.
 
-Same as exp_020 but with a dictionary size of 32768 instead of 4096.
-Transcoders and CLTs, cascading and parallel, k=16/32/64.
+Trains BatchTopK Transcoders (PLT) and Cross-Layer Transcoders (CLT),
+cascading and parallel modes, k = 16, 32, 64. All runs log to the
+`pile_e2e_sweep_jose_32k` wandb project.
 
 Polls GPU memory to find free devices and launches jobs as capacity allows.
-All runs go to a single wandb project with descriptive run names.
 
 Usage:
-    python experiments/exp_033_e2e_sweep_jose_32k/e2e_sweep_jose_32k.py
-    python experiments/exp_033_e2e_sweep_jose_32k/e2e_sweep_jose_32k.py --top_ks 32 64
-    python experiments/exp_033_e2e_sweep_jose_32k/e2e_sweep_jose_32k.py --types tc_parallel clt_cascading
-    python experiments/exp_033_e2e_sweep_jose_32k/e2e_sweep_jose_32k.py --min_free_gb 12
+    python experiments/train_e2e_32k/train_e2e_32k.py
+    python experiments/train_e2e_32k/train_e2e_32k.py --top_ks 32 64
+    python experiments/train_e2e_32k/train_e2e_32k.py --types tc_parallel clt_cascading
+    python experiments/train_e2e_32k/train_e2e_32k.py --min_free_gb 12
 """
 
 import os

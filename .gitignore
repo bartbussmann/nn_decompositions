@@ -32,4 +32,4 @@ Thumbs.db
 
 # Auto-populated caches
 experiments/jose_base_model/
-experiments/exp_052_cross_model_heatmaps_t05/output/direction_cache/
+experiments/cross_model_heatmaps/output/direction_cache/
