@@ -15,7 +15,7 @@ included for completeness — run them only if you want to reproduce
 the training sweeps end-to-end.
 
 The PLT and CLT decomposition baselines were trained here; VPD itself
-is loaded from public artifacts on the [SPD repository](https://github.com/goodfire-ai/spd).
+is loaded from public artifacts on the [param-decomp repository](https://github.com/goodfire-ai/param-decomp).
 
 ## Target model
 
